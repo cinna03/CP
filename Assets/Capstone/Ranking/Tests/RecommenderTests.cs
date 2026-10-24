@@ -157,5 +157,31 @@ namespace Capstone.Ranking.Tests
             Assert.AreEqual(first[1].Artwork.Id, second[1].Artwork.Id);
             Assert.AreEqual(first[2].Artwork.Id, second[2].Artwork.Id);
         }
+
+        [Test]
+        public void TheBuyerCanChooseOneOfTheThree()
+        {
+            List<Recommendation> ranked = Recommender.RankThree(
+                SampleCatalogue.All,
+                PreferenceProfile.FromInitialTags("sample", "calm", "blue"),
+                "sample-wall");
+
+            Assert.AreEqual("sample-calm-blue", Recommender.Choose(ranked, 1).Id);
+            Assert.AreEqual("sample-quiet", Recommender.Choose(ranked, 2).Id);
+            Assert.AreEqual("sample-wide", Recommender.Choose(ranked, 3).Id);
+        }
+
+        [Test]
+        public void ARankThatWasNotOfferedIsRejected()
+        {
+            List<Recommendation> ranked = Recommender.RankThree(
+                SampleCatalogue.All,
+                PreferenceProfile.FromInitialTags("sample", "calm", "blue"),
+                "sample-wall");
+
+            Assert.IsNull(Recommender.Choose(ranked, 0));
+            Assert.IsNull(Recommender.Choose(ranked, 4));
+            Assert.IsNull(Recommender.Choose(null, 1));
+        }
     }
 }

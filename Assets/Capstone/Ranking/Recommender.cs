@@ -49,6 +49,21 @@ namespace Capstone.Ranking
             return top;
         }
 
+        public static Artwork Choose(IReadOnlyList<Recommendation> ranked, int oneBasedRank)
+        {
+            if (ranked == null || oneBasedRank < 1)
+                return null;
+
+            for (int i = 0; i < ranked.Count; i++)
+            {
+                Recommendation recommendation = ranked[i];
+                if (recommendation != null && recommendation.Rank == oneBasedRank)
+                    return recommendation.Artwork;
+            }
+
+            return null;
+        }
+
         static int Compare(Recommendation left, Recommendation right)
         {
             if (left.Score != right.Score)
