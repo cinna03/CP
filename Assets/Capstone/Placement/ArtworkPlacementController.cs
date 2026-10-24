@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using Capstone.Catalogue;
 using Capstone.Dialogue;
 using Capstone.Ranking;
+using Capstone.Session;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
@@ -16,6 +18,7 @@ namespace Capstone.Placement
     /// Keep, save, and dismiss update the tag weights and show the top three other works.
     /// Use 1, Use 2, or Use 3 makes that recommended work the one Place puts on the wall.
     /// Notes reads the story stored on the current work and does not invent one.
+    /// Keep, save, dismiss, and a matched question are stored on this session. Consent is not marked.
     /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -42,6 +45,7 @@ namespace Capstone.Placement
         Artwork current;
         InputField concernField;
         FeedbackLoop feedback;
+        BuyerSession session;
         List<Recommendation> offered;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -64,6 +68,7 @@ namespace Capstone.Placement
             SilenceTemplateSpawner();
             current = SampleArtwork.Create();
             feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(current.Style, current.Mood, current.Colour));
+            session = new BuyerSession("local-preview");
             surface = CreateSurface(current);
             BuildControls();
         }
@@ -112,6 +117,8 @@ namespace Capstone.Placement
             DialogueReply reply = RuleEngine.Match(typed, StarterRules.All);
             if (reply.Matched && feedback != null)
                 feedback.Profile.NoteConcern(reply.Concern, current);
+            if (reply.Matched && session != null && current != null)
+                session.LogRule(current.Id, reply.RuleId, reply.Concern, DateTime.UtcNow);
             status.text = ReplyForCurrentWork(reply);
         }
 
@@ -130,26 +137,28 @@ namespace Capstone.Placement
 
         public void Keep()
         {
-            RecordFeedback("Kept", loop => loop.Accept(current));
+            RecordFeedback("Kept", "Keep", loop => loop.Accept(current));
         }
 
         public void Save()
         {
-            RecordFeedback("Saved", loop => loop.Save(current));
+            RecordFeedback("Saved", "Save", loop => loop.Save(current));
         }
 
         public void Dismiss()
         {
-            RecordFeedback("Dismissed", loop => loop.Dismiss(current));
+            RecordFeedback("Dismissed", "Dismiss", loop => loop.Dismiss(current));
         }
 
-        void RecordFeedback(string verb, System.Action<FeedbackLoop> apply)
+        void RecordFeedback(string verb, string action, System.Action<FeedbackLoop> apply)
         {
             if (feedback == null || current == null)
                 return;
             apply(feedback);
+            if (session != null)
+                session.LogAction(current.Id, action, feedback.Profile.LastConcern, DateTime.UtcNow);
             offered = Recommender.RankThree(SampleCatalogue.All, feedback.Profile, current.Id);
-            status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(offered);
+            status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(offered) + "\nLogged.";
         }
 
         static string DescribeRecommendations(List<Recommendation> ranked)

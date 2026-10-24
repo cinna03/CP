@@ -5,6 +5,7 @@
         "Capstone.Catalogue",
         "Capstone.Dialogue",
         "Capstone.Ranking",
+        "Capstone.Session",
         "Unity.XR.ARFoundation",
         "Unity.XR.ARSubsystems",
         "UnityEngine.UI"
