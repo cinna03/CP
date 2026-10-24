@@ -14,6 +14,7 @@ namespace Capstone.Placement
     /// A second Place moves that same quad. Swap replaces it with the other sample, in place.
     /// Send matches typed text against the written keyword table.
     /// Keep, save, and dismiss update the tag weights and show the top three other works.
+    /// Use 1, Use 2, or Use 3 makes that recommended work the one Place puts on the wall.
     /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -25,6 +26,10 @@ namespace Capstone.Placement
         public const string RemovedMessage = "Removed. You can place it again.";
         public const string SwapNeedsPlacementMessage = "Place a work before swapping.";
         public const string SwappedMessage = "Swapped the work. The size follows the new piece.";
+        public const string ChooseNeedsRankMessage = "Keep, save, or dismiss before choosing a work.";
+        public const string ChooseMissingMessage = "That rank is not in the list.";
+        public const string ChosenMessage = "Next Place uses this work.";
+        public const string ChosenOnWallMessage = "Replaced the wall preview with the chosen work.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
 
@@ -36,6 +41,7 @@ namespace Capstone.Placement
         Artwork current;
         InputField concernField;
         FeedbackLoop feedback;
+        List<Recommendation> offered;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -141,8 +147,8 @@ namespace Capstone.Placement
             if (feedback == null || current == null)
                 return;
             apply(feedback);
-            List<Recommendation> ranked = Recommender.RankThree(SampleCatalogue.All, feedback.Profile, current.Id);
-            status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(ranked);
+            offered = Recommender.RankThree(SampleCatalogue.All, feedback.Profile, current.Id);
+            status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(offered);
         }
 
         static string DescribeRecommendations(List<Recommendation> ranked)
@@ -171,6 +177,50 @@ namespace Capstone.Placement
             }
 
             return text.ToString();
+        }
+
+        public void ChooseFirst()
+        {
+            ChooseRank(1);
+        }
+
+        public void ChooseSecond()
+        {
+            ChooseRank(2);
+        }
+
+        public void ChooseThird()
+        {
+            ChooseRank(3);
+        }
+
+        public void ChooseRank(int oneBasedRank)
+        {
+            if (offered == null || offered.Count == 0)
+            {
+                status.text = ChooseNeedsRankMessage;
+                return;
+            }
+
+            Artwork chosen = Recommender.Choose(offered, oneBasedRank);
+            if (chosen == null)
+            {
+                status.text = ChooseMissingMessage;
+                return;
+            }
+
+            current = chosen;
+            if (placed == null)
+            {
+                status.text = ChosenMessage + " " + current.Title + ". " + Describe(current);
+                return;
+            }
+
+            Vector3 position = placed.transform.position;
+            Quaternion rotation = placed.transform.rotation;
+            ApplyArtwork(current);
+            placed.transform.SetPositionAndRotation(position, rotation);
+            status.text = ChosenOnWallMessage + " " + Describe(current);
         }
 
         public void Remove()
@@ -273,10 +323,19 @@ namespace Capstone.Placement
 
         static Texture2D ImageFor(Artwork artwork)
         {
-            Color fill = artwork.Id == SampleArtwork.SecondId
-                ? new Color(0.85f, 0.45f, 0.12f, 1f)
-                : new Color(0.15f, 0.35f, 0.75f, 1f);
-            return SampleTexture(fill);
+            return SampleTexture(FillFor(artwork));
+        }
+
+        static Color FillFor(Artwork artwork)
+        {
+            string colour = artwork != null ? artwork.Colour.Trim().ToLowerInvariant() : string.Empty;
+            if (colour == "orange")
+                return new Color(0.85f, 0.45f, 0.12f, 1f);
+            if (colour == "red")
+                return new Color(0.75f, 0.15f, 0.15f, 1f);
+            if (colour == "blue")
+                return new Color(0.15f, 0.35f, 0.75f, 1f);
+            return new Color(0.45f, 0.45f, 0.45f, 1f);
         }
 
         static Texture2D SampleTexture(Color fill)
@@ -320,6 +379,9 @@ namespace Capstone.Placement
                 new Vector2(0.5f, 1f),
                 new Vector2(0f, -160f),
                 28);
+            CreateButton(canvasObject.transform, font, "Use 1", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 550f), new Vector2(320f, 100f), ChooseFirst);
+            CreateButton(canvasObject.transform, font, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 550f), new Vector2(320f, 100f), ChooseSecond);
+            CreateButton(canvasObject.transform, font, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 550f), new Vector2(320f, 100f), ChooseThird);
             CreateButton(canvasObject.transform, font, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 430f), new Vector2(320f, 100f), Keep);
             CreateButton(canvasObject.transform, font, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 430f), new Vector2(320f, 100f), Save);
             CreateButton(canvasObject.transform, font, "Dismiss", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 430f), new Vector2(320f, 100f), Dismiss);
