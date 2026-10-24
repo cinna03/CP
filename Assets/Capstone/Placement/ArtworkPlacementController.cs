@@ -9,7 +9,8 @@ namespace Capstone.Placement
 {
     /// <summary>
     /// Places one sample artwork on a detected vertical wall and removes it in the same session.
-    /// A second Place moves that same quad. No wall means a retry message and no invented size.
+    /// A second Place moves that same quad. Swap replaces it with the other sample, in place.
+    /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
     {
@@ -18,6 +19,8 @@ namespace Capstone.Placement
         public const string PlacedMessage = "Placed on the wall.";
         public const string MovedMessage = "Moved on the wall. The size is unchanged.";
         public const string RemovedMessage = "Removed. You can place it again.";
+        public const string SwapNeedsPlacementMessage = "Place a work before swapping.";
+        public const string SwappedMessage = "Swapped the work. The size follows the new piece.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
 
@@ -26,6 +29,7 @@ namespace Capstone.Placement
         GameObject placed;
         Text status;
         Material surface;
+        Artwork current;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -45,7 +49,8 @@ namespace Capstone.Placement
             arCamera = Camera.main;
             EnsureVerticalPlanes();
             SilenceTemplateSpawner();
-            surface = CreateSurface();
+            current = SampleArtwork.Create();
+            surface = CreateSurface(current);
             BuildControls();
         }
 
@@ -57,19 +62,34 @@ namespace Capstone.Placement
                 return;
             }
 
-            Artwork artwork = SampleArtwork.Create();
             bool alreadyPlaced = placed != null;
             if (!alreadyPlaced)
                 placed = CreateQuad();
 
             WallPose pose = ArtworkWallPose.At(
-                artwork,
+                current,
                 hit.pose.position,
                 plane.normal,
                 arCamera != null ? arCamera.transform.position : hit.pose.position + plane.normal);
             placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
-            placed.transform.localScale = pose.Scale;
-            status.text = alreadyPlaced ? MovedMessage : PlacedMessage;
+            ApplyArtwork(current);
+            status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current);
+        }
+
+        public void Swap()
+        {
+            if (placed == null)
+            {
+                status.text = SwapNeedsPlacementMessage;
+                return;
+            }
+
+            Vector3 position = placed.transform.position;
+            Quaternion rotation = placed.transform.rotation;
+            current = SampleArtwork.OtherThan(current);
+            ApplyArtwork(current);
+            placed.transform.SetPositionAndRotation(position, rotation);
+            status.text = SwappedMessage + " " + Describe(current);
         }
 
         public void Remove()
@@ -142,24 +162,46 @@ namespace Capstone.Placement
             return quad;
         }
 
-        Material CreateSurface()
+        void ApplyArtwork(Artwork artwork)
+        {
+            WallSize size = artwork.WallSizeMetres;
+            placed.transform.localScale = new Vector3(size.WidthMetres, size.HeightMetres, 1f);
+            placed.name = artwork.Title;
+            Texture2D image = ImageFor(artwork);
+            surface.SetTexture("_BaseMap", image);
+            surface.SetTexture("_MainTex", image);
+        }
+
+        static string Describe(Artwork artwork)
+        {
+            return artwork.WidthCm.ToString("0") + " cm wide, " + artwork.HeightCm.ToString("0") + " cm tall.";
+        }
+
+        Material CreateSurface(Artwork artwork)
         {
             Material template = Resources.Load<Material>("SampleArtworkSurface");
             Material material = template != null
                 ? new Material(template)
                 : new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            Texture2D image = SampleTexture();
+            Texture2D image = ImageFor(artwork);
             material.SetTexture("_BaseMap", image);
             material.SetTexture("_MainTex", image);
             material.SetColor("_BaseColor", Color.white);
             return material;
         }
 
-        static Texture2D SampleTexture()
+        static Texture2D ImageFor(Artwork artwork)
+        {
+            Color fill = artwork.Id == SampleArtwork.SecondId
+                ? new Color(0.85f, 0.45f, 0.12f, 1f)
+                : new Color(0.15f, 0.35f, 0.75f, 1f);
+            return SampleTexture(fill);
+        }
+
+        static Texture2D SampleTexture(Color fill)
         {
             const int size = 64;
             Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            Color blue = new Color(0.15f, 0.35f, 0.75f, 1f);
             Color white = Color.white;
             for (int y = 0; y < size; y++)
             {
@@ -167,7 +209,7 @@ namespace Capstone.Placement
                 {
                     bool border = x < 3 || y < 3 || x >= size - 3 || y >= size - 3;
                     bool topBand = y >= size - 14;
-                    texture.SetPixel(x, y, border || topBand ? white : blue);
+                    texture.SetPixel(x, y, border || topBand ? white : fill);
                 }
             }
 
@@ -191,13 +233,14 @@ namespace Capstone.Placement
             CreateLabel(
                 canvasObject.transform,
                 font,
-                "Sample wall work. 40 cm wide, 50 cm tall. White band is the top.",
+                "White band is the top. Swap keeps the quad and changes the piece.",
                 new Vector2(0.5f, 1f),
                 new Vector2(0.5f, 1f),
                 new Vector2(0f, -160f),
                 28);
-            CreateButton(canvasObject.transform, font, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 40f), Place);
-            CreateButton(canvasObject.transform, font, "Remove", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-40f, 40f), Remove);
+            CreateButton(canvasObject.transform, font, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
+            CreateButton(canvasObject.transform, font, "Swap", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(320f, 140f), Swap);
+            CreateButton(canvasObject.transform, font, "Remove", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 40f), new Vector2(320f, 140f), Remove);
         }
 
         static Text CreateLabel(Transform parent, Font font, string message, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, int fontSize)
@@ -221,7 +264,7 @@ namespace Capstone.Placement
             return text;
         }
 
-        static void CreateButton(Transform parent, Font font, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, UnityEngine.Events.UnityAction onClick)
+        static void CreateButton(Transform parent, Font font, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction onClick)
         {
             GameObject buttonObject = new GameObject(label);
             buttonObject.transform.SetParent(parent, false);
@@ -233,8 +276,8 @@ namespace Capstone.Placement
             RectTransform rect = buttonObject.GetComponent<RectTransform>();
             rect.anchorMin = anchorMin;
             rect.anchorMax = anchorMax;
-            rect.pivot = anchorMin;
-            rect.sizeDelta = new Vector2(420f, 140f);
+            rect.pivot = new Vector2(anchorMin.x, 0f);
+            rect.sizeDelta = size;
             rect.anchoredPosition = position;
 
             GameObject caption = new GameObject("Label");

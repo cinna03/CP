@@ -44,5 +44,19 @@ namespace Capstone.Placement.Tests
             Assert.AreEqual(expected.y, pose.Position.y, 0.0001f);
             Assert.AreEqual(expected.z, pose.Position.z, 0.0001f);
         }
+
+        [Test]
+        public void SwapSelectsTheOtherWorkAndItsSize()
+        {
+            Artwork first = SampleArtwork.Create();
+            Artwork second = SampleArtwork.OtherThan(first);
+            Artwork back = SampleArtwork.OtherThan(second);
+
+            Assert.AreEqual(SampleArtwork.SecondId, second.Id);
+            Assert.AreEqual(first.Id, back.Id);
+            Assert.AreEqual(0.80f, second.WallSizeMetres.WidthMetres, 0.0001f);
+            Assert.AreEqual(0.30f, second.WallSizeMetres.HeightMetres, 0.0001f);
+            Assert.AreNotEqual(first.WallSizeMetres.WidthMetres, second.WallSizeMetres.WidthMetres);
+        }
     }
 }
