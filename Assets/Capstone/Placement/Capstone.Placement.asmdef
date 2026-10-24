@@ -4,6 +4,7 @@
     "references": [
         "Capstone.Catalogue",
         "Capstone.Dialogue",
+        "Capstone.Ranking",
         "Unity.XR.ARFoundation",
         "Unity.XR.ARSubsystems",
         "UnityEngine.UI"

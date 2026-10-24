@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Capstone.Catalogue;
 using Capstone.Dialogue;
+using Capstone.Ranking;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
@@ -11,7 +12,9 @@ namespace Capstone.Placement
     /// <summary>
     /// Places one sample artwork on a detected vertical wall and removes it in the same session.
     /// A second Place moves that same quad. Swap replaces it with the other sample, in place.
-    /// Send matches typed text against the written keyword table. No wall means a retry message and no invented size.
+    /// Send matches typed text against the written keyword table.
+    /// Keep, save, and dismiss update the tag weights and show the top three other works.
+    /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
     {
@@ -32,6 +35,7 @@ namespace Capstone.Placement
         Material surface;
         Artwork current;
         InputField concernField;
+        FeedbackLoop feedback;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -52,6 +56,7 @@ namespace Capstone.Placement
             EnsureVerticalPlanes();
             SilenceTemplateSpawner();
             current = SampleArtwork.Create();
+            feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(current.Style, current.Mood, current.Colour));
             surface = CreateSurface(current);
             BuildControls();
         }
@@ -98,6 +103,8 @@ namespace Capstone.Placement
         {
             string typed = concernField != null ? concernField.text : string.Empty;
             DialogueReply reply = RuleEngine.Match(typed, StarterRules.All);
+            if (reply.Matched && feedback != null)
+                feedback.Profile.NoteConcern(reply.Concern, current);
             status.text = ReplyForCurrentWork(reply);
         }
 
@@ -112,6 +119,58 @@ namespace Capstone.Placement
             if (reply.Concern == "price")
                 return reply.Text + " Stored price band: " + current.PriceBand + ".";
             return reply.Text;
+        }
+
+        public void Keep()
+        {
+            RecordFeedback("Kept", loop => loop.Accept(current));
+        }
+
+        public void Save()
+        {
+            RecordFeedback("Saved", loop => loop.Save(current));
+        }
+
+        public void Dismiss()
+        {
+            RecordFeedback("Dismissed", loop => loop.Dismiss(current));
+        }
+
+        void RecordFeedback(string verb, System.Action<FeedbackLoop> apply)
+        {
+            if (feedback == null || current == null)
+                return;
+            apply(feedback);
+            List<Recommendation> ranked = Recommender.RankThree(SampleCatalogue.All, feedback.Profile, current.Id);
+            status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(ranked);
+        }
+
+        static string DescribeRecommendations(List<Recommendation> ranked)
+        {
+            if (ranked == null || ranked.Count == 0)
+                return "No other works to rank.";
+
+            System.Text.StringBuilder text = new System.Text.StringBuilder();
+            for (int i = 0; i < ranked.Count; i++)
+            {
+                Recommendation recommendation = ranked[i];
+                if (i > 0)
+                    text.Append('\n');
+                text.Append(recommendation.Rank);
+                text.Append(". ");
+                text.Append(recommendation.Artwork.Title);
+                text.Append(" (");
+                text.Append(recommendation.Score);
+                text.Append(")");
+                string meaning = recommendation.Artwork.StoryNotes.Meaning;
+                if (meaning.Length > 0)
+                {
+                    text.Append(". ");
+                    text.Append(meaning);
+                }
+            }
+
+            return text.ToString();
         }
 
         public void Remove()
@@ -261,6 +320,9 @@ namespace Capstone.Placement
                 new Vector2(0.5f, 1f),
                 new Vector2(0f, -160f),
                 28);
+            CreateButton(canvasObject.transform, font, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 430f), new Vector2(320f, 100f), Keep);
+            CreateButton(canvasObject.transform, font, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 430f), new Vector2(320f, 100f), Save);
+            CreateButton(canvasObject.transform, font, "Dismiss", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 430f), new Vector2(320f, 100f), Dismiss);
             concernField = CreateInput(canvasObject.transform, font);
             CreateButton(canvasObject.transform, font, "Send", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 200f), new Vector2(240f, 110f), Send);
             CreateButton(canvasObject.transform, font, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
