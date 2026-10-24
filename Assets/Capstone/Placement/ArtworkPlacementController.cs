@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Capstone.Catalogue;
+using Capstone.Dialogue;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
@@ -10,7 +11,7 @@ namespace Capstone.Placement
     /// <summary>
     /// Places one sample artwork on a detected vertical wall and removes it in the same session.
     /// A second Place moves that same quad. Swap replaces it with the other sample, in place.
-    /// No wall means a retry message and no invented size.
+    /// Send matches typed text against the written keyword table. No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
     {
@@ -30,6 +31,7 @@ namespace Capstone.Placement
         Text status;
         Material surface;
         Artwork current;
+        InputField concernField;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -90,6 +92,26 @@ namespace Capstone.Placement
             ApplyArtwork(current);
             placed.transform.SetPositionAndRotation(position, rotation);
             status.text = SwappedMessage + " " + Describe(current);
+        }
+
+        public void Send()
+        {
+            string typed = concernField != null ? concernField.text : string.Empty;
+            DialogueReply reply = RuleEngine.Match(typed, StarterRules.All);
+            status.text = ReplyForCurrentWork(reply);
+        }
+
+        string ReplyForCurrentWork(DialogueReply reply)
+        {
+            if (!reply.Matched || reply.Language != "en" || current == null)
+                return reply.Text;
+            if (reply.Concern == "size")
+                return reply.Text + " " + Describe(current);
+            if (reply.Concern == "colour")
+                return reply.Text + " Stored colour: " + current.Colour + ".";
+            if (reply.Concern == "price")
+                return reply.Text + " Stored price band: " + current.PriceBand + ".";
+            return reply.Text;
         }
 
         public void Remove()
@@ -230,6 +252,7 @@ namespace Capstone.Placement
 
             Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             status = CreateLabel(canvasObject.transform, font, WaitingMessage, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -80f), 36);
+            status.rectTransform.sizeDelta = new Vector2(900f, 240f);
             CreateLabel(
                 canvasObject.transform,
                 font,
@@ -238,6 +261,8 @@ namespace Capstone.Placement
                 new Vector2(0.5f, 1f),
                 new Vector2(0f, -160f),
                 28);
+            concernField = CreateInput(canvasObject.transform, font);
+            CreateButton(canvasObject.transform, font, "Send", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 200f), new Vector2(240f, 110f), Send);
             CreateButton(canvasObject.transform, font, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
             CreateButton(canvasObject.transform, font, "Swap", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(320f, 140f), Swap);
             CreateButton(canvasObject.transform, font, "Remove", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 40f), new Vector2(320f, 140f), Remove);
@@ -293,6 +318,46 @@ namespace Capstone.Placement
             textRect.anchorMax = Vector2.one;
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
+        }
+
+        static InputField CreateInput(Transform parent, Font font)
+        {
+            GameObject fieldObject = new GameObject("Concern");
+            fieldObject.transform.SetParent(parent, false);
+            Image image = fieldObject.AddComponent<Image>();
+            image.color = new Color(1f, 1f, 1f, 0.92f);
+            InputField field = fieldObject.AddComponent<InputField>();
+            RectTransform rect = fieldObject.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(0f, 0f);
+            rect.pivot = new Vector2(0f, 0f);
+            rect.sizeDelta = new Vector2(760f, 110f);
+            rect.anchoredPosition = new Vector2(24f, 200f);
+
+            Text text = CreateFieldText(fieldObject.transform, font, string.Empty, Color.black, FontStyle.Normal, 36);
+            Text placeholder = CreateFieldText(fieldObject.transform, font, "Ask about size, colour, or price", new Color(0.3f, 0.3f, 0.3f, 0.8f), FontStyle.Italic, 32);
+            field.textComponent = text;
+            field.placeholder = placeholder;
+            return field;
+        }
+
+        static Text CreateFieldText(Transform parent, Font font, string message, Color color, FontStyle style, int fontSize)
+        {
+            GameObject textObject = new GameObject(message.Length == 0 ? "Text" : "Placeholder");
+            textObject.transform.SetParent(parent, false);
+            Text text = textObject.AddComponent<Text>();
+            text.font = font;
+            text.fontSize = fontSize;
+            text.fontStyle = style;
+            text.color = color;
+            text.text = message;
+            text.supportRichText = false;
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(16f, 8f);
+            rect.offsetMax = new Vector2(-16f, -8f);
+            return text;
         }
     }
 }

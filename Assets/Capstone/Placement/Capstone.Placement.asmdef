@@ -3,6 +3,7 @@
     "rootNamespace": "Capstone.Placement",
     "references": [
         "Capstone.Catalogue",
+        "Capstone.Dialogue",
         "Unity.XR.ARFoundation",
         "Unity.XR.ARSubsystems",
         "UnityEngine.UI"
