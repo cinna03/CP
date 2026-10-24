@@ -15,6 +15,7 @@ namespace Capstone.Placement
     /// Send matches typed text against the written keyword table.
     /// Keep, save, and dismiss update the tag weights and show the top three other works.
     /// Use 1, Use 2, or Use 3 makes that recommended work the one Place puts on the wall.
+    /// Notes reads the story stored on the current work and does not invent one.
     /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -223,6 +224,11 @@ namespace Capstone.Placement
             status.text = ChosenOnWallMessage + " " + Describe(current);
         }
 
+        public void ShowNotes()
+        {
+            status.text = ArtworkDetail.Describe(current);
+        }
+
         public void Remove()
         {
             if (placed == null)
@@ -382,6 +388,7 @@ namespace Capstone.Placement
             CreateButton(canvasObject.transform, font, "Use 1", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 550f), new Vector2(320f, 100f), ChooseFirst);
             CreateButton(canvasObject.transform, font, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 550f), new Vector2(320f, 100f), ChooseSecond);
             CreateButton(canvasObject.transform, font, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 550f), new Vector2(320f, 100f), ChooseThird);
+            CreateButton(canvasObject.transform, font, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 320f), new Vector2(320f, 100f), ShowNotes);
             CreateButton(canvasObject.transform, font, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 430f), new Vector2(320f, 100f), Keep);
             CreateButton(canvasObject.transform, font, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 430f), new Vector2(320f, 100f), Save);
             CreateButton(canvasObject.transform, font, "Dismiss", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 430f), new Vector2(320f, 100f), Dismiss);
