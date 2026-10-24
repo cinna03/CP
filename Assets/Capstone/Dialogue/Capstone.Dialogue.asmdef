@@ -1,0 +1,14 @@
+{
+    "name": "Capstone.Dialogue",
+    "rootNamespace": "Capstone.Dialogue",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": true
+}
