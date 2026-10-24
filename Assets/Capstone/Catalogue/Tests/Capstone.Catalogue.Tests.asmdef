@@ -1,0 +1,23 @@
+{
+    "name": "Capstone.Catalogue.Tests",
+    "rootNamespace": "Capstone.Catalogue.Tests",
+    "references": [
+        "Capstone.Catalogue"
+    ],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
