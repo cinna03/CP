@@ -6,6 +6,9 @@
 # See: https://github.com/github/gitignore/tree/main/Global
 #
 .utmp/
+
+# macOS
+.DS_Store
 /[Ll]ibrary/
 /[Tt]emp/
 /[Oo]bj/
