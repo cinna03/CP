@@ -1,9 +1,12 @@
+using System;
 using Capstone.Catalogue;
+using Capstone.Ranking;
 
 namespace Capstone.Placement
 {
     /// <summary>
-    /// Two sample works used to test placement and swapping. Each has its own id and centimetre size.
+    /// The two works the placement screen can swap. Both are the same records as the sample catalogue,
+    /// so the size and the story note do not diverge.
     /// </summary>
     public static class SampleArtwork
     {
@@ -16,38 +19,20 @@ namespace Capstone.Placement
 
         public static Artwork Create()
         {
-            return new Artwork(
-                FirstId,
-                "Sample wall work",
-                "Sample artist",
-                2024,
-                "Test print",
-                HeightCm,
-                WidthCm,
-                "sample",
-                "calm",
-                "blue",
-                "none",
-                "generated-sample",
-                StoryNotes.Empty);
+            return Require(FirstId);
         }
 
         public static Artwork CreateWide()
         {
-            return new Artwork(
-                SecondId,
-                "Wide sample",
-                "Sample artist",
-                2024,
-                "Test print",
-                WideHeightCm,
-                WideWidthCm,
-                "sample",
-                "calm",
-                "orange",
-                "none",
-                "generated-wide",
-                StoryNotes.Empty);
+            return Require(SecondId);
+        }
+
+        static Artwork Require(string id)
+        {
+            Artwork artwork = SampleCatalogue.Find(id);
+            if (artwork == null)
+                throw new InvalidOperationException("The sample catalogue has no work with id " + id + ".");
+            return artwork;
         }
 
         public static Artwork OtherThan(Artwork current)

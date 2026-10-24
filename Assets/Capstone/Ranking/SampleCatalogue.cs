@@ -18,6 +18,20 @@ namespace Capstone.Ranking
             Work("sample-bold", "Bold red study", 70f, 50f, "bold", "bright", "red", "A bright red study with no shared tags."),
         };
 
+        public static Artwork Find(string id)
+        {
+            if (string.IsNullOrEmpty(id))
+                return null;
+
+            for (int i = 0; i < All.Count; i++)
+            {
+                if (All[i].Id == id)
+                    return All[i];
+            }
+
+            return null;
+        }
+
         static Artwork Work(
             string id,
             string title,

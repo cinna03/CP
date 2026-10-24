@@ -57,6 +57,8 @@ namespace Capstone.Placement.Tests
             Assert.AreEqual(0.80f, second.WallSizeMetres.WidthMetres, 0.0001f);
             Assert.AreEqual(0.30f, second.WallSizeMetres.HeightMetres, 0.0001f);
             Assert.AreNotEqual(first.WallSizeMetres.WidthMetres, second.WallSizeMetres.WidthMetres);
+            Assert.AreEqual("A first blue sample for the wall.", first.StoryNotes.Meaning);
+            Assert.AreEqual("A wider orange sample.", second.StoryNotes.Meaning);
         }
     }
 }
