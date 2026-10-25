@@ -18,9 +18,12 @@ namespace Capstone.Session
                 throw new ArgumentException("A session needs a participant code.", nameof(participantCode));
 
             ParticipantCode = participantCode;
+            Condition = StudyCondition.Prototype;
         }
 
         public string ParticipantCode { get; }
+
+        public string Condition { get; private set; }
 
         public bool ConsentLogged { get { return false; } }
 
@@ -29,6 +32,16 @@ namespace Capstone.Session
         public SessionEvent EventAt(int index)
         {
             return events[index];
+        }
+
+        public void UseBaseline()
+        {
+            Condition = StudyCondition.Baseline;
+        }
+
+        public void UsePrototype()
+        {
+            Condition = StudyCondition.Prototype;
         }
 
         public void LogAction(string artworkId, string action, string concern, DateTime utc)
