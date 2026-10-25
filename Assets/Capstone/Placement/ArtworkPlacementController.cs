@@ -654,7 +654,7 @@ namespace Capstone.Placement
             rect.anchoredPosition = new Vector2(24f, 200f);
 
             Text text = CreateFieldText(fieldObject.transform, font, string.Empty, Color.black, FontStyle.Normal, 36);
-            Text placeholder = CreateFieldText(fieldObject.transform, font, "Ask about size, colour, or price", new Color(0.3f, 0.3f, 0.3f, 0.8f), FontStyle.Italic, 32);
+            Text placeholder = CreateFieldText(fieldObject.transform, font, "Ask about size, fit, light, colour, meaning, or price", new Color(0.3f, 0.3f, 0.3f, 0.8f), FontStyle.Italic, 28);
             field.textComponent = text;
             field.placeholder = placeholder;
             return field;
