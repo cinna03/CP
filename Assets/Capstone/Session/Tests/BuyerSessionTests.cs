@@ -80,6 +80,39 @@ namespace Capstone.Session.Tests
         }
 
         [Test]
+        public void AChosenRankIsStoredAfterConsent()
+        {
+            BuyerSession session = new BuyerSession("local-preview");
+
+            Assert.IsFalse(session.LogChoice("sample-calm-blue", 1, "colour", FirstTime));
+            session.MarkConsent();
+
+            Assert.AreEqual(0, session.Count);
+            Assert.IsTrue(session.LogChoice("sample-calm-blue", 1, "colour", SecondTime));
+            Assert.AreEqual(1, session.Count);
+            Assert.AreEqual("choice", session.EventAt(0).Kind);
+            Assert.AreEqual("1", session.EventAt(0).Name);
+            Assert.AreEqual("sample-calm-blue", session.EventAt(0).ArtworkId);
+            Assert.AreEqual("colour", session.EventAt(0).Concern);
+            Assert.AreEqual(SecondTime, session.EventAt(0).Utc);
+        }
+
+        [Test]
+        public void AChoiceMustBeRankOneTwoOrThree()
+        {
+            BuyerSession session = new BuyerSession("local-preview");
+            session.MarkConsent();
+
+            ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(
+                () => session.LogChoice("sample-wall", 0, string.Empty, FirstTime));
+
+            Assert.AreEqual("oneBasedRank", error.ParamName);
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => session.LogChoice("sample-wall", 4, string.Empty, FirstTime));
+            Assert.AreEqual(0, session.Count);
+        }
+
+        [Test]
         public void AnEventNeedsAnArtworkId()
         {
             BuyerSession session = new BuyerSession("local-preview");
@@ -89,6 +122,8 @@ namespace Capstone.Session.Tests
                 () => session.LogAction("  ", "Keep", string.Empty, FirstTime));
 
             Assert.AreEqual("artworkId", error.ParamName);
+            Assert.Throws<ArgumentException>(
+                () => session.LogChoice(" ", 1, string.Empty, FirstTime));
             Assert.AreEqual(0, session.Count);
         }
 

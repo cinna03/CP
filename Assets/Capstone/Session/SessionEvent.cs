@@ -3,7 +3,7 @@ using System;
 namespace Capstone.Session
 {
     /// <summary>
-    /// One stored moment in a buyer session. Kind is "action" or "rule".
+    /// One stored moment in a buyer session. Kind is "action", "rule", or "choice".
     /// The time is the time the caller supplies, so a test can fix it.
     /// </summary>
     public sealed class SessionEvent

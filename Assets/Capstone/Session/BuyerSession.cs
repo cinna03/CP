@@ -5,8 +5,9 @@ namespace Capstone.Session
 {
     /// <summary>
     /// The events of one buyer session, kept in memory on the device.
-    /// Consent starts unmarked. A keep, save, dismiss, or matched question is stored only after that.
+    /// Consent starts unmarked. A keep, save, dismiss, matched question, or chosen rank is stored only after that.
     /// Marking consent does not invent earlier events. An unmatched question is not logged.
+    /// A choice is rank 1, 2, or 3. A missing rank is not stored.
     /// </summary>
     public sealed class BuyerSession
     {
@@ -58,6 +59,14 @@ namespace Capstone.Session
         public bool LogRule(string artworkId, string ruleId, string concern, DateTime utc)
         {
             return Store(new SessionEvent(artworkId, "rule", ruleId, concern, utc));
+        }
+
+        public bool LogChoice(string artworkId, int oneBasedRank, string concern, DateTime utc)
+        {
+            if (oneBasedRank < 1 || oneBasedRank > 3)
+                throw new ArgumentOutOfRangeException(nameof(oneBasedRank), "A choice is rank 1, 2, or 3.");
+
+            return Store(new SessionEvent(artworkId, "choice", oneBasedRank.ToString(), concern, utc));
         }
 
         bool Store(SessionEvent stored)
