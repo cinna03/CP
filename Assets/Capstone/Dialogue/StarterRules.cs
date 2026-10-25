@@ -3,7 +3,8 @@ using System.Collections.Generic;
 namespace Capstone.Dialogue
 {
     /// <summary>
-    /// The first keyword rows. Size outranks colour, and colour outranks price, when the word counts tie.
+    /// Keyword rows for the concerns in the recommendation flow.
+    /// When the word counts tie, the order is size, fit, light, colour, meaning, then price.
     /// Kinyarwanda wording is a starter and should be checked by a speaker before the pilot.
     /// </summary>
     public static class StarterRules
@@ -13,7 +14,7 @@ namespace Capstone.Dialogue
             new DialogueRule(
                 "size",
                 "size",
-                3,
+                6,
                 new[] { "size", "big", "small", "large", "wide", "tall" },
                 "Size is the stored height and width of the work, not a guess.",
                 new[] { "taille", "grand", "petit", "largeur", "hauteur" },
@@ -21,15 +22,45 @@ namespace Capstone.Dialogue
                 new[] { "ingano", "kinini", "gito" },
                 "Ingano ni iyanditswe, ntabwo ari ukugereranya."),
             new DialogueRule(
+                "fit",
+                "fit",
+                5,
+                new[] { "fit", "fitting", "suit", "suitable" },
+                "Fit compares the stored height and width with the wall.",
+                new[] { "convient" },
+                "L'ajustement compare la hauteur et la largeur enregistrées au mur.",
+                new[] { "bikwiye" },
+                "Bikwiye bigereranya ingano yanditswe."),
+            new DialogueRule(
+                "light",
+                "light",
+                4,
+                new[] { "light", "lighting", "bright", "dark" },
+                "Light is seen in the room. This rule does not invent a light reading.",
+                new[] { "lumiere", "lumière", "sombre" },
+                "La lumière se juge dans la pièce. Cette règle n'invente pas une mesure.",
+                new[] { "urumuri" },
+                "Urumuri buraboneka mu cyumba."),
+            new DialogueRule(
                 "colour",
                 "colour",
-                2,
+                3,
                 new[] { "colour", "color", "blue", "orange" },
                 "Colour fit uses the colour stored on the work.",
                 new[] { "couleur", "bleu" },
                 "La couleur est celle qui est enregistrée sur l'œuvre.",
                 new[] { "ibara" },
                 "Ibara ni iryanditswe ku gikoresho."),
+            new DialogueRule(
+                "meaning",
+                "meaning",
+                2,
+                new[] { "meaning", "story", "inspiration" },
+                "Meaning is the story note stored on the work.",
+                new[] { "sens", "histoire", "signification" },
+                "Le sens est la note enregistrée sur l'œuvre.",
+                new[] { "igisobanuro" },
+                "Igisobanuro ni inyandiko yabitswe."),
             new DialogueRule(
                 "price",
                 "price",

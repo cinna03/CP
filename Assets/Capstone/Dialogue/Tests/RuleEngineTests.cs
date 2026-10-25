@@ -119,6 +119,41 @@ namespace Capstone.Dialogue.Tests
             Assert.AreEqual("price", reply.RuleId);
         }
 
+        [Test]
+        public void LightingMatchesTheEnglishLightReply()
+        {
+            DialogueReply reply = RuleEngine.Match("Is the lighting dark?", StarterRules.All);
+
+            Assert.AreEqual("light", reply.RuleId);
+            Assert.AreEqual("en", reply.Language);
+            Assert.IsFalse(ContainsDigit(reply.Text));
+        }
+
+        [Test]
+        public void ConvientMatchesTheFrenchFitReply()
+        {
+            DialogueReply reply = RuleEngine.Match("Est-ce que cela convient?", StarterRules.All);
+
+            Assert.AreEqual("fit", reply.RuleId);
+            Assert.AreEqual("fr", reply.Language);
+        }
+
+        [Test]
+        public void IgisobanuroMatchesTheKinyarwandaMeaningReply()
+        {
+            DialogueReply reply = RuleEngine.Match("igisobanuro", StarterRules.All);
+
+            Assert.AreEqual("meaning", reply.RuleId);
+            Assert.AreEqual("rw", reply.Language);
+        }
+
+        [Test]
+        public void ATieStillFollowsTheConcernOrder()
+        {
+            Assert.AreEqual("size", RuleEngine.Match("big and fit", StarterRules.All).RuleId);
+            Assert.AreEqual("fit", RuleEngine.Match("fit and expensive", StarterRules.All).RuleId);
+        }
+
         static bool ContainsDigit(string text)
         {
             foreach (char character in text)
