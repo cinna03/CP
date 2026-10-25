@@ -18,11 +18,11 @@ namespace Capstone.Placement
     /// Keep, save, and dismiss update the tag weights and show the top three other works.
     /// Use 1, Use 2, or Use 3 makes that recommended work the one Place puts on the wall.
     /// Notes reads the story stored on the current work and does not invent one.
-    /// Keep, save, dismiss, and a matched question are stored on this session after consent.
+    /// Keep, save, dismiss, a matched question, and a chosen rank are stored on this session after consent.
     /// Next walks the current list in stored order and brings that work's own centimetres.
     /// All, Blue, Calm, and Fits 50 change that list. A filtered work keeps its stored size.
     /// Study switches to the catalogue-only condition and back. The session starts as the prototype.
-    /// Consent must be marked before a keep, save, dismiss, or matched question is stored.
+    /// Consent must be marked before a keep, save, dismiss, matched question, or chosen rank is stored.
     /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -248,9 +248,12 @@ namespace Capstone.Placement
             }
 
             current = chosen;
+            string concern = feedback != null && feedback.Profile != null ? feedback.Profile.LastConcern : string.Empty;
+            bool logged = session != null && session.LogChoice(current.Id, oneBasedRank, concern, DateTime.UtcNow);
+            string loggedLine = logged ? "Logged." : NotLoggedMessage;
             if (placed == null)
             {
-                status.text = ChosenMessage + " " + current.Title + ". " + Describe(current);
+                status.text = ChosenMessage + " " + current.Title + ". " + Describe(current) + "\n" + loggedLine;
                 return;
             }
 
@@ -258,7 +261,7 @@ namespace Capstone.Placement
             Quaternion rotation = placed.transform.rotation;
             ApplyArtwork(current);
             placed.transform.SetPositionAndRotation(position, rotation);
-            status.text = ChosenOnWallMessage + " " + Describe(current);
+            status.text = ChosenOnWallMessage + " " + Describe(current) + "\n" + loggedLine;
         }
 
         public void Advance()
