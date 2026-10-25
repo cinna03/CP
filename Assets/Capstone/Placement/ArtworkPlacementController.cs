@@ -18,10 +18,11 @@ namespace Capstone.Placement
     /// Keep, save, and dismiss update the tag weights and show the top three other works.
     /// Use 1, Use 2, or Use 3 makes that recommended work the one Place puts on the wall.
     /// Notes reads the story stored on the current work and does not invent one.
-    /// Keep, save, dismiss, and a matched question are stored on this session. Consent is not marked.
+    /// Keep, save, dismiss, and a matched question are stored on this session after consent.
     /// Next walks the current list in stored order and brings that work's own centimetres.
     /// All, Blue, Calm, and Fits 50 change that list. A filtered work keeps its stored size.
     /// Study switches to the catalogue-only condition and back. The session starts as the prototype.
+    /// Consent must be marked before a keep, save, dismiss, or matched question is stored.
     /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -41,6 +42,8 @@ namespace Capstone.Placement
         public const string NextOnWallMessage = "Replaced the wall preview with the next work.";
         public const string NoCatalogueMessage = "No work is in the catalogue.";
         public const string NoMatchMessage = "No work matches this filter.";
+        public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
+        public const string NotLoggedMessage = "Not logged. Consent is not marked.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
 
@@ -178,10 +181,10 @@ namespace Capstone.Placement
             if (feedback == null || current == null)
                 return;
             apply(feedback);
-            if (session != null)
-                session.LogAction(current.Id, action, feedback.Profile.LastConcern, DateTime.UtcNow);
+            bool logged = session != null && session.LogAction(current.Id, action, feedback.Profile.LastConcern, DateTime.UtcNow);
             offered = Recommender.RankThree(shown, feedback.Profile, current.Id);
-            status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(offered) + "\nLogged.";
+            status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(offered)
+                + "\n" + (logged ? "Logged." : NotLoggedMessage);
         }
 
         static string DescribeRecommendations(List<Recommendation> ranked)
@@ -342,6 +345,14 @@ namespace Capstone.Placement
         public void ShowNotes()
         {
             status.text = ArtworkDetail.Describe(current);
+        }
+
+        public void GiveConsent()
+        {
+            if (session == null)
+                return;
+            session.MarkConsent();
+            status.text = ConsentMessage;
         }
 
         public void ToggleStudy()
@@ -528,6 +539,7 @@ namespace Capstone.Placement
                 new Vector2(0f, -160f),
                 28);
             CreateButton(canvasObject.transform, font, "Study", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 780f), new Vector2(240f, 80f), ToggleStudy, 32);
+            CreateButton(canvasObject.transform, font, "Consent", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(272f, 780f), new Vector2(240f, 80f), GiveConsent, 32);
             CreateButton(canvasObject.transform, font, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 680f), new Vector2(240f, 80f), ShowAll, 32);
             CreateButton(canvasObject.transform, font, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(272f, 680f), new Vector2(240f, 80f), ShowBlue, 32);
             CreateButton(canvasObject.transform, font, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(528f, 680f), new Vector2(240f, 80f), ShowCalm, 32);
