@@ -19,6 +19,7 @@ namespace Capstone.Placement
     /// Use 1, Use 2, or Use 3 makes that recommended work the one Place puts on the wall.
     /// Notes reads the story stored on the current work and does not invent one.
     /// Keep, save, dismiss, a matched question, and a chosen rank are stored on this session after consent.
+    /// A keep, save, or dismiss also stores the recommended artwork ids in rank order.
     /// Next walks the current list in stored order and brings that work's own centimetres.
     /// All, Blue, Calm, and Fits 50 change that list. A filtered work keeps its stored size.
     /// Study switches to the catalogue-only condition and back. The session starts as the prototype.
@@ -181,10 +182,34 @@ namespace Capstone.Placement
             if (feedback == null || current == null)
                 return;
             apply(feedback);
-            bool logged = session != null && session.LogAction(current.Id, action, feedback.Profile.LastConcern, DateTime.UtcNow);
             offered = Recommender.RankThree(shown, feedback.Profile, current.Id);
+            string[] recommendedIds = IdsInRankOrder(offered);
+            bool logged = session != null && session.LogAction(
+                current.Id,
+                action,
+                feedback.Profile.LastConcern,
+                DateTime.UtcNow,
+                recommendedIds);
             status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(offered)
-                + "\n" + (logged ? "Logged." : NotLoggedMessage);
+                + "\n" + (logged ? LoggedRanks(recommendedIds) : NotLoggedMessage);
+        }
+
+        static string[] IdsInRankOrder(List<Recommendation> ranked)
+        {
+            if (ranked == null || ranked.Count == 0)
+                return new string[0];
+
+            string[] ids = new string[ranked.Count];
+            for (int i = 0; i < ranked.Count; i++)
+                ids[i] = ranked[i].Artwork.Id;
+            return ids;
+        }
+
+        static string LoggedRanks(string[] recommendedIds)
+        {
+            if (recommendedIds == null || recommendedIds.Length == 0)
+                return "Logged.";
+            return "Logged. " + string.Join(", ", recommendedIds);
         }
 
         static string DescribeRecommendations(List<Recommendation> ranked)
