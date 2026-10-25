@@ -19,6 +19,7 @@ namespace Capstone.Placement
     /// Use 1, Use 2, or Use 3 makes that recommended work the one Place puts on the wall.
     /// Notes reads the story stored on the current work and does not invent one.
     /// Keep, save, dismiss, and a matched question are stored on this session. Consent is not marked.
+    /// Next walks the catalogue in stored order and brings that work's own centimetres.
     /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -34,6 +35,9 @@ namespace Capstone.Placement
         public const string ChooseMissingMessage = "That rank is not in the list.";
         public const string ChosenMessage = "Next Place uses this work.";
         public const string ChosenOnWallMessage = "Replaced the wall preview with the chosen work.";
+        public const string NextMessage = "Next work.";
+        public const string NextOnWallMessage = "Replaced the wall preview with the next work.";
+        public const string NoCatalogueMessage = "No work is in the catalogue.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
 
@@ -233,6 +237,30 @@ namespace Capstone.Placement
             status.text = ChosenOnWallMessage + " " + Describe(current);
         }
 
+        public void Advance()
+        {
+            string currentId = current != null ? current.Id : string.Empty;
+            Artwork next = CatalogueSequence.Next(SampleCatalogue.All, currentId);
+            if (next == null)
+            {
+                status.text = NoCatalogueMessage;
+                return;
+            }
+
+            current = next;
+            if (placed == null)
+            {
+                status.text = NextMessage + " " + current.Title + ". " + Describe(current);
+                return;
+            }
+
+            Vector3 position = placed.transform.position;
+            Quaternion rotation = placed.transform.rotation;
+            ApplyArtwork(current);
+            placed.transform.SetPositionAndRotation(position, rotation);
+            status.text = NextOnWallMessage + " " + Describe(current);
+        }
+
         public void ShowNotes()
         {
             status.text = ArtworkDetail.Describe(current);
@@ -398,6 +426,7 @@ namespace Capstone.Placement
             CreateButton(canvasObject.transform, font, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 550f), new Vector2(320f, 100f), ChooseSecond);
             CreateButton(canvasObject.transform, font, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 550f), new Vector2(320f, 100f), ChooseThird);
             CreateButton(canvasObject.transform, font, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 320f), new Vector2(320f, 100f), ShowNotes);
+            CreateButton(canvasObject.transform, font, "Next", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 320f), new Vector2(320f, 100f), Advance);
             CreateButton(canvasObject.transform, font, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 430f), new Vector2(320f, 100f), Keep);
             CreateButton(canvasObject.transform, font, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 430f), new Vector2(320f, 100f), Save);
             CreateButton(canvasObject.transform, font, "Dismiss", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 430f), new Vector2(320f, 100f), Dismiss);
