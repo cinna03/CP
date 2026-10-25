@@ -35,6 +35,7 @@ namespace Capstone.Session.Tests
             Assert.AreEqual(FirstTime, session.EventAt(0).Utc);
             Assert.AreEqual("Dismiss", session.EventAt(1).Name);
             Assert.AreEqual(SecondTime, session.EventAt(1).Utc);
+            Assert.AreEqual(0, session.EventAt(0).RecommendedCount);
         }
 
         [Test]
@@ -49,6 +50,7 @@ namespace Capstone.Session.Tests
             Assert.AreEqual("rule", session.EventAt(0).Kind);
             Assert.AreEqual("size", session.EventAt(0).Name);
             Assert.AreEqual("size", session.EventAt(0).Concern);
+            Assert.AreEqual(0, session.EventAt(0).RecommendedCount);
         }
 
         [Test]
@@ -95,6 +97,78 @@ namespace Capstone.Session.Tests
             Assert.AreEqual("sample-calm-blue", session.EventAt(0).ArtworkId);
             Assert.AreEqual("colour", session.EventAt(0).Concern);
             Assert.AreEqual(SecondTime, session.EventAt(0).Utc);
+            Assert.AreEqual(0, session.EventAt(0).RecommendedCount);
+        }
+
+        [Test]
+        public void AnActionStoresTheRecommendedIdsInOrder()
+        {
+            BuyerSession session = new BuyerSession("local-preview");
+            string[] ranks = new string[] { "sample-calm-blue", "sample-quiet", "sample-wide" };
+
+            Assert.IsFalse(session.LogAction("sample-wall", "Keep", "size", FirstTime, ranks));
+            session.MarkConsent();
+
+            Assert.AreEqual(0, session.Count);
+            Assert.IsTrue(session.LogAction("sample-wall", "Keep", "size", SecondTime, ranks));
+            Assert.AreEqual(1, session.Count);
+            Assert.AreEqual(3, session.EventAt(0).RecommendedCount);
+            Assert.AreEqual("sample-calm-blue", session.EventAt(0).RecommendedIdAt(0));
+            Assert.AreEqual("sample-quiet", session.EventAt(0).RecommendedIdAt(1));
+            Assert.AreEqual("sample-wide", session.EventAt(0).RecommendedIdAt(2));
+            Assert.AreEqual(SecondTime, session.EventAt(0).Utc);
+        }
+
+        [Test]
+        public void FewerRecommendationsStoreFewerIds()
+        {
+            BuyerSession session = new BuyerSession("local-preview");
+            session.MarkConsent();
+
+            Assert.IsTrue(session.LogAction(
+                "sample-wall",
+                "Keep",
+                string.Empty,
+                FirstTime,
+                new string[] { "sample-calm-blue", "sample-quiet" }));
+
+            Assert.AreEqual(2, session.EventAt(0).RecommendedCount);
+            Assert.AreEqual("sample-calm-blue", session.EventAt(0).RecommendedIdAt(0));
+            Assert.AreEqual("sample-quiet", session.EventAt(0).RecommendedIdAt(1));
+        }
+
+        [Test]
+        public void ARecommendedIdListIsAtMostThree()
+        {
+            BuyerSession session = new BuyerSession("local-preview");
+            session.MarkConsent();
+
+            ArgumentException error = Assert.Throws<ArgumentException>(() => session.LogAction(
+                "sample-wall",
+                "Keep",
+                string.Empty,
+                FirstTime,
+                new string[] { "a", "b", "c", "d" }));
+
+            Assert.AreEqual("recommendedIds", error.ParamName);
+            Assert.AreEqual(0, session.Count);
+        }
+
+        [Test]
+        public void ABlankRecommendedIdIsRejected()
+        {
+            BuyerSession session = new BuyerSession("local-preview");
+            session.MarkConsent();
+
+            ArgumentException error = Assert.Throws<ArgumentException>(() => session.LogAction(
+                "sample-wall",
+                "Keep",
+                string.Empty,
+                FirstTime,
+                new string[] { "sample-calm-blue", " " }));
+
+            Assert.AreEqual("recommendedIds", error.ParamName);
+            Assert.AreEqual(0, session.Count);
         }
 
         [Test]

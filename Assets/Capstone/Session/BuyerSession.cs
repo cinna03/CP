@@ -8,6 +8,7 @@ namespace Capstone.Session
     /// Consent starts unmarked. A keep, save, dismiss, matched question, or chosen rank is stored only after that.
     /// Marking consent does not invent earlier events. An unmatched question is not logged.
     /// A choice is rank 1, 2, or 3. A missing rank is not stored.
+    /// A keep, save, or dismiss stores up to three recommended artwork ids, in rank order.
     /// </summary>
     public sealed class BuyerSession
     {
@@ -53,7 +54,12 @@ namespace Capstone.Session
 
         public bool LogAction(string artworkId, string action, string concern, DateTime utc)
         {
-            return Store(new SessionEvent(artworkId, "action", action, concern, utc));
+            return LogAction(artworkId, action, concern, utc, null);
+        }
+
+        public bool LogAction(string artworkId, string action, string concern, DateTime utc, string[] recommendedIds)
+        {
+            return Store(new SessionEvent(artworkId, "action", action, concern, utc, recommendedIds));
         }
 
         public bool LogRule(string artworkId, string ruleId, string concern, DateTime utc)
