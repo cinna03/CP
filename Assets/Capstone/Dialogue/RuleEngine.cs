@@ -11,7 +11,10 @@ namespace Capstone.Dialogue
     /// </summary>
     public static class RuleEngine
     {
-        public const string FixedPrompt = "I can only answer from the written rules about size, colour, or price.";
+        /// <summary>
+        /// Names the six written concerns in priority order. Unmatched text returns this sentence.
+        /// </summary>
+        public const string FixedPrompt = "I can only answer from the written rules about size, fit, light, colour, meaning, or price.";
 
         public static DialogueReply Match(string input, IReadOnlyList<DialogueRule> rules)
         {

@@ -40,6 +40,9 @@ namespace Capstone.Dialogue.Tests
             DialogueReply reply = RuleEngine.Match("   ", StarterRules.All);
 
             Assert.IsFalse(reply.Matched);
+            Assert.AreEqual(
+                "I can only answer from the written rules about size, fit, light, colour, meaning, or price.",
+                reply.Text);
             Assert.AreEqual(RuleEngine.FixedPrompt, reply.Text);
         }
 
