@@ -22,6 +22,7 @@ namespace Capstone.Session.Tests
         public void KeepThenDismissStayInOrder()
         {
             BuyerSession session = new BuyerSession("local-preview");
+            session.MarkConsent();
 
             session.LogAction("sample-wall", "Keep", "size", FirstTime);
             session.LogAction("sample-wall", "Dismiss", "size", SecondTime);
@@ -40,6 +41,7 @@ namespace Capstone.Session.Tests
         public void AMatchedRuleIsStoredWithItsConcern()
         {
             BuyerSession session = new BuyerSession("local-preview");
+            session.MarkConsent();
 
             session.LogRule("sample-wall", "size", "size", FirstTime);
 
@@ -54,16 +56,34 @@ namespace Capstone.Session.Tests
         {
             BuyerSession session = new BuyerSession("local-preview");
 
-            session.LogAction("sample-wall", "Save", string.Empty, FirstTime);
-            session.LogRule("sample-wide", "colour", "colour", SecondTime);
+            Assert.IsFalse(session.LogAction("sample-wall", "Save", string.Empty, FirstTime));
+            Assert.IsFalse(session.LogRule("sample-wide", "colour", "colour", SecondTime));
 
             Assert.IsFalse(session.ConsentLogged);
+            Assert.AreEqual(0, session.Count);
+        }
+
+        [Test]
+        public void ConsentAllowsLaterEventsAndDoesNotFillEarlierOnes()
+        {
+            BuyerSession session = new BuyerSession("local-preview");
+
+            Assert.IsFalse(session.LogAction("sample-wall", "Keep", "size", FirstTime));
+            session.MarkConsent();
+            session.MarkConsent();
+
+            Assert.IsTrue(session.ConsentLogged);
+            Assert.AreEqual(0, session.Count);
+            Assert.IsTrue(session.LogAction("sample-wall", "Dismiss", "size", SecondTime));
+            Assert.AreEqual(1, session.Count);
+            Assert.AreEqual("Dismiss", session.EventAt(0).Name);
         }
 
         [Test]
         public void AnEventNeedsAnArtworkId()
         {
             BuyerSession session = new BuyerSession("local-preview");
+            session.MarkConsent();
 
             ArgumentException error = Assert.Throws<ArgumentException>(
                 () => session.LogAction("  ", "Keep", string.Empty, FirstTime));

@@ -5,12 +5,13 @@ namespace Capstone.Session
 {
     /// <summary>
     /// The events of one buyer session, kept in memory on the device.
-    /// Consent is not marked here. That is recorded later, before a study session.
-    /// An unmatched question is not logged, because no rule was selected.
+    /// Consent starts unmarked. A keep, save, dismiss, or matched question is stored only after that.
+    /// Marking consent does not invent earlier events. An unmatched question is not logged.
     /// </summary>
     public sealed class BuyerSession
     {
         readonly List<SessionEvent> events = new List<SessionEvent>();
+        bool consentLogged;
 
         public BuyerSession(string participantCode)
         {
@@ -25,7 +26,7 @@ namespace Capstone.Session
 
         public string Condition { get; private set; }
 
-        public bool ConsentLogged { get { return false; } }
+        public bool ConsentLogged { get { return consentLogged; } }
 
         public int Count { get { return events.Count; } }
 
@@ -44,14 +45,27 @@ namespace Capstone.Session
             Condition = StudyCondition.Prototype;
         }
 
-        public void LogAction(string artworkId, string action, string concern, DateTime utc)
+        public void MarkConsent()
         {
-            events.Add(new SessionEvent(artworkId, "action", action, concern, utc));
+            consentLogged = true;
         }
 
-        public void LogRule(string artworkId, string ruleId, string concern, DateTime utc)
+        public bool LogAction(string artworkId, string action, string concern, DateTime utc)
         {
-            events.Add(new SessionEvent(artworkId, "rule", ruleId, concern, utc));
+            return Store(new SessionEvent(artworkId, "action", action, concern, utc));
+        }
+
+        public bool LogRule(string artworkId, string ruleId, string concern, DateTime utc)
+        {
+            return Store(new SessionEvent(artworkId, "rule", ruleId, concern, utc));
+        }
+
+        bool Store(SessionEvent stored)
+        {
+            if (!consentLogged)
+                return false;
+            events.Add(stored);
+            return true;
         }
     }
 }
