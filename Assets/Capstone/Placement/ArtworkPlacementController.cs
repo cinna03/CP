@@ -21,6 +21,7 @@ namespace Capstone.Placement
     /// Keep, save, dismiss, and a matched question are stored on this session. Consent is not marked.
     /// Next walks the current list in stored order and brings that work's own centimetres.
     /// All, Blue, Calm, and Fits 50 change that list. A filtered work keeps its stored size.
+    /// Study switches to the catalogue-only condition and back. The session starts as the prototype.
     /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -83,6 +84,8 @@ namespace Capstone.Placement
 
         public void Place()
         {
+            if (Blocked(StudyCondition.Placement))
+                return;
             if (!TryHitVerticalWall(out ARRaycastHit hit, out ARPlane plane))
             {
                 status.text = NoWallMessage;
@@ -105,6 +108,8 @@ namespace Capstone.Placement
 
         public void Swap()
         {
+            if (Blocked(StudyCondition.Placement))
+                return;
             if (placed == null)
             {
                 status.text = SwapNeedsPlacementMessage;
@@ -121,6 +126,8 @@ namespace Capstone.Placement
 
         public void Send()
         {
+            if (Blocked(StudyCondition.Dialogue))
+                return;
             string typed = concernField != null ? concernField.text : string.Empty;
             DialogueReply reply = RuleEngine.Match(typed, StarterRules.All);
             if (reply.Matched && feedback != null)
@@ -160,6 +167,8 @@ namespace Capstone.Placement
 
         void RecordFeedback(string verb, string action, System.Action<FeedbackLoop> apply)
         {
+            if (Blocked(StudyCondition.Ranking))
+                return;
             if (feedback == null || current == null)
                 return;
             apply(feedback);
@@ -214,6 +223,8 @@ namespace Capstone.Placement
 
         public void ChooseRank(int oneBasedRank)
         {
+            if (Blocked(StudyCondition.Ranking))
+                return;
             if (offered == null || offered.Count == 0)
             {
                 status.text = ChooseNeedsRankMessage;
@@ -327,8 +338,35 @@ namespace Capstone.Placement
             status.text = ArtworkDetail.Describe(current);
         }
 
+        public void ToggleStudy()
+        {
+            if (session == null)
+                return;
+            if (session.Condition == StudyCondition.Baseline)
+                session.UsePrototype();
+            else
+                session.UseBaseline();
+
+            if (placed != null)
+                placed.SetActive(session.Condition != StudyCondition.Baseline);
+            status.text = session.Condition == StudyCondition.Baseline
+                ? StudyCondition.BaselineMessage
+                : StudyCondition.PrototypeMessage;
+        }
+
+        bool Blocked(string feature)
+        {
+            string condition = session != null ? session.Condition : StudyCondition.Prototype;
+            if (StudyCondition.Allows(condition, feature))
+                return false;
+            status.text = StudyCondition.BaselineMessage;
+            return true;
+        }
+
         public void Remove()
         {
+            if (Blocked(StudyCondition.Placement))
+                return;
             if (placed == null)
             {
                 status.text = RemovedMessage;
@@ -483,6 +521,7 @@ namespace Capstone.Placement
                 new Vector2(0.5f, 1f),
                 new Vector2(0f, -160f),
                 28);
+            CreateButton(canvasObject.transform, font, "Study", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 780f), new Vector2(240f, 80f), ToggleStudy, 32);
             CreateButton(canvasObject.transform, font, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 680f), new Vector2(240f, 80f), ShowAll, 32);
             CreateButton(canvasObject.transform, font, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(272f, 680f), new Vector2(240f, 80f), ShowBlue, 32);
             CreateButton(canvasObject.transform, font, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(528f, 680f), new Vector2(240f, 80f), ShowCalm, 32);
