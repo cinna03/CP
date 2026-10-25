@@ -141,8 +141,14 @@ namespace Capstone.Placement
         {
             if (!reply.Matched || reply.Language != "en" || current == null)
                 return reply.Text;
-            if (reply.Concern == "size")
+            if (reply.Concern == "size" || reply.Concern == "fit")
                 return reply.Text + " " + Describe(current);
+            if (reply.Concern == "meaning")
+            {
+                string meaning = current.StoryNotes.Meaning;
+                string note = string.IsNullOrWhiteSpace(meaning) ? ArtworkDetail.MissingNote : meaning;
+                return reply.Text + " " + note;
+            }
             if (reply.Concern == "colour")
                 return reply.Text + " Stored colour: " + current.Colour + ".";
             if (reply.Concern == "price")
