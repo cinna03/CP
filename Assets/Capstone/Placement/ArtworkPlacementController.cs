@@ -19,7 +19,8 @@ namespace Capstone.Placement
     /// Use 1, Use 2, or Use 3 makes that recommended work the one Place puts on the wall.
     /// Notes reads the story stored on the current work and does not invent one.
     /// Keep, save, dismiss, and a matched question are stored on this session. Consent is not marked.
-    /// Next walks the catalogue in stored order and brings that work's own centimetres.
+    /// Next walks the current list in stored order and brings that work's own centimetres.
+    /// All, Blue, Calm, and Fits 50 change that list. A filtered work keeps its stored size.
     /// No wall means a retry message and no invented size.
     /// </summary>
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -38,6 +39,7 @@ namespace Capstone.Placement
         public const string NextMessage = "Next work.";
         public const string NextOnWallMessage = "Replaced the wall preview with the next work.";
         public const string NoCatalogueMessage = "No work is in the catalogue.";
+        public const string NoMatchMessage = "No work matches this filter.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
 
@@ -51,6 +53,7 @@ namespace Capstone.Placement
         FeedbackLoop feedback;
         BuyerSession session;
         List<Recommendation> offered;
+        List<Artwork> shown;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -71,6 +74,7 @@ namespace Capstone.Placement
             EnsureVerticalPlanes();
             SilenceTemplateSpawner();
             current = SampleArtwork.Create();
+            shown = CatalogueFilter.Matching(SampleCatalogue.All, null, null, null, 0f, 0f);
             feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(current.Style, current.Mood, current.Colour));
             session = new BuyerSession("local-preview");
             surface = CreateSurface(current);
@@ -161,7 +165,7 @@ namespace Capstone.Placement
             apply(feedback);
             if (session != null)
                 session.LogAction(current.Id, action, feedback.Profile.LastConcern, DateTime.UtcNow);
-            offered = Recommender.RankThree(SampleCatalogue.All, feedback.Profile, current.Id);
+            offered = Recommender.RankThree(shown, feedback.Profile, current.Id);
             status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(offered) + "\nLogged.";
         }
 
@@ -240,7 +244,7 @@ namespace Capstone.Placement
         public void Advance()
         {
             string currentId = current != null ? current.Id : string.Empty;
-            Artwork next = CatalogueSequence.Next(SampleCatalogue.All, currentId);
+            Artwork next = CatalogueSequence.Next(shown, currentId);
             if (next == null)
             {
                 status.text = NoCatalogueMessage;
@@ -259,6 +263,63 @@ namespace Capstone.Placement
             ApplyArtwork(current);
             placed.transform.SetPositionAndRotation(position, rotation);
             status.text = NextOnWallMessage + " " + Describe(current);
+        }
+
+        public void ShowAll()
+        {
+            UseFilter(null, null, null, 0f, 0f);
+        }
+
+        public void ShowBlue()
+        {
+            UseFilter(null, null, "blue", 0f, 0f);
+        }
+
+        public void ShowCalm()
+        {
+            UseFilter(null, "calm", null, 0f, 0f);
+        }
+
+        public void ShowFitsFifty()
+        {
+            UseFilter(null, null, null, 50f, 50f);
+        }
+
+        void UseFilter(string style, string mood, string colour, float maxWidthCm, float maxHeightCm)
+        {
+            shown = CatalogueFilter.Matching(SampleCatalogue.All, style, mood, colour, maxWidthCm, maxHeightCm);
+            offered = null;
+            if (shown.Count == 0)
+            {
+                status.text = NoMatchMessage;
+                return;
+            }
+
+            bool currentStillListed = false;
+            for (int i = 0; i < shown.Count; i++)
+            {
+                if (current != null && shown[i].Id == current.Id)
+                {
+                    currentStillListed = true;
+                    break;
+                }
+            }
+
+            if (!currentStillListed)
+            {
+                current = shown[0];
+                if (placed != null)
+                {
+                    Vector3 position = placed.transform.position;
+                    Quaternion rotation = placed.transform.rotation;
+                    ApplyArtwork(current);
+                    placed.transform.SetPositionAndRotation(position, rotation);
+                }
+            }
+
+            status.text = shown.Count + " works. Next stays inside this list.";
+            if (!currentStillListed)
+                status.text = status.text + " " + current.Title + ". " + Describe(current);
         }
 
         public void ShowNotes()
@@ -422,6 +483,10 @@ namespace Capstone.Placement
                 new Vector2(0.5f, 1f),
                 new Vector2(0f, -160f),
                 28);
+            CreateButton(canvasObject.transform, font, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 680f), new Vector2(240f, 80f), ShowAll, 32);
+            CreateButton(canvasObject.transform, font, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(272f, 680f), new Vector2(240f, 80f), ShowBlue, 32);
+            CreateButton(canvasObject.transform, font, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(528f, 680f), new Vector2(240f, 80f), ShowCalm, 32);
+            CreateButton(canvasObject.transform, font, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(784f, 680f), new Vector2(240f, 80f), ShowFitsFifty, 32);
             CreateButton(canvasObject.transform, font, "Use 1", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 550f), new Vector2(320f, 100f), ChooseFirst);
             CreateButton(canvasObject.transform, font, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 550f), new Vector2(320f, 100f), ChooseSecond);
             CreateButton(canvasObject.transform, font, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 550f), new Vector2(320f, 100f), ChooseThird);
@@ -458,7 +523,7 @@ namespace Capstone.Placement
             return text;
         }
 
-        static void CreateButton(Transform parent, Font font, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction onClick)
+        static void CreateButton(Transform parent, Font font, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction onClick, int labelFontSize = 48)
         {
             GameObject buttonObject = new GameObject(label);
             buttonObject.transform.SetParent(parent, false);
@@ -478,7 +543,7 @@ namespace Capstone.Placement
             caption.transform.SetParent(buttonObject.transform, false);
             Text text = caption.AddComponent<Text>();
             text.font = font;
-            text.fontSize = 48;
+            text.fontSize = labelFontSize;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
             text.text = label;
