@@ -49,7 +49,8 @@ namespace Capstone.Placement
         public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
-        public const string WallStepMessage = "Choose a room, then Place. The work keeps its stored centimetres.";
+        public const string ChooseRoomMessage = "Choose the room that fits. Then place a work, ask a question, and keep or dismiss.";
+        public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
@@ -77,9 +78,10 @@ namespace Capstone.Placement
         Text stepLine;
         Text studyLabel;
         DemoRoomStage rooms;
-        Image warmRoomImage;
-        Image galleryRoomImage;
-        Image hallRoomImage;
+        GameObject choicePanel;
+        Button studyButtonWidget;
+        Button consentButtonWidget;
+        bool roomChosen;
 
         static readonly Color StepOn = new Color(0.15f, 0.35f, 0.75f, 0.95f);
         static readonly Color StepOff = new Color(0.1f, 0.1f, 0.1f, 0.85f);
@@ -107,6 +109,7 @@ namespace Capstone.Placement
             feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(current.Style, current.Mood, current.Colour));
             session = new BuyerSession("local-preview");
             surface = CreateSurface(current);
+            roomChosen = !Application.isEditor;
             if (Application.isEditor)
             {
                 rooms = new DemoRoomStage(DemoRoom.Three());
@@ -137,10 +140,15 @@ namespace Capstone.Placement
             if (Blocked(StudyCondition.Placement))
                 return;
 
-            Vector3 point;
-            Vector3 normal;
-            if (Application.isEditor && rooms != null && rooms.TryHit(arCamera, out point, out normal))
+            if (Application.isEditor && rooms != null && roomChosen)
             {
+                Vector3 point;
+                Vector3 normal;
+                if (!rooms.TryHit(arCamera, out point, out normal))
+                {
+                    point = rooms.WallFace();
+                    normal = Vector3.forward;
+                }
                 PlaceOn(point, normal);
                 return;
             }
@@ -190,6 +198,7 @@ namespace Capstone.Placement
             if (rooms == null)
                 return;
 
+            roomChosen = true;
             rooms.Show(index);
             if (arCamera != null)
                 rooms.Frame(arCamera);
@@ -200,17 +209,16 @@ namespace Capstone.Placement
                 placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             }
 
-            PaintRooms();
-            status.text = WallHeading();
+            OpenStep(PrototypeScreen.Wall);
         }
 
-        void PaintRooms()
+        public void ChangeRoom()
         {
-            if (rooms == null)
+            if (!Application.isEditor || rooms == null)
                 return;
-            PaintStep(warmRoomImage, rooms.Index == 0);
-            PaintStep(galleryRoomImage, rooms.Index == 1);
-            PaintStep(hallRoomImage, rooms.Index == 2);
+            roomChosen = false;
+            ApplyStepVisibility();
+            status.text = ChooseRoomMessage;
         }
 
         public void Swap()
@@ -510,17 +518,31 @@ namespace Capstone.Placement
 
         void ApplyStepVisibility()
         {
+            bool choosing = Application.isEditor && !roomChosen;
+            if (choicePanel != null)
+                choicePanel.SetActive(choosing);
+            SetButtonActive(studyButtonWidget, !choosing);
+            SetButtonActive(consentButtonWidget, !choosing);
+            SetButtonActive(worksNavImage, !choosing);
+            SetButtonActive(wallNavImage, !choosing);
+            SetButtonActive(recommendNavImage, !choosing);
             if (worksPanel != null)
-                worksPanel.SetActive(PrototypeScreen.ShowsWorks(step));
+                worksPanel.SetActive(!choosing && PrototypeScreen.ShowsWorks(step));
             if (wallPanel != null)
-                wallPanel.SetActive(PrototypeScreen.ShowsWall(step));
+                wallPanel.SetActive(!choosing && PrototypeScreen.ShowsWall(step));
             if (recommendPanel != null)
-                recommendPanel.SetActive(PrototypeScreen.ShowsRecommend(step));
+                recommendPanel.SetActive(!choosing && PrototypeScreen.ShowsRecommend(step));
             PaintStep(worksNavImage, PrototypeScreen.ShowsWorks(step));
             PaintStep(wallNavImage, PrototypeScreen.ShowsWall(step));
             PaintStep(recommendNavImage, PrototypeScreen.ShowsRecommend(step));
             if (stepLine != null)
-                stepLine.text = StepInstruction();
+                stepLine.text = choosing ? "Pick Room 1, Room 2, or Room 3." : StepInstruction();
+        }
+
+        static void SetButtonActive(Component widget, bool active)
+        {
+            if (widget != null)
+                widget.gameObject.SetActive(active);
         }
 
         string StepInstruction()
@@ -833,9 +855,9 @@ namespace Capstone.Placement
             status.alignment = TextAnchor.UpperCenter;
             stepLine = CreateLabel(column.transform, uiFont, WorksStepMessage, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -180f), 26);
             stepLine.rectTransform.sizeDelta = new Vector2(1000f, 70f);
-            Button studyButton = CreateButton(column.transform, uiFont, "To catalogue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 760f), new Vector2(500f, 72f), ToggleStudy, 28);
-            studyLabel = studyButton.GetComponentInChildren<Text>();
-            CreateButton(column.transform, uiFont, "Consent", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 760f), new Vector2(500f, 72f), GiveConsent, 28);
+            studyButtonWidget = CreateButton(column.transform, uiFont, "To catalogue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 760f), new Vector2(500f, 72f), ToggleStudy, 28);
+            studyLabel = studyButtonWidget.GetComponentInChildren<Text>();
+            consentButtonWidget = CreateButton(column.transform, uiFont, "Consent", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 760f), new Vector2(500f, 72f), GiveConsent, 28);
             worksNavImage = CreateButton(column.transform, uiFont, "Works", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 680f), new Vector2(340f, 70f), ShowWorks, 28).GetComponent<Image>();
             wallNavImage = CreateButton(column.transform, uiFont, "Wall", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 680f), new Vector2(340f, 70f), ShowWall, 28).GetComponent<Image>();
             recommendNavImage = CreateButton(column.transform, uiFont, "Recommend", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(724f, 680f), new Vector2(340f, 70f), ShowRecommendStep, 28).GetComponent<Image>();
@@ -853,11 +875,11 @@ namespace Capstone.Placement
 
             if (Application.isEditor)
             {
-                DemoRoom[] specs = DemoRoom.Three();
-                warmRoomImage = CreateButton(wallPanel.transform, uiFont, specs[0].Name, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 520f), new Vector2(340f, 70f), ShowWarmRoom, 26).GetComponent<Image>();
-                galleryRoomImage = CreateButton(wallPanel.transform, uiFont, specs[1].Name, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 520f), new Vector2(340f, 70f), ShowGalleryRoom, 26).GetComponent<Image>();
-                hallRoomImage = CreateButton(wallPanel.transform, uiFont, specs[2].Name, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(724f, 520f), new Vector2(340f, 70f), ShowHallRoom, 26).GetComponent<Image>();
-                PaintRooms();
+                choicePanel = CreatePanel(column.transform, "Choose room");
+                CreateButton(choicePanel.transform, uiFont, "Room 1. Warm. Small ochre room, wall 2.4 m by 2.4 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 980f), new Vector2(1032f, 150f), ShowWarmRoom, 32);
+                CreateButton(choicePanel.transform, uiFont, "Room 2. Gallery. White room, wall 4.2 m by 3.2 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 800f), new Vector2(1032f, 150f), ShowGalleryRoom, 32);
+                CreateButton(choicePanel.transform, uiFont, "Room 3. Hall. Dark room, wall 7 m by 4 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 620f), new Vector2(1032f, 150f), ShowHallRoom, 32);
+                CreateButton(wallPanel.transform, uiFont, "Change room", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 500f), new Vector2(1032f, 80f), ChangeRoom, 28);
             }
             CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 340f), new Vector2(1032f, 100f), ShowNotes, 36);
             concernField = CreateInput(wallPanel.transform, uiFont);
@@ -873,6 +895,8 @@ namespace Capstone.Placement
             CreateButton(recommendPanel.transform, uiFont, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 180f), new Vector2(320f, 120f), ChooseSecond);
             CreateButton(recommendPanel.transform, uiFont, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 180f), new Vector2(320f, 120f), ChooseThird);
             ApplyStepVisibility();
+            if (Application.isEditor && !roomChosen)
+                status.text = ChooseRoomMessage;
         }
 
         static void CreateShade(Transform parent)
