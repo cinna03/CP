@@ -46,6 +46,8 @@ namespace Capstone.Placement
         public const string NoMatchMessage = "No work matches this filter.";
         public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
+        public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
+        public const string WallStepMessage = "White band is the top. Place uses the stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
@@ -70,6 +72,8 @@ namespace Capstone.Placement
         Image worksNavImage;
         Image wallNavImage;
         Image recommendNavImage;
+        Text stepLine;
+        Text studyLabel;
 
         static readonly Color StepOn = new Color(0.15f, 0.35f, 0.75f, 0.95f);
         static readonly Color StepOff = new Color(0.1f, 0.1f, 0.1f, 0.85f);
@@ -381,9 +385,7 @@ namespace Capstone.Placement
             }
 
             RefreshWorkList();
-            status.text = WorksHeading();
-            if (!currentStillListed && current != null)
-                status.text = status.text + " " + Describe(current);
+            status.text = WorksStatus();
         }
 
         public void ShowWorks()
@@ -418,7 +420,7 @@ namespace Capstone.Placement
             else if (opened == PrototypeScreen.Recommend)
                 status.text = RecommendStepMessage;
             else
-                status.text = WorksHeading();
+                status.text = WorksStatus();
         }
 
         void ApplyStepVisibility()
@@ -432,6 +434,17 @@ namespace Capstone.Placement
             PaintStep(worksNavImage, PrototypeScreen.ShowsWorks(step));
             PaintStep(wallNavImage, PrototypeScreen.ShowsWall(step));
             PaintStep(recommendNavImage, PrototypeScreen.ShowsRecommend(step));
+            if (stepLine != null)
+                stepLine.text = StepInstruction();
+        }
+
+        string StepInstruction()
+        {
+            if (step == PrototypeScreen.Wall)
+                return WallStepMessage;
+            if (step == PrototypeScreen.Recommend)
+                return RecommendStepMessage;
+            return WorksStepMessage;
         }
 
         static void PaintStep(Image image, bool open)
@@ -445,6 +458,13 @@ namespace Capstone.Placement
             int count = shown != null ? shown.Count : 0;
             string title = current != null ? current.Title : "No work";
             return count + " works. Selected: " + title + ".";
+        }
+
+        string WorksStatus()
+        {
+            if (current == null)
+                return WorksHeading();
+            return WorksHeading() + "\n" + ArtworkDetail.Describe(current);
         }
 
         string WallHeading()
@@ -469,7 +489,7 @@ namespace Capstone.Placement
             }
 
             RefreshWorkList();
-            status.text = ArtworkDetail.Describe(current);
+            status.text = WorksStatus();
         }
 
         void RefreshWorkList()
@@ -532,9 +552,17 @@ namespace Capstone.Placement
                 placed.SetActive(session.Condition != StudyCondition.Baseline);
             if (session.Condition == StudyCondition.Baseline)
                 OpenStep(PrototypeScreen.Works);
+            RefreshStudyLabel();
             status.text = session.Condition == StudyCondition.Baseline
                 ? StudyCondition.BaselineMessage
                 : StudyCondition.PrototypeMessage;
+        }
+
+        void RefreshStudyLabel()
+        {
+            if (studyLabel == null || session == null)
+                return;
+            studyLabel.text = session.Condition == StudyCondition.Baseline ? "To prototype" : "To catalogue";
         }
 
         bool Blocked(string feature)
@@ -691,28 +719,35 @@ namespace Capstone.Placement
             CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1080f, 1920f);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 1f;
             canvasObject.AddComponent<GraphicRaycaster>();
 
-            uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            status = CreateLabel(canvasObject.transform, uiFont, WorksHeading(), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -80f), 36);
-            status.rectTransform.sizeDelta = new Vector2(980f, 340f);
-            CreateLabel(
-                canvasObject.transform,
-                uiFont,
-                "White band is the top of the work.",
-                new Vector2(0.5f, 0f),
-                new Vector2(0.5f, 0f),
-                new Vector2(0f, 1220f),
-                28);
-            CreateButton(canvasObject.transform, uiFont, "Study", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 980f), new Vector2(240f, 80f), ToggleStudy, 32);
-            CreateButton(canvasObject.transform, uiFont, "Consent", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(272f, 980f), new Vector2(240f, 80f), GiveConsent, 32);
-            worksNavImage = CreateButton(canvasObject.transform, uiFont, "Works", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 880f), new Vector2(340f, 80f), ShowWorks, 32).GetComponent<Image>();
-            wallNavImage = CreateButton(canvasObject.transform, uiFont, "Wall", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 880f), new Vector2(340f, 80f), ShowWall, 32).GetComponent<Image>();
-            recommendNavImage = CreateButton(canvasObject.transform, uiFont, "Recommend", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(724f, 880f), new Vector2(340f, 80f), ShowRecommendStep, 32).GetComponent<Image>();
+            GameObject column = CreatePanel(canvasObject.transform, "Prototype column");
+            RectTransform columnRect = column.GetComponent<RectTransform>();
+            columnRect.anchorMin = new Vector2(0.5f, 0f);
+            columnRect.anchorMax = new Vector2(0.5f, 1f);
+            columnRect.pivot = new Vector2(0.5f, 0.5f);
+            columnRect.sizeDelta = new Vector2(1080f, 0f);
+            columnRect.anchoredPosition = Vector2.zero;
 
-            worksPanel = CreatePanel(canvasObject.transform, "Works panel");
-            wallPanel = CreatePanel(canvasObject.transform, "Wall panel");
-            recommendPanel = CreatePanel(canvasObject.transform, "Recommend panel");
+            uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            CreateShade(column.transform);
+            status = CreateLabel(column.transform, uiFont, WorksStatus(), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -36f), 32);
+            status.rectTransform.sizeDelta = new Vector2(1000f, 460f);
+            status.alignment = TextAnchor.UpperCenter;
+            stepLine = CreateLabel(column.transform, uiFont, WorksStepMessage, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 1220f), 28);
+            stepLine.rectTransform.sizeDelta = new Vector2(1000f, 90f);
+            Button studyButton = CreateButton(column.transform, uiFont, "To catalogue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 980f), new Vector2(500f, 80f), ToggleStudy, 32);
+            studyLabel = studyButton.GetComponentInChildren<Text>();
+            CreateButton(column.transform, uiFont, "Consent", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 980f), new Vector2(500f, 80f), GiveConsent, 32);
+            worksNavImage = CreateButton(column.transform, uiFont, "Works", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 880f), new Vector2(340f, 80f), ShowWorks, 32).GetComponent<Image>();
+            wallNavImage = CreateButton(column.transform, uiFont, "Wall", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 880f), new Vector2(340f, 80f), ShowWall, 32).GetComponent<Image>();
+            recommendNavImage = CreateButton(column.transform, uiFont, "Recommend", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(724f, 880f), new Vector2(340f, 80f), ShowRecommendStep, 32).GetComponent<Image>();
+
+            worksPanel = CreatePanel(column.transform, "Works panel");
+            wallPanel = CreatePanel(column.transform, "Wall panel");
+            recommendPanel = CreatePanel(column.transform, "Recommend panel");
             workList = CreatePanel(worksPanel.transform, "Work list").GetComponent<RectTransform>();
 
             CreateButton(worksPanel.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 760f), new Vector2(250f, 80f), ShowAll, 32);
@@ -735,6 +770,21 @@ namespace Capstone.Placement
             CreateButton(recommendPanel.transform, uiFont, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 180f), new Vector2(320f, 120f), ChooseSecond);
             CreateButton(recommendPanel.transform, uiFont, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 180f), new Vector2(320f, 120f), ChooseThird);
             ApplyStepVisibility();
+        }
+
+        static void CreateShade(Transform parent)
+        {
+            GameObject shade = new GameObject("Status shade", typeof(RectTransform));
+            shade.transform.SetParent(parent, false);
+            Image image = shade.AddComponent<Image>();
+            image.color = new Color(0f, 0f, 0f, 0.62f);
+            image.raycastTarget = false;
+            RectTransform rect = shade.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.sizeDelta = new Vector2(0f, 820f);
+            rect.anchoredPosition = Vector2.zero;
         }
 
         static GameObject CreatePanel(Transform parent, string name)
