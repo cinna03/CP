@@ -600,6 +600,13 @@ namespace Capstone.Placement
 
         static void SilenceTemplateSpawner()
         {
+            GameObject templateUi = GameObject.Find("UI");
+            if (templateUi != null)
+                templateUi.SetActive(false);
+            GameObject greeting = GameObject.Find("GreetingCTA");
+            if (greeting != null)
+                greeting.SetActive(false);
+
             MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>();
             foreach (MonoBehaviour behaviour in behaviours)
             {
