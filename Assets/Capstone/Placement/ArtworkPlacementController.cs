@@ -23,6 +23,7 @@ namespace Capstone.Placement
     /// Next walks the current list in stored order and brings that work's own centimetres.
     /// All, Blue, Calm, and Fits 50 change that list. A filtered work keeps its stored size.
     /// Study switches to the catalogue-only condition and back. The session starts as the prototype.
+    /// Works, Wall, and Recommend are the three steps. The catalogue condition stays on Works.
     /// Consent must be marked before a keep, save, dismiss, matched question, or chosen rank is stored.
     /// No wall means a retry message and no invented size.
     /// </summary>
@@ -45,6 +46,7 @@ namespace Capstone.Placement
         public const string NoMatchMessage = "No work matches this filter.";
         public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
+        public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
 
@@ -59,6 +61,18 @@ namespace Capstone.Placement
         BuyerSession session;
         List<Recommendation> offered;
         List<Artwork> shown;
+        string step = PrototypeScreen.Works;
+        Font uiFont;
+        GameObject worksPanel;
+        GameObject wallPanel;
+        GameObject recommendPanel;
+        RectTransform workList;
+        Image worksNavImage;
+        Image wallNavImage;
+        Image recommendNavImage;
+
+        static readonly Color StepOn = new Color(0.15f, 0.35f, 0.75f, 0.95f);
+        static readonly Color StepOff = new Color(0.1f, 0.1f, 0.1f, 0.85f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -339,6 +353,7 @@ namespace Capstone.Placement
             offered = null;
             if (shown.Count == 0)
             {
+                RefreshWorkList();
                 status.text = NoMatchMessage;
                 return;
             }
@@ -365,9 +380,130 @@ namespace Capstone.Placement
                 }
             }
 
-            status.text = shown.Count + " works. Next stays inside this list.";
-            if (!currentStillListed)
-                status.text = status.text + " " + current.Title + ". " + Describe(current);
+            RefreshWorkList();
+            status.text = WorksHeading();
+            if (!currentStillListed && current != null)
+                status.text = status.text + " " + Describe(current);
+        }
+
+        public void ShowWorks()
+        {
+            OpenStep(PrototypeScreen.Works);
+        }
+
+        public void ShowWall()
+        {
+            OpenStep(PrototypeScreen.Wall);
+        }
+
+        public void ShowRecommendStep()
+        {
+            OpenStep(PrototypeScreen.Recommend);
+        }
+
+        void OpenStep(string requested)
+        {
+            string condition = session != null ? session.Condition : StudyCondition.Prototype;
+            string opened = PrototypeScreen.Open(condition, requested);
+            step = opened;
+            ApplyStepVisibility();
+            if (opened != requested)
+            {
+                status.text = StudyCondition.BaselineMessage;
+                return;
+            }
+
+            if (opened == PrototypeScreen.Wall)
+                status.text = WallHeading();
+            else if (opened == PrototypeScreen.Recommend)
+                status.text = RecommendStepMessage;
+            else
+                status.text = WorksHeading();
+        }
+
+        void ApplyStepVisibility()
+        {
+            if (worksPanel != null)
+                worksPanel.SetActive(PrototypeScreen.ShowsWorks(step));
+            if (wallPanel != null)
+                wallPanel.SetActive(PrototypeScreen.ShowsWall(step));
+            if (recommendPanel != null)
+                recommendPanel.SetActive(PrototypeScreen.ShowsRecommend(step));
+            PaintStep(worksNavImage, PrototypeScreen.ShowsWorks(step));
+            PaintStep(wallNavImage, PrototypeScreen.ShowsWall(step));
+            PaintStep(recommendNavImage, PrototypeScreen.ShowsRecommend(step));
+        }
+
+        static void PaintStep(Image image, bool open)
+        {
+            if (image != null)
+                image.color = open ? StepOn : StepOff;
+        }
+
+        string WorksHeading()
+        {
+            int count = shown != null ? shown.Count : 0;
+            string title = current != null ? current.Title : "No work";
+            return count + " works. Selected: " + title + ".";
+        }
+
+        string WallHeading()
+        {
+            if (current == null)
+                return WaitingMessage;
+            return current.Title + ". " + Describe(current) + " " + WaitingMessage;
+        }
+
+        void SelectShown(int index)
+        {
+            if (shown == null || index < 0 || index >= shown.Count || shown[index] == null)
+                return;
+
+            current = shown[index];
+            if (placed != null)
+            {
+                Vector3 position = placed.transform.position;
+                Quaternion rotation = placed.transform.rotation;
+                ApplyArtwork(current);
+                placed.transform.SetPositionAndRotation(position, rotation);
+            }
+
+            RefreshWorkList();
+            status.text = ArtworkDetail.Describe(current);
+        }
+
+        void RefreshWorkList()
+        {
+            if (workList == null || uiFont == null)
+                return;
+
+            for (int child = workList.childCount - 1; child >= 0; child--)
+                Destroy(workList.GetChild(child).gameObject);
+
+            if (shown == null)
+                return;
+
+            for (int i = 0; i < shown.Count; i++)
+            {
+                Artwork work = shown[i];
+                if (work == null)
+                    continue;
+
+                int captured = i;
+                string label = work.Title + "   " + work.WidthCm.ToString("0") + " x " + work.HeightCm.ToString("0") + " cm";
+                Button button = CreateButton(
+                    workList,
+                    uiFont,
+                    label,
+                    new Vector2(0f, 0f),
+                    new Vector2(0f, 0f),
+                    new Vector2(24f, 640f - (i * 104f)),
+                    new Vector2(1032f, 96f),
+                    () => SelectShown(captured),
+                    30);
+                if (current != null && work.Id == current.Id)
+                    button.GetComponent<Image>().color = StepOn;
+            }
         }
 
         public void ShowNotes()
@@ -394,6 +530,8 @@ namespace Capstone.Placement
 
             if (placed != null)
                 placed.SetActive(session.Condition != StudyCondition.Baseline);
+            if (session.Condition == StudyCondition.Baseline)
+                OpenStep(PrototypeScreen.Works);
             status.text = session.Condition == StudyCondition.Baseline
                 ? StudyCondition.BaselineMessage
                 : StudyCondition.PrototypeMessage;
@@ -555,36 +693,60 @@ namespace Capstone.Placement
             scaler.referenceResolution = new Vector2(1080f, 1920f);
             canvasObject.AddComponent<GraphicRaycaster>();
 
-            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            status = CreateLabel(canvasObject.transform, font, WaitingMessage, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -80f), 36);
-            status.rectTransform.sizeDelta = new Vector2(900f, 240f);
+            uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            status = CreateLabel(canvasObject.transform, uiFont, WorksHeading(), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -80f), 36);
+            status.rectTransform.sizeDelta = new Vector2(980f, 340f);
             CreateLabel(
                 canvasObject.transform,
-                font,
-                "White band is the top. Swap keeps the quad and changes the piece.",
-                new Vector2(0.5f, 1f),
-                new Vector2(0.5f, 1f),
-                new Vector2(0f, -160f),
+                uiFont,
+                "White band is the top of the work.",
+                new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0f, 1220f),
                 28);
-            CreateButton(canvasObject.transform, font, "Study", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 780f), new Vector2(240f, 80f), ToggleStudy, 32);
-            CreateButton(canvasObject.transform, font, "Consent", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(272f, 780f), new Vector2(240f, 80f), GiveConsent, 32);
-            CreateButton(canvasObject.transform, font, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 680f), new Vector2(240f, 80f), ShowAll, 32);
-            CreateButton(canvasObject.transform, font, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(272f, 680f), new Vector2(240f, 80f), ShowBlue, 32);
-            CreateButton(canvasObject.transform, font, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(528f, 680f), new Vector2(240f, 80f), ShowCalm, 32);
-            CreateButton(canvasObject.transform, font, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(784f, 680f), new Vector2(240f, 80f), ShowFitsFifty, 32);
-            CreateButton(canvasObject.transform, font, "Use 1", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 550f), new Vector2(320f, 100f), ChooseFirst);
-            CreateButton(canvasObject.transform, font, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 550f), new Vector2(320f, 100f), ChooseSecond);
-            CreateButton(canvasObject.transform, font, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 550f), new Vector2(320f, 100f), ChooseThird);
-            CreateButton(canvasObject.transform, font, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 320f), new Vector2(320f, 100f), ShowNotes);
-            CreateButton(canvasObject.transform, font, "Next", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 320f), new Vector2(320f, 100f), Advance);
-            CreateButton(canvasObject.transform, font, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 430f), new Vector2(320f, 100f), Keep);
-            CreateButton(canvasObject.transform, font, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 430f), new Vector2(320f, 100f), Save);
-            CreateButton(canvasObject.transform, font, "Dismiss", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 430f), new Vector2(320f, 100f), Dismiss);
-            concernField = CreateInput(canvasObject.transform, font);
-            CreateButton(canvasObject.transform, font, "Send", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 200f), new Vector2(240f, 110f), Send);
-            CreateButton(canvasObject.transform, font, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
-            CreateButton(canvasObject.transform, font, "Swap", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(320f, 140f), Swap);
-            CreateButton(canvasObject.transform, font, "Remove", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 40f), new Vector2(320f, 140f), Remove);
+            CreateButton(canvasObject.transform, uiFont, "Study", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 980f), new Vector2(240f, 80f), ToggleStudy, 32);
+            CreateButton(canvasObject.transform, uiFont, "Consent", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(272f, 980f), new Vector2(240f, 80f), GiveConsent, 32);
+            worksNavImage = CreateButton(canvasObject.transform, uiFont, "Works", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 880f), new Vector2(340f, 80f), ShowWorks, 32).GetComponent<Image>();
+            wallNavImage = CreateButton(canvasObject.transform, uiFont, "Wall", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 880f), new Vector2(340f, 80f), ShowWall, 32).GetComponent<Image>();
+            recommendNavImage = CreateButton(canvasObject.transform, uiFont, "Recommend", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(724f, 880f), new Vector2(340f, 80f), ShowRecommendStep, 32).GetComponent<Image>();
+
+            worksPanel = CreatePanel(canvasObject.transform, "Works panel");
+            wallPanel = CreatePanel(canvasObject.transform, "Wall panel");
+            recommendPanel = CreatePanel(canvasObject.transform, "Recommend panel");
+            workList = CreatePanel(worksPanel.transform, "Work list").GetComponent<RectTransform>();
+
+            CreateButton(worksPanel.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 760f), new Vector2(250f, 80f), ShowAll, 32);
+            CreateButton(worksPanel.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(282f, 760f), new Vector2(250f, 80f), ShowBlue, 32);
+            CreateButton(worksPanel.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 760f), new Vector2(250f, 80f), ShowCalm, 32);
+            CreateButton(worksPanel.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(814f, 760f), new Vector2(250f, 80f), ShowFitsFifty, 32);
+            RefreshWorkList();
+
+            CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 340f), new Vector2(1032f, 100f), ShowNotes, 36);
+            concernField = CreateInput(wallPanel.transform, uiFont);
+            CreateButton(wallPanel.transform, uiFont, "Send", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 200f), new Vector2(240f, 110f), Send);
+            CreateButton(wallPanel.transform, uiFont, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
+            CreateButton(wallPanel.transform, uiFont, "Swap", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(320f, 140f), Swap);
+            CreateButton(wallPanel.transform, uiFont, "Remove", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 40f), new Vector2(320f, 140f), Remove);
+
+            CreateButton(recommendPanel.transform, uiFont, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 320f), new Vector2(320f, 120f), Keep);
+            CreateButton(recommendPanel.transform, uiFont, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 320f), new Vector2(320f, 120f), Save);
+            CreateButton(recommendPanel.transform, uiFont, "Dismiss", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 320f), new Vector2(320f, 120f), Dismiss);
+            CreateButton(recommendPanel.transform, uiFont, "Use 1", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 180f), new Vector2(320f, 120f), ChooseFirst);
+            CreateButton(recommendPanel.transform, uiFont, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 180f), new Vector2(320f, 120f), ChooseSecond);
+            CreateButton(recommendPanel.transform, uiFont, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 180f), new Vector2(320f, 120f), ChooseThird);
+            ApplyStepVisibility();
+        }
+
+        static GameObject CreatePanel(Transform parent, string name)
+        {
+            GameObject panel = new GameObject(name, typeof(RectTransform));
+            panel.transform.SetParent(parent, false);
+            RectTransform rect = panel.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            return panel;
         }
 
         static Text CreateLabel(Transform parent, Font font, string message, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, int fontSize)
@@ -608,7 +770,7 @@ namespace Capstone.Placement
             return text;
         }
 
-        static void CreateButton(Transform parent, Font font, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction onClick, int labelFontSize = 48)
+        static Button CreateButton(Transform parent, Font font, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction onClick, int labelFontSize = 48)
         {
             GameObject buttonObject = new GameObject(label);
             buttonObject.transform.SetParent(parent, false);
@@ -637,6 +799,7 @@ namespace Capstone.Placement
             textRect.anchorMax = Vector2.one;
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
+            return button;
         }
 
         static InputField CreateInput(Transform parent, Font font)
