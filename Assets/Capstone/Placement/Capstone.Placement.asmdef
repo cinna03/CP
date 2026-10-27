@@ -6,6 +6,7 @@
         "Capstone.Dialogue",
         "Capstone.Ranking",
         "Capstone.Session",
+        "Unity.InputSystem",
         "Unity.XR.ARFoundation",
         "Unity.XR.ARSubsystems",
         "UnityEngine.UI"

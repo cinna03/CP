@@ -5,6 +5,8 @@ using Capstone.Dialogue;
 using Capstone.Ranking;
 using Capstone.Session;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
 using UnityEngine.XR.ARSubsystems;
@@ -26,7 +28,8 @@ namespace Capstone.Placement
     /// Works, Wall, and Recommend are the three steps. The catalogue condition stays on Works.
     /// Consent must be marked before a keep, save, dismiss, matched question, or chosen rank is stored.
     /// No wall means a retry message and no invented size.
-    /// In the editor, Place uses one of three rooms. The artwork keeps its stored centimetres.
+    /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
+    /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -91,7 +94,8 @@ namespace Capstone.Placement
         {
             if (FindAnyObjectByType<ArtworkPlacementController>() != null)
                 return;
-            if (FindAnyObjectByType<ARRaycastManager>() == null)
+            // A phone build still needs the AR raycast. The editor demo runs in a plain 3D scene.
+            if (!Application.isEditor && FindAnyObjectByType<ARRaycastManager>() == null)
                 return;
 
             GameObject host = new GameObject("Artwork Placement");
@@ -101,7 +105,8 @@ namespace Capstone.Placement
         void Awake()
         {
             raycastManager = FindAnyObjectByType<ARRaycastManager>();
-            arCamera = Camera.main;
+            arCamera = Camera.main != null ? Camera.main : FindAnyObjectByType<Camera>();
+            EnsurePointer();
             EnsureVerticalPlanes();
             SilenceTemplateSpawner();
             current = SampleArtwork.Create();
@@ -697,6 +702,16 @@ namespace Capstone.Placement
             Destroy(placed);
             placed = null;
             status.text = RemovedMessage;
+        }
+
+        static void EnsurePointer()
+        {
+            if (FindAnyObjectByType<EventSystem>() != null)
+                return;
+
+            GameObject events = new GameObject("EventSystem");
+            events.AddComponent<EventSystem>();
+            events.AddComponent<InputSystemUIInputModule>();
         }
 
         static void EnsureVerticalPlanes()
