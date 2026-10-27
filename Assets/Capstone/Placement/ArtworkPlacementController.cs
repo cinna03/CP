@@ -26,7 +26,9 @@ namespace Capstone.Placement
     /// Works, Wall, and Recommend are the three steps. The catalogue condition stays on Works.
     /// Consent must be marked before a keep, save, dismiss, matched question, or chosen rank is stored.
     /// No wall means a retry message and no invented size.
+    /// In the editor, Place uses one of three rooms. The artwork keeps its stored centimetres.
     /// </summary>
+    [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
     {
         public const string WaitingMessage = "Point the centre of the screen at a wall, then press Place.";
@@ -47,7 +49,7 @@ namespace Capstone.Placement
         public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
-        public const string WallStepMessage = "White band is the top. Place uses the stored centimetres.";
+        public const string WallStepMessage = "Choose a room, then Place. The work keeps its stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
@@ -74,6 +76,10 @@ namespace Capstone.Placement
         Image recommendNavImage;
         Text stepLine;
         Text studyLabel;
+        DemoRoomStage rooms;
+        Image warmRoomImage;
+        Image galleryRoomImage;
+        Image hallRoomImage;
 
         static readonly Color StepOn = new Color(0.15f, 0.35f, 0.75f, 0.95f);
         static readonly Color StepOff = new Color(0.1f, 0.1f, 0.1f, 0.85f);
@@ -101,31 +107,110 @@ namespace Capstone.Placement
             feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(current.Style, current.Mood, current.Colour));
             session = new BuyerSession("local-preview");
             surface = CreateSurface(current);
+            if (Application.isEditor)
+            {
+                rooms = new DemoRoomStage(DemoRoom.Three());
+                rooms.Build(transform, surface);
+                HideSimulatedRoom();
+            }
             BuildControls();
+        }
+
+        void LateUpdate()
+        {
+            if (!Application.isEditor || rooms == null || arCamera == null)
+                return;
+
+            HideSimulatedRoom();
+            rooms.Frame(arCamera);
+        }
+
+        static void HideSimulatedRoom()
+        {
+            GameObject simulated = GameObject.Find("Simulated Environment Scene");
+            if (simulated != null)
+                simulated.SetActive(false);
         }
 
         public void Place()
         {
             if (Blocked(StudyCondition.Placement))
                 return;
+
+            Vector3 point;
+            Vector3 normal;
+            if (Application.isEditor && rooms != null && rooms.TryHit(arCamera, out point, out normal))
+            {
+                PlaceOn(point, normal);
+                return;
+            }
+
             if (!TryHitVerticalWall(out ARRaycastHit hit, out ARPlane plane))
             {
                 status.text = NoWallMessage;
                 return;
             }
 
+            PlaceOn(hit.pose.position, plane.normal);
+        }
+
+        void PlaceOn(Vector3 point, Vector3 normal)
+        {
             bool alreadyPlaced = placed != null;
             if (!alreadyPlaced)
                 placed = CreateQuad();
 
-            WallPose pose = ArtworkWallPose.At(
-                current,
-                hit.pose.position,
-                plane.normal,
-                arCamera != null ? arCamera.transform.position : hit.pose.position + plane.normal);
+            Vector3 cameraPosition = arCamera != null ? arCamera.transform.position : point + normal;
+            WallPose pose = ArtworkWallPose.At(current, point, normal, cameraPosition);
             placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             ApplyArtwork(current);
-            status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current);
+            string roomLine = Application.isEditor && rooms != null && rooms.Current != null
+                ? " " + rooms.Current.Describe()
+                : "";
+            status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current) + roomLine;
+        }
+
+        public void ShowWarmRoom()
+        {
+            ShowDemoRoom(0);
+        }
+
+        public void ShowGalleryRoom()
+        {
+            ShowDemoRoom(1);
+        }
+
+        public void ShowHallRoom()
+        {
+            ShowDemoRoom(2);
+        }
+
+        void ShowDemoRoom(int index)
+        {
+            if (rooms == null)
+                return;
+
+            rooms.Show(index);
+            if (arCamera != null)
+                rooms.Frame(arCamera);
+            if (placed != null && current != null)
+            {
+                Vector3 cameraPosition = arCamera != null ? arCamera.transform.position : rooms.CameraPosition();
+                WallPose pose = ArtworkWallPose.At(current, rooms.WallFace(), Vector3.forward, cameraPosition);
+                placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
+            }
+
+            PaintRooms();
+            status.text = WallHeading();
+        }
+
+        void PaintRooms()
+        {
+            if (rooms == null)
+                return;
+            PaintStep(warmRoomImage, rooms.Index == 0);
+            PaintStep(galleryRoomImage, rooms.Index == 1);
+            PaintStep(hallRoomImage, rooms.Index == 2);
         }
 
         public void Swap()
@@ -464,14 +549,17 @@ namespace Capstone.Placement
         {
             if (current == null)
                 return WorksHeading();
-            return WorksHeading() + "\n" + ArtworkDetail.Describe(current);
+            string meaning = current.StoryNotes != null ? current.StoryNotes.Meaning : string.Empty;
+            string note = string.IsNullOrWhiteSpace(meaning) ? ArtworkDetail.MissingNote : meaning;
+            return WorksHeading() + " " + Describe(current) + " " + note;
         }
 
         string WallHeading()
         {
+            string room = rooms != null && rooms.Current != null ? rooms.Current.Describe() + " " : "";
             if (current == null)
-                return WaitingMessage;
-            return current.Title + ". " + Describe(current) + " " + WaitingMessage;
+                return room + WaitingMessage;
+            return room + current.Title + ". " + Describe(current);
         }
 
         void SelectShown(int index)
@@ -517,8 +605,8 @@ namespace Capstone.Placement
                     label,
                     new Vector2(0f, 0f),
                     new Vector2(0f, 0f),
-                    new Vector2(24f, 640f - (i * 104f)),
-                    new Vector2(1032f, 96f),
+                    new Vector2(24f, 490f - (i * 92f)),
+                    new Vector2(1032f, 84f),
                     () => SelectShown(captured),
                     30);
                 if (current != null && work.Id == current.Id)
@@ -740,29 +828,37 @@ namespace Capstone.Placement
 
             uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             CreateShade(column.transform);
-            status = CreateLabel(column.transform, uiFont, WorksStatus(), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -36f), 32);
-            status.rectTransform.sizeDelta = new Vector2(1000f, 460f);
+            status = CreateLabel(column.transform, uiFont, WorksStatus(), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -24f), 30);
+            status.rectTransform.sizeDelta = new Vector2(1000f, 150f);
             status.alignment = TextAnchor.UpperCenter;
-            stepLine = CreateLabel(column.transform, uiFont, WorksStepMessage, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 1220f), 28);
-            stepLine.rectTransform.sizeDelta = new Vector2(1000f, 90f);
-            Button studyButton = CreateButton(column.transform, uiFont, "To catalogue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 980f), new Vector2(500f, 80f), ToggleStudy, 32);
+            stepLine = CreateLabel(column.transform, uiFont, WorksStepMessage, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -180f), 26);
+            stepLine.rectTransform.sizeDelta = new Vector2(1000f, 70f);
+            Button studyButton = CreateButton(column.transform, uiFont, "To catalogue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 760f), new Vector2(500f, 72f), ToggleStudy, 28);
             studyLabel = studyButton.GetComponentInChildren<Text>();
-            CreateButton(column.transform, uiFont, "Consent", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 980f), new Vector2(500f, 80f), GiveConsent, 32);
-            worksNavImage = CreateButton(column.transform, uiFont, "Works", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 880f), new Vector2(340f, 80f), ShowWorks, 32).GetComponent<Image>();
-            wallNavImage = CreateButton(column.transform, uiFont, "Wall", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 880f), new Vector2(340f, 80f), ShowWall, 32).GetComponent<Image>();
-            recommendNavImage = CreateButton(column.transform, uiFont, "Recommend", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(724f, 880f), new Vector2(340f, 80f), ShowRecommendStep, 32).GetComponent<Image>();
+            CreateButton(column.transform, uiFont, "Consent", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 760f), new Vector2(500f, 72f), GiveConsent, 28);
+            worksNavImage = CreateButton(column.transform, uiFont, "Works", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 680f), new Vector2(340f, 70f), ShowWorks, 28).GetComponent<Image>();
+            wallNavImage = CreateButton(column.transform, uiFont, "Wall", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 680f), new Vector2(340f, 70f), ShowWall, 28).GetComponent<Image>();
+            recommendNavImage = CreateButton(column.transform, uiFont, "Recommend", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(724f, 680f), new Vector2(340f, 70f), ShowRecommendStep, 28).GetComponent<Image>();
 
             worksPanel = CreatePanel(column.transform, "Works panel");
             wallPanel = CreatePanel(column.transform, "Wall panel");
             recommendPanel = CreatePanel(column.transform, "Recommend panel");
             workList = CreatePanel(worksPanel.transform, "Work list").GetComponent<RectTransform>();
 
-            CreateButton(worksPanel.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 760f), new Vector2(250f, 80f), ShowAll, 32);
-            CreateButton(worksPanel.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(282f, 760f), new Vector2(250f, 80f), ShowBlue, 32);
-            CreateButton(worksPanel.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 760f), new Vector2(250f, 80f), ShowCalm, 32);
-            CreateButton(worksPanel.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(814f, 760f), new Vector2(250f, 80f), ShowFitsFifty, 32);
+            CreateButton(worksPanel.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 590f), new Vector2(250f, 70f), ShowAll, 28);
+            CreateButton(worksPanel.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(282f, 590f), new Vector2(250f, 70f), ShowBlue, 28);
+            CreateButton(worksPanel.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 590f), new Vector2(250f, 70f), ShowCalm, 28);
+            CreateButton(worksPanel.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(814f, 590f), new Vector2(250f, 70f), ShowFitsFifty, 28);
             RefreshWorkList();
 
+            if (Application.isEditor)
+            {
+                DemoRoom[] specs = DemoRoom.Three();
+                warmRoomImage = CreateButton(wallPanel.transform, uiFont, specs[0].Name, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 520f), new Vector2(340f, 70f), ShowWarmRoom, 26).GetComponent<Image>();
+                galleryRoomImage = CreateButton(wallPanel.transform, uiFont, specs[1].Name, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 520f), new Vector2(340f, 70f), ShowGalleryRoom, 26).GetComponent<Image>();
+                hallRoomImage = CreateButton(wallPanel.transform, uiFont, specs[2].Name, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(724f, 520f), new Vector2(340f, 70f), ShowHallRoom, 26).GetComponent<Image>();
+                PaintRooms();
+            }
             CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 340f), new Vector2(1032f, 100f), ShowNotes, 36);
             concernField = CreateInput(wallPanel.transform, uiFont);
             CreateButton(wallPanel.transform, uiFont, "Send", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 200f), new Vector2(240f, 110f), Send);
@@ -790,7 +886,7 @@ namespace Capstone.Placement
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = new Vector2(1f, 1f);
             rect.pivot = new Vector2(0.5f, 1f);
-            rect.sizeDelta = new Vector2(0f, 820f);
+            rect.sizeDelta = new Vector2(0f, 280f);
             rect.anchoredPosition = Vector2.zero;
         }
 
