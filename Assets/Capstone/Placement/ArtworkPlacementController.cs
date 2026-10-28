@@ -30,6 +30,7 @@ namespace Capstone.Placement
     /// No wall means a retry message and no invented size.
     /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
     /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
+    /// On a phone, the same controls fit the portrait width and stay clear of the gesture bar.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -85,6 +86,8 @@ namespace Capstone.Placement
         Button studyButtonWidget;
         Button consentButtonWidget;
         bool roomChosen;
+        CanvasScaler screenFit;
+        RectTransform screenColumn;
 
         static readonly Color StepOn = new Color(0.15f, 0.35f, 0.75f, 0.95f);
         static readonly Color StepOff = new Color(0.1f, 0.1f, 0.1f, 0.85f);
@@ -126,11 +129,45 @@ namespace Capstone.Placement
 
         void LateUpdate()
         {
+            FitScreen();
             if (!Application.isEditor || rooms == null || arCamera == null)
                 return;
 
             HideSimulatedRoom();
             rooms.Frame(arCamera);
+        }
+
+        void FitScreen()
+        {
+            if (screenFit == null || screenColumn == null)
+                return;
+
+            float width = Screen.width;
+            float height = Screen.height;
+            if (width < 2f || height < 2f)
+                return;
+
+            bool portrait = height >= width;
+            float match = portrait ? 0f : 1f;
+            if (!Mathf.Approximately(screenFit.matchWidthOrHeight, match))
+                screenFit.matchWidthOrHeight = match;
+
+            float scale = screenFit.scaleFactor;
+            if (scale < 0.01f)
+                return;
+
+            Rect safe = Screen.safeArea;
+            float bottom = safe.yMin / scale;
+            float top = (height - safe.yMax) / scale;
+            Vector2 min = screenColumn.offsetMin;
+            Vector2 max = screenColumn.offsetMax;
+            if (Mathf.Approximately(min.y, bottom) && Mathf.Approximately(max.y, -top))
+                return;
+
+            min.y = bottom;
+            max.y = -top;
+            screenColumn.offsetMin = min;
+            screenColumn.offsetMax = max;
         }
 
         static void HideSimulatedRoom()
@@ -848,20 +885,20 @@ namespace Capstone.Placement
             Canvas canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 500;
-            CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080f, 1920f);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 1f;
+            screenFit = canvasObject.AddComponent<CanvasScaler>();
+            screenFit.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            screenFit.referenceResolution = new Vector2(1080f, 1920f);
+            screenFit.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            screenFit.matchWidthOrHeight = 1f;
             canvasObject.AddComponent<GraphicRaycaster>();
 
             GameObject column = CreatePanel(canvasObject.transform, "Prototype column");
-            RectTransform columnRect = column.GetComponent<RectTransform>();
-            columnRect.anchorMin = new Vector2(0.5f, 0f);
-            columnRect.anchorMax = new Vector2(0.5f, 1f);
-            columnRect.pivot = new Vector2(0.5f, 0.5f);
-            columnRect.sizeDelta = new Vector2(1080f, 0f);
-            columnRect.anchoredPosition = Vector2.zero;
+            screenColumn = column.GetComponent<RectTransform>();
+            screenColumn.anchorMin = new Vector2(0.5f, 0f);
+            screenColumn.anchorMax = new Vector2(0.5f, 1f);
+            screenColumn.pivot = new Vector2(0.5f, 0.5f);
+            screenColumn.sizeDelta = new Vector2(1080f, 0f);
+            screenColumn.anchoredPosition = Vector2.zero;
 
             uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             CreateShade(column.transform);
