@@ -30,7 +30,7 @@ namespace Capstone.Placement
     /// No wall means a retry message and no invented size.
     /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
     /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
-    /// On a phone, the session opens on the wall. Move until a vertical wall is found, then press Place.
+    /// On a phone, the session opens on the camera. Move until a vertical wall is detected, then press Place.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -54,8 +54,8 @@ namespace Capstone.Placement
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
         public const string ChooseRoomMessage = "Choose the room that fits. Then place a work, ask a question, and keep or dismiss.";
-        public const string ScanWallMessage = "Move the phone slowly across the wall you want to test.";
-        public const string WallFoundMessage = "Wall found. Press Place. The work keeps its stored centimetres.";
+        public const string ScanWallMessage = "Move the phone slowly across the wall.";
+        public const string WallFoundMessage = "Wall detected. You are ready to test the art piece. Press Place.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
 
@@ -87,10 +87,20 @@ namespace Capstone.Placement
         GameObject choicePanel;
         Button studyButtonWidget;
         Button consentButtonWidget;
+        Button placeButton;
+        GameObject notesButton;
+        GameObject sendButton;
+        GameObject swapButton;
+        GameObject removeButton;
+        Image aimMark;
+        RectTransform statusShade;
         bool roomChosen;
         bool scanning;
+        bool wallReady;
         CanvasScaler screenFit;
         RectTransform screenColumn;
+        static readonly Color AimSearching = Color.white;
+        static readonly Color AimReady = new Color(0.25f, 0.9f, 0.4f, 1f);
 
         static readonly Color StepOn = new Color(0.15f, 0.35f, 0.75f, 0.95f);
         static readonly Color StepOff = new Color(0.1f, 0.1f, 0.1f, 0.85f);
@@ -137,11 +147,16 @@ namespace Capstone.Placement
 
             ARRaycastHit hit;
             ARPlane plane;
-            string next = TryHitVerticalWall(out hit, out plane) ? WallFoundMessage : ScanWallMessage;
-            if (status.text != next)
-                status.text = next;
-            if (stepLine != null && stepLine.text != next)
-                stepLine.text = next;
+            bool found = TryHitVerticalWall(out hit, out plane);
+            string next = found ? WallFoundMessage : ScanWallMessage;
+            if (found == wallReady && status.text == next)
+                return;
+
+            wallReady = found;
+            status.text = next;
+            if (aimMark != null)
+                aimMark.color = found ? AimReady : AimSearching;
+            ApplyStepVisibility();
         }
 
         void LateUpdate()
@@ -235,7 +250,9 @@ namespace Capstone.Placement
                 ? " " + rooms.Current.Describe()
                 : "";
             scanning = false;
+            wallReady = false;
             status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current) + roomLine;
+            ApplyStepVisibility();
         }
 
         public void ShowWarmRoom()
@@ -311,6 +328,7 @@ namespace Capstone.Placement
             if (reply.Matched && session != null && current != null)
                 session.LogRule(current.Id, reply.RuleId, reply.Concern, DateTime.UtcNow);
             status.text = ReplyForCurrentWork(reply);
+            ApplyStepVisibility();
         }
 
         string ReplyForCurrentWork(DialogueReply reply)
@@ -580,24 +598,68 @@ namespace Capstone.Placement
         void ApplyStepVisibility()
         {
             bool choosing = Application.isEditor && !roomChosen;
+            bool phoneScan = !Application.isEditor && scanning && step == PrototypeScreen.Wall;
             if (choicePanel != null)
                 choicePanel.SetActive(choosing);
-            SetButtonActive(studyButtonWidget, !choosing);
-            SetButtonActive(consentButtonWidget, !choosing);
-            SetButtonActive(worksNavImage, !choosing);
-            SetButtonActive(wallNavImage, !choosing);
-            SetButtonActive(recommendNavImage, !choosing);
+            SetButtonActive(studyButtonWidget, !choosing && !phoneScan);
+            SetButtonActive(consentButtonWidget, !choosing && !phoneScan);
+            SetButtonActive(worksNavImage, !choosing && !phoneScan);
+            SetButtonActive(wallNavImage, !choosing && !phoneScan);
+            SetButtonActive(recommendNavImage, !choosing && !phoneScan);
             if (worksPanel != null)
-                worksPanel.SetActive(!choosing && PrototypeScreen.ShowsWorks(step));
+                worksPanel.SetActive(!choosing && !phoneScan && PrototypeScreen.ShowsWorks(step));
             if (wallPanel != null)
                 wallPanel.SetActive(!choosing && PrototypeScreen.ShowsWall(step));
             if (recommendPanel != null)
-                recommendPanel.SetActive(!choosing && PrototypeScreen.ShowsRecommend(step));
+                recommendPanel.SetActive(!choosing && !phoneScan && PrototypeScreen.ShowsRecommend(step));
+            SetObjectActive(notesButton, !phoneScan);
+            SetObjectActive(sendButton, !phoneScan);
+            SetObjectActive(swapButton, !phoneScan);
+            SetObjectActive(removeButton, !phoneScan);
+            if (concernField != null)
+                concernField.gameObject.SetActive(!phoneScan);
+            if (placeButton != null)
+            {
+                placeButton.gameObject.SetActive(!phoneScan || wallReady);
+                RectTransform placeRect = placeButton.GetComponent<RectTransform>();
+                if (phoneScan)
+                {
+                    placeRect.anchorMin = new Vector2(0.5f, 0f);
+                    placeRect.anchorMax = new Vector2(0.5f, 0f);
+                    placeRect.pivot = new Vector2(0.5f, 0f);
+                    placeRect.sizeDelta = new Vector2(640f, 140f);
+                    placeRect.anchoredPosition = new Vector2(0f, 40f);
+                }
+                else
+                {
+                    placeRect.anchorMin = new Vector2(0f, 0f);
+                    placeRect.anchorMax = new Vector2(0f, 0f);
+                    placeRect.pivot = new Vector2(0f, 0f);
+                    placeRect.sizeDelta = new Vector2(320f, 140f);
+                    placeRect.anchoredPosition = new Vector2(24f, 40f);
+                }
+            }
+            if (aimMark != null)
+            {
+                aimMark.gameObject.SetActive(phoneScan);
+                aimMark.color = wallReady ? AimReady : AimSearching;
+            }
+            if (statusShade != null)
+                statusShade.sizeDelta = new Vector2(0f, phoneScan ? 200f : 280f);
+            if (stepLine != null)
+            {
+                stepLine.gameObject.SetActive(!phoneScan);
+                stepLine.text = choosing ? "Pick Room 1, Room 2, or Room 3." : StepInstruction();
+            }
             PaintStep(worksNavImage, PrototypeScreen.ShowsWorks(step));
             PaintStep(wallNavImage, PrototypeScreen.ShowsWall(step));
             PaintStep(recommendNavImage, PrototypeScreen.ShowsRecommend(step));
-            if (stepLine != null)
-                stepLine.text = choosing ? "Pick Room 1, Room 2, or Room 3." : StepInstruction();
+        }
+
+        static void SetObjectActive(GameObject widget, bool active)
+        {
+            if (widget != null)
+                widget.SetActive(active);
         }
 
         static void SetButtonActive(Component widget, bool active)
@@ -758,7 +820,9 @@ namespace Capstone.Placement
             Destroy(placed);
             placed = null;
             scanning = !Application.isEditor;
+            wallReady = false;
             status.text = RemovedMessage;
+            ApplyStepVisibility();
         }
 
         static void EnsurePointer()
@@ -921,7 +985,8 @@ namespace Capstone.Placement
             screenColumn.anchoredPosition = Vector2.zero;
 
             uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            CreateShade(column.transform);
+            statusShade = CreateShade(column.transform);
+            aimMark = CreateAimMark(column.transform);
             status = CreateLabel(column.transform, uiFont, WorksStatus(), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -24f), 30);
             status.rectTransform.sizeDelta = new Vector2(1000f, 150f);
             status.alignment = TextAnchor.UpperCenter;
@@ -953,12 +1018,12 @@ namespace Capstone.Placement
                 CreateButton(choicePanel.transform, uiFont, "Room 3. Hall. Dark room, wall 7 m by 4 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 620f), new Vector2(1032f, 150f), ShowHallRoom, 32);
                 CreateButton(wallPanel.transform, uiFont, "Change room", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 500f), new Vector2(1032f, 80f), ChangeRoom, 28);
             }
-            CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 340f), new Vector2(1032f, 100f), ShowNotes, 36);
+            notesButton = CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 340f), new Vector2(1032f, 100f), ShowNotes, 36).gameObject;
             concernField = CreateInput(wallPanel.transform, uiFont);
-            CreateButton(wallPanel.transform, uiFont, "Send", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 200f), new Vector2(240f, 110f), Send);
-            CreateButton(wallPanel.transform, uiFont, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
-            CreateButton(wallPanel.transform, uiFont, "Swap", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(320f, 140f), Swap);
-            CreateButton(wallPanel.transform, uiFont, "Remove", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 40f), new Vector2(320f, 140f), Remove);
+            sendButton = CreateButton(wallPanel.transform, uiFont, "Send", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 200f), new Vector2(240f, 110f), Send).gameObject;
+            placeButton = CreateButton(wallPanel.transform, uiFont, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
+            swapButton = CreateButton(wallPanel.transform, uiFont, "Swap", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(320f, 140f), Swap).gameObject;
+            removeButton = CreateButton(wallPanel.transform, uiFont, "Remove", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 40f), new Vector2(320f, 140f), Remove).gameObject;
 
             CreateButton(recommendPanel.transform, uiFont, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 320f), new Vector2(320f, 120f), Keep);
             CreateButton(recommendPanel.transform, uiFont, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 320f), new Vector2(320f, 120f), Save);
@@ -972,11 +1037,13 @@ namespace Capstone.Placement
             else if (!Application.isEditor)
             {
                 scanning = true;
+                wallReady = false;
                 OpenStep(PrototypeScreen.Wall);
+                status.text = ScanWallMessage;
             }
         }
 
-        static void CreateShade(Transform parent)
+        static RectTransform CreateShade(Transform parent)
         {
             GameObject shade = new GameObject("Status shade", typeof(RectTransform));
             shade.transform.SetParent(parent, false);
@@ -989,6 +1056,47 @@ namespace Capstone.Placement
             rect.pivot = new Vector2(0.5f, 1f);
             rect.sizeDelta = new Vector2(0f, 280f);
             rect.anchoredPosition = Vector2.zero;
+            return rect;
+        }
+
+        static Image CreateAimMark(Transform parent)
+        {
+            GameObject mark = new GameObject("Aim", typeof(RectTransform));
+            mark.transform.SetParent(parent, false);
+            Image image = mark.AddComponent<Image>();
+            Texture2D texture = AimTexture();
+            image.sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+            image.color = AimSearching;
+            image.raycastTarget = false;
+            RectTransform rect = mark.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(96f, 96f);
+            rect.anchoredPosition = Vector2.zero;
+            mark.SetActive(false);
+            return image;
+        }
+
+        static Texture2D AimTexture()
+        {
+            const int size = 64;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            Color clear = new Color(1f, 1f, 1f, 0f);
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    int dx = x - 31;
+                    int dy = y - 31;
+                    int distance = dx * dx + dy * dy;
+                    bool ring = distance >= 22 * 22 && distance <= 28 * 28;
+                    texture.SetPixel(x, y, ring ? Color.white : clear);
+                }
+            }
+
+            texture.Apply();
+            return texture;
         }
 
         static GameObject CreatePanel(Transform parent, string name)
