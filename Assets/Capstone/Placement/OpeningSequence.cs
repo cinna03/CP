@@ -6,15 +6,14 @@ namespace Capstone.Placement
 {
     /// <summary>
     /// The first screen starts white. A pink ball drops, bounces to the top,
-    /// then turns each word pink. It then comes toward the camera until the page is pink.
+    /// then turns each word of one sentence pink. It then comes toward the camera until the page is pink.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
         static readonly string[][] Lines =
         {
-            new[] { "See", "it", "on", "your", "wall." },
-            new[] { "It", "keeps", "its", "real", "size." },
-            new[] { "Ask", "one", "thing." }
+            new[] { "See", "it", "on", "your", "wall", "at", "its" },
+            new[] { "real", "size,", "and", "ask", "one", "thing." }
         };
 
         static readonly Color Paper = Color.white;
@@ -209,10 +208,10 @@ namespace Capstone.Placement
                     width += widths[column];
                 }
 
-                const float gap = 28f;
+                const float gap = 22f;
                 width += gap * (line.Length - 1);
                 float x = -width * 0.5f;
-                float y = -150f - (row * 150f);
+                float y = -210f - (row * 108f);
                 for (int column = 0; column < line.Length; column++)
                 {
                     RectTransform rect = placed[column].rectTransform;

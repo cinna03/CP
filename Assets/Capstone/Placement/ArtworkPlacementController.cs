@@ -30,7 +30,7 @@ namespace Capstone.Placement
     /// No wall means a retry message and no invented size.
     /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
     /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
-    /// The app opens on white. A pink ball drops, bounces, turns each word pink, then fills the page. A tap skips it, then the phone opens on the camera. Move until a vertical wall is detected, then press Place.
+    /// The app opens on white. A pink ball drops, bounces, turns each word of one sentence pink, then fills the page. A tap skips it, then the phone opens on the camera. Move until a vertical wall is detected, then press Place.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
