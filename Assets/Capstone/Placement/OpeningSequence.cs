@@ -359,12 +359,7 @@ namespace Capstone.Placement
             if (!browsing || workIds == null || index < 0 || index >= workIds.Length)
                 return;
 
-            if (focusedWork != index)
-            {
-                FocusWork(index);
-                return;
-            }
-
+            FocusWork(index);
             chosenId = workIds[index];
             Finish();
         }
@@ -377,6 +372,9 @@ namespace Capstone.Placement
 
         void Deal(float step)
         {
+            if (browsing)
+                return;
+
             dealTime += step;
             float leave = Mathf.Clamp01(dealTime / 0.45f);
             orb.localScale = Vector3.one * Mathf.Lerp(1f, 0.12f, leave);
@@ -432,6 +430,7 @@ namespace Capstone.Placement
                 cards[i].gameObject.SetActive(false);
 
             sliding = false;
+            dealing = false;
             browsing = true;
             ShowWorks();
         }
@@ -441,21 +440,25 @@ namespace Capstone.Placement
             IReadOnlyList<Artwork> catalogue = SampleCatalogue.All;
             works = new RectTransform[catalogue.Count];
             workIds = new string[catalogue.Count];
+            Text heading = CreateWord(canvasRoot, cardFont, "Choose a work", 42);
+            heading.color = new Color(0.1f, 0.22f, 0.48f, 1f);
+            heading.rectTransform.anchoredPosition = new Vector2(0f, 620f);
+            heading.rectTransform.sizeDelta = new Vector2(800f, 70f);
             Vector2[] spots =
             {
-                new Vector2(150f, 180f),
-                new Vector2(-230f, 300f),
-                new Vector2(-190f, -250f),
-                new Vector2(40f, -380f),
-                new Vector2(250f, -80f)
+                new Vector2(120f, 20f),
+                new Vector2(-210f, 170f),
+                new Vector2(-150f, -250f),
+                new Vector2(190f, -280f),
+                new Vector2(200f, 250f)
             };
             Vector2[] sizes =
             {
-                new Vector2(470f, 680f),
-                new Vector2(400f, 460f),
-                new Vector2(430f, 280f),
-                new Vector2(360f, 300f),
-                new Vector2(320f, 260f)
+                new Vector2(440f, 560f),
+                new Vector2(360f, 400f),
+                new Vector2(380f, 250f),
+                new Vector2(340f, 260f),
+                new Vector2(300f, 230f)
             };
             for (int i = 0; i < catalogue.Count; i++)
             {
@@ -643,7 +646,7 @@ namespace Capstone.Placement
             rect.sizeDelta = size;
             rect.anchoredPosition = spot;
             Image face = host.AddComponent<Image>();
-            face.sprite = RoundedGradient(new Color(0.97f, 0.98f, 1f, 0.94f), new Color(0.9f, 0.94f, 1f, 0.88f));
+            face.sprite = RoundedGradient(Color.white, new Color(0.86f, 0.92f, 1f, 1f));
             face.raycastTarget = true;
             CardTouch touch = host.AddComponent<CardTouch>();
             touch.opening = this;
