@@ -5,8 +5,9 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The first screen after the app opens: two drawn stars, floating, with no words.
-    /// Pink and blue sit off the black outline. A tap leaves this screen and starts the session.
+    /// The first screen after the app opens: sketch stars with no words.
+    /// Each crayon layer and each ink line drifts on its own.
+    /// A tap leaves this screen and starts the session.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -17,7 +18,12 @@ namespace Capstone.Placement
 
         Action finished;
         float clock;
-        RectTransform body;
+        RectTransform[] layers;
+        Vector2[] homes;
+        float[] speeds;
+        float[] phases;
+        float[] spins;
+        float[] drifts;
 
         public static void Play(Font typeface, Action onFinished)
         {
@@ -45,23 +51,40 @@ namespace Capstone.Placement
             screenTap.targetGraphic = ground;
             screenTap.onClick.AddListener(Finish);
 
-            Image stars = CreateImage(
-                canvasObject.transform,
-                "Drawn stars",
-                Color.white,
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                Vector2.zero,
-                new Vector2(900f, 520f));
-            stars.sprite = DrawnStars();
-            stars.raycastTarget = false;
-            body = stars.rectTransform;
+            layers = new RectTransform[7];
+            homes = new Vector2[7];
+            speeds = new[] { 0.37f, 0.91f, 0.52f, 1.15f, 0.74f, 0.44f, 0.83f };
+            phases = new[] { 0.2f, 1.7f, 3.1f, 0.8f, 2.4f, 4.2f, 1.1f };
+            spins = new[] { 4f, 6f, 3.5f, 7f, 5f, 3f, 6.5f };
+            drifts = new[] { 16f, 22f, 14f, 20f, 11f, 18f, 15f };
+            homes[0] = new Vector2(-220f, -50f);
+            homes[1] = new Vector2(-160f, 30f);
+            homes[2] = new Vector2(170f, -50f);
+            homes[3] = new Vector2(240f, 30f);
+            homes[4] = new Vector2(-295f, 105f);
+            homes[5] = new Vector2(-195f, -15f);
+            homes[6] = new Vector2(205f, -10f);
+
+            layers[0] = Piece(canvasObject.transform, "Left pink", Crayon(155f, 60f, -8f, 3, Pink), homes[0]);
+            layers[1] = Piece(canvasObject.transform, "Left blue", Crayon(105f, 40f, 14f, 9, Blue), homes[1]);
+            layers[2] = Piece(canvasObject.transform, "Right pink", Crayon(155f, 60f, 2f, 5, Pink), homes[2]);
+            layers[3] = Piece(canvasObject.transform, "Right blue", Crayon(110f, 42f, 18f, 12, Blue), homes[3]);
+            layers[4] = Piece(canvasObject.transform, "Small ink", InkStar(58f, 22f, 16f, 7), homes[4]);
+            layers[5] = Piece(canvasObject.transform, "Left ink", InkStar(145f, 55f, -6f, 4), homes[5]);
+            layers[6] = Piece(canvasObject.transform, "Right ink", InkStar(145f, 55f, 0f, 8), homes[6]);
         }
 
         void Update()
         {
             clock += Time.deltaTime;
-            body.anchoredPosition = new Vector2(Mathf.Sin(clock * 0.45f) * 18f, Mathf.Sin(clock * 0.7f) * 28f);
+            for (int i = 0; i < layers.Length; i++)
+            {
+                float time = (clock * speeds[i]) + phases[i];
+                layers[i].anchoredPosition = homes[i] + new Vector2(
+                    Mathf.Sin(time) * drifts[i],
+                    Mathf.Cos(time * 0.67f) * drifts[i] * 0.85f);
+                layers[i].localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(time * 0.55f) * spins[i]);
+            }
         }
 
         void Finish()
@@ -71,6 +94,21 @@ namespace Capstone.Placement
             if (done != null)
                 done();
             Destroy(gameObject);
+        }
+
+        static RectTransform Piece(Transform parent, string name, Sprite sprite, Vector2 home)
+        {
+            Image image = CreateImage(
+                parent,
+                name,
+                Color.white,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                home,
+                new Vector2(sprite.rect.width, sprite.rect.height));
+            image.sprite = sprite;
+            image.raycastTarget = false;
+            return image.rectTransform;
         }
 
         static Image CreateImage(Transform parent, string name, Color color, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size)
@@ -88,32 +126,40 @@ namespace Capstone.Placement
             return image;
         }
 
-        static Sprite DrawnStars()
+        static Sprite Crayon(float outer, float inner, float rotation, int seed, Color color)
         {
-            const int width = 900;
-            const int height = 520;
-            Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            return DrawStar(outer, inner, rotation, seed, color, false);
+        }
+
+        static Sprite InkStar(float outer, float inner, float rotation, int seed)
+        {
+            return DrawStar(outer, inner, rotation, seed, Ink, true);
+        }
+
+        static Sprite DrawStar(float outer, float inner, float rotation, int seed, Color color, bool ink)
+        {
+            int size = Mathf.CeilToInt((outer + 36f) * 2f);
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
             texture.wrapMode = TextureWrapMode.Clamp;
             texture.filterMode = FilterMode.Bilinear;
             Color clear = new Color(1f, 1f, 1f, 0f);
-            for (int y = 0; y < height; y++)
+            for (int y = 0; y < size; y++)
             {
-                for (int x = 0; x < width; x++)
+                for (int x = 0; x < size; x++)
                     texture.SetPixel(x, y, clear);
             }
 
-            Fill(texture, Star(230f, 310f, 155f, 60f, -8f), Pink);
-            Fill(texture, Star(290f, 230f, 105f, 40f, 14f), Blue);
-            Fill(texture, Star(620f, 310f, 155f, 60f, 2f), Pink);
-            Fill(texture, Star(690f, 230f, 110f, 42f, 18f), Blue);
-            Outline(texture, Star(155f, 155f, 58f, 22f, 16f), 5f);
-            Outline(texture, Star(255f, 275f, 145f, 55f, -6f), 6f);
-            Outline(texture, Star(655f, 270f, 145f, 55f, 0f), 6f);
+            float centre = size * 0.5f;
+            Vector2[] shape = Wobble(Star(centre, centre, outer, inner, rotation, seed), seed);
+            if (ink)
+                Stroke(texture, shape, seed);
+            else
+                Shade(texture, shape, color, seed);
             texture.Apply();
-            return Sprite.Create(texture, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f));
+            return Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
         }
 
-        static Vector2[] Star(float centreX, float centreY, float outer, float inner, float rotationDegrees)
+        static Vector2[] Star(float centreX, float centreY, float outer, float inner, float rotationDegrees, int seed)
         {
             Vector2[] points = new Vector2[10];
             float rotation = rotationDegrees * Mathf.Deg2Rad;
@@ -121,6 +167,7 @@ namespace Capstone.Placement
             {
                 float angle = rotation - (Mathf.PI * 0.5f) + (i * Mathf.PI / 5f);
                 float radius = i % 2 == 0 ? outer : inner;
+                radius *= 0.86f + (Hash(i, seed, 1) * 0.28f);
                 points[i] = new Vector2(
                     centreX + (Mathf.Cos(angle) * radius),
                     centreY + (Mathf.Sin(angle) * radius));
@@ -129,33 +176,76 @@ namespace Capstone.Placement
             return points;
         }
 
-        static void Fill(Texture2D texture, Vector2[] points, Color color)
+        static Vector2[] Wobble(Vector2[] corners, int seed)
+        {
+            const int steps = 4;
+            Vector2[] points = new Vector2[corners.Length * steps];
+            int index = 0;
+            for (int i = 0; i < corners.Length; i++)
+            {
+                Vector2 start = corners[i];
+                Vector2 end = corners[(i + 1) % corners.Length];
+                Vector2 side = end - start;
+                float length = side.magnitude;
+                Vector2 normal = length < 0.001f ? Vector2.up : new Vector2(-side.y / length, side.x / length);
+                for (int step = 0; step < steps; step++)
+                {
+                    float along = step / (float)steps;
+                    Vector2 point = Vector2.Lerp(start, end, along);
+                    if (step > 0)
+                        point += normal * ((Hash(index, seed, 2) - 0.5f) * 18f);
+                    points[index] = point;
+                    index += 1;
+                }
+            }
+
+            return points;
+        }
+
+        static void Shade(Texture2D texture, Vector2[] points, Color color, int seed)
         {
             BoundsOf(points, out int minX, out int maxX, out int minY, out int maxY);
+            maxX = Mathf.Min(texture.width - 1, maxX);
+            maxY = Mathf.Min(texture.height - 1, maxY);
             for (int y = minY; y <= maxY; y++)
             {
                 for (int x = minX; x <= maxX; x++)
                 {
-                    if (Inside(x, y, points))
-                        texture.SetPixel(x, texture.height - 1 - y, color);
+                    if (!Inside(x, y, points))
+                        continue;
+
+                    float grain = Hash(x / 3, y / 3, seed);
+                    float streak = Mathf.Sin((x * 0.28f) + (y * 0.11f) + (seed * 0.7f));
+                    if (grain < 0.16f || streak < -0.72f)
+                        continue;
+
+                    Color crayon = Color.Lerp(color, Color.white, (grain - 0.35f) * 0.45f);
+                    crayon.a = 0.42f + (grain * 0.58f);
+                    texture.SetPixel(x, texture.height - 1 - y, crayon);
                 }
             }
         }
 
-        static void Outline(Texture2D texture, Vector2[] points, float thickness)
+        static void Stroke(Texture2D texture, Vector2[] points, int seed)
         {
             BoundsOf(points, out int minX, out int maxX, out int minY, out int maxY);
-            int pad = Mathf.CeilToInt(thickness) + 1;
-            minX = Mathf.Max(0, minX - pad);
-            maxX = Mathf.Min(texture.width - 1, maxX + pad);
-            minY = Mathf.Max(0, minY - pad);
-            maxY = Mathf.Min(texture.height - 1, maxY + pad);
+            minX = Mathf.Max(0, minX - 10);
+            maxX = Mathf.Min(texture.width - 1, maxX + 10);
+            minY = Mathf.Max(0, minY - 10);
+            maxY = Mathf.Min(texture.height - 1, maxY + 10);
             for (int y = minY; y <= maxY; y++)
             {
                 for (int x = minX; x <= maxX; x++)
                 {
-                    if (EdgeDistance(x, y, points) <= thickness)
-                        texture.SetPixel(x, texture.height - 1 - y, Ink);
+                    float width = 2.4f + (Hash(x / 5, y / 5, seed) * 5.2f);
+                    if (EdgeDistance(x, y, points) > width)
+                        continue;
+                    if (Hash(x / 8, y / 8, seed + 3) < 0.07f)
+                        continue;
+
+                    Color line = Ink;
+                    line.a = 0.72f + (Hash(x, y, seed) * 0.28f);
+                    texture.SetPixel(x, texture.height - 1 - y, line);
                 }
             }
         }
@@ -179,6 +269,9 @@ namespace Capstone.Placement
                 if (y > maxY)
                     maxY = y;
             }
+
+            minX = Mathf.Max(0, minX);
+            minY = Mathf.Max(0, minY);
         }
 
         static bool Inside(float x, float y, Vector2[] points)
@@ -218,6 +311,13 @@ namespace Capstone.Placement
             }
 
             return best;
+        }
+
+        static float Hash(int x, int y, int seed)
+        {
+            int value = (x * 374761393) + (y * 668265263) + (seed * 1442695041);
+            value = (value ^ (value >> 13)) * 1274126177;
+            return (value & 0x7fffffff) / 2147483647f;
         }
     }
 }
