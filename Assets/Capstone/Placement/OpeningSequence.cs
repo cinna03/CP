@@ -6,15 +6,15 @@ namespace Capstone.Placement
 {
     /// <summary>
     /// The first screen starts white. A pink ball drops, bounces to the top,
-    /// then turns each line pink. It then comes toward the camera until the page is pink.
+    /// then turns each word pink. It then comes toward the camera until the page is pink.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
-        static readonly string[] Lines =
+        static readonly string[][] Lines =
         {
-            "See it on your wall.",
-            "It keeps its real size.",
-            "Ask one thing."
+            new[] { "See", "it", "on", "your", "wall." },
+            new[] { "It", "keeps", "its", "real", "size." },
+            new[] { "Ask", "one", "thing." }
         };
 
         static readonly Color Paper = Color.white;
@@ -27,7 +27,10 @@ namespace Capstone.Placement
         RectTransform ball;
         Text[] words;
         float velocity;
+        float horizontalVelocity;
         int nextWord;
+        bool towardWords;
+        bool aimed;
         bool covering;
         float cover;
         bool done;
@@ -58,12 +61,7 @@ namespace Capstone.Placement
             screenTap.targetGraphic = ground;
             screenTap.onClick.AddListener(Finish);
 
-            words = new Text[Lines.Length];
-            for (int i = 0; i < Lines.Length; i++)
-            {
-                words[i] = CreateLine(canvasObject.transform, typeface, Lines[i], -80f - (i * 150f));
-                words[i].color = Color.white;
-            }
+            words = CreateWords(canvasObject.transform, typeface);
 
             Image ballImage = CreateImage(
                 canvasObject.transform,
@@ -94,47 +92,71 @@ namespace Capstone.Placement
             velocity -= Gravity * step;
             Vector2 position = ball.anchoredPosition;
             position.y += velocity * step;
+            if (aimed)
+                position.x += horizontalVelocity * step;
             ball.anchoredPosition = position;
             ball.localScale = Vector3.Lerp(ball.localScale, Vector3.one, 1f - Mathf.Exp(-10f * step));
 
-            if (nextWord == 0 && velocity < 0f && position.y <= Middle)
+            if (!towardWords)
             {
-                Kick(Middle, 1000f);
+                if (velocity < 0f && position.y <= Middle)
+                    Kick(0f, Middle, 1000f);
+                else if (velocity > 0f && position.y >= 980f)
+                    towardWords = true;
                 return;
             }
 
-            if (nextWord == 0 && velocity > 0f && position.y >= 980f)
+            if (!aimed && velocity <= 0f)
             {
-                nextWord = 1;
-                return;
+                Aim(nextWord);
+                aimed = true;
             }
 
-            int word = nextWord - 1;
-            if (word < 0 || word >= words.Length || velocity >= 0f)
+            if (!aimed || velocity >= 0f || nextWord >= words.Length)
                 return;
 
-            float target = words[word].rectTransform.anchoredPosition.y;
-            if (position.y > target + 28f)
+            float contact = words[nextWord].rectTransform.anchoredPosition.y + 58f;
+            if (position.y > contact)
                 return;
 
-            words[word].color = Pink;
-            if (word == words.Length - 1)
+            words[nextWord].color = Pink;
+            if (nextWord == words.Length - 1)
             {
                 covering = true;
                 cover = 0f;
                 return;
             }
 
-            Kick(target, 170f);
-            nextWord = word + 2;
+            nextWord++;
+            Kick(words[nextWord - 1].rectTransform.anchoredPosition.x, contact, 120f);
         }
 
-        void Kick(float height, float rise)
+        void Aim(int index)
         {
-            Vector2 position = ball.anchoredPosition;
-            position.y = height;
-            ball.anchoredPosition = position;
+            Vector2 word = words[index].rectTransform.anchoredPosition;
+            float contact = word.y + 58f;
+            float drop = ball.anchoredPosition.y - contact;
+            if (drop < 12f)
+            {
+                horizontalVelocity = 0f;
+                return;
+            }
+
+            float a = 0.5f * Gravity;
+            float b = -velocity;
+            float disc = (b * b) + (2f * Gravity * drop);
+            float time = (-b + Mathf.Sqrt(Mathf.Max(0f, disc))) / (2f * a);
+            if (time < 0.05f)
+                time = 0.05f;
+            horizontalVelocity = (word.x - ball.anchoredPosition.x) / time;
+        }
+
+        void Kick(float x, float height, float rise)
+        {
+            ball.anchoredPosition = new Vector2(x, height);
             velocity = Mathf.Sqrt(2f * Gravity * rise);
+            horizontalVelocity = 0f;
+            aimed = false;
             ball.localScale = new Vector3(1.28f, 0.72f, 1f);
         }
 
@@ -164,24 +186,65 @@ namespace Capstone.Placement
             Destroy(gameObject);
         }
 
-        static Text CreateLine(Transform parent, Font typeface, string message, float height)
+        static Text[] CreateWords(Transform parent, Font typeface)
+        {
+            int count = 0;
+            for (int row = 0; row < Lines.Length; row++)
+                count += Lines[row].Length;
+
+            Text[] words = new Text[count];
+            int index = 0;
+            for (int row = 0; row < Lines.Length; row++)
+            {
+                string[] line = Lines[row];
+                float width = 0f;
+                Text[] placed = new Text[line.Length];
+                float[] widths = new float[line.Length];
+                for (int column = 0; column < line.Length; column++)
+                {
+                    placed[column] = CreateWord(parent, typeface, line[column]);
+                    widths[column] = placed[column].preferredWidth;
+                    if (widths[column] < 8f)
+                        widths[column] = line[column].Length * 34f;
+                    width += widths[column];
+                }
+
+                const float gap = 28f;
+                width += gap * (line.Length - 1);
+                float x = -width * 0.5f;
+                float y = -150f - (row * 150f);
+                for (int column = 0; column < line.Length; column++)
+                {
+                    RectTransform rect = placed[column].rectTransform;
+                    rect.sizeDelta = new Vector2(widths[column] + 8f, 80f);
+                    rect.anchoredPosition = new Vector2(x + (widths[column] * 0.5f), y);
+                    x += widths[column] + gap;
+                    words[index] = placed[column];
+                    index++;
+                }
+            }
+
+            return words;
+        }
+
+        static Text CreateWord(Transform parent, Font typeface, string message)
         {
             GameObject host = new GameObject(message);
             host.transform.SetParent(parent, false);
             Text text = host.AddComponent<Text>();
             text.font = typeface;
-            text.fontSize = 64;
+            text.fontSize = 58;
             text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
             text.text = message;
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
             RectTransform rect = text.rectTransform;
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(900f, 120f);
-            rect.anchoredPosition = new Vector2(0f, height);
+            rect.sizeDelta = new Vector2(400f, 80f);
             return text;
         }
 
