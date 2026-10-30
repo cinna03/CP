@@ -5,28 +5,40 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The first screen is a blue field and one short line. A circle opens it to white,
-    /// then a glass body floats until a tap starts the session.
+    /// The first screen is white. A ball bounces on each word and turns that word pink.
+    /// The ball then becomes a glass body, which floats until a tap starts the session.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
+        static readonly string[] Line =
+        {
+            "See", "it", "on", "your", "wall", "at", "its", "real", "size,", "and", "ask", "one", "thing."
+        };
+
         static readonly Color Paper = Color.white;
-        static readonly Color Blue = new Color(0.09f, 0.38f, 0.96f, 1f);
-        static readonly Color BlueDeep = new Color(0.04f, 0.22f, 0.86f, 1f);
-        const float CircleSize = 150f;
+        static readonly Color Pink = new Color(0.93f, 0.33f, 0.58f, 1f);
+        static readonly Color DeepPink = new Color(0.72f, 0.14f, 0.38f, 1f);
+        const float Gravity = 10800f;
+        const float Centre = 0f;
+        const float BallSize = 58f;
 
         Action finished;
-        Image field;
-        Image circle;
-        Image pillImage;
-        RectTransform pill;
-        Text caption;
+        Image shadow;
+        RectTransform ball;
         RectTransform orb;
         RectTransform ribbonA;
         RectTransform ribbonB;
-        Image shadow;
-        int phase;
-        float phaseTime;
+        Text[] words;
+        float velocity;
+        float horizontalVelocity;
+        float apex;
+        float hop;
+        int nextWord;
+        bool risen;
+        bool towardWords;
+        bool aimed;
+        bool resting;
+        float restTime;
         bool done;
 
         public static void Play(Font typeface, Action onFinished)
@@ -55,32 +67,33 @@ namespace Capstone.Placement
             screenTap.targetGraphic = ground;
             screenTap.onClick.AddListener(Finish);
 
-            field = CreateImage(canvasObject.transform, "Blue field", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            field.sprite = VerticalGradient(new Color(0.22f, 0.52f, 1f, 1f), BlueDeep);
-            field.raycastTarget = false;
-
-            circle = CreateImage(
-                canvasObject.transform,
-                "Blue circle",
-                Blue,
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                Vector2.zero,
-                new Vector2(CircleSize, CircleSize));
-            circle.sprite = Disc(Blue, false);
-            circle.raycastTarget = false;
-            circle.gameObject.SetActive(false);
+            float half = VisibleHalfHeight(canvas);
+            apex = half * 0.9f;
+            hop = half * 0.42f;
+            words = CreateWords(canvasObject.transform, typeface);
 
             shadow = CreateImage(
                 canvasObject.transform,
                 "Shadow",
-                new Color(0.55f, 0.62f, 0.78f, 0f),
+                new Color(0.55f, 0.25f, 0.4f, 0.16f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
-                new Vector2(0f, -280f),
-                new Vector2(420f, 90f));
+                new Vector2(0f, -18f),
+                new Vector2(70f, 18f));
             shadow.sprite = SoftEllipse();
             shadow.raycastTarget = false;
+
+            Image ballImage = CreateImage(
+                canvasObject.transform,
+                "Ball",
+                Color.white,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0f, half + BallSize),
+                new Vector2(BallSize, BallSize));
+            ballImage.sprite = BallSprite();
+            ballImage.raycastTarget = false;
+            ball = ballImage.rectTransform;
 
             GameObject orbObject = new GameObject("Glass body", typeof(RectTransform));
             orbObject.transform.SetParent(canvasObject.transform, false);
@@ -90,29 +103,14 @@ namespace Capstone.Placement
             orb.pivot = new Vector2(0.5f, 0.5f);
             orb.sizeDelta = new Vector2(640f, 640f);
             orb.anchoredPosition = new Vector2(0f, 80f);
-            orb.localScale = Vector3.one * 0.15f;
-
-            ribbonA = Ribbon(orb, "Ribbon", 640f, 0);
-            ribbonB = Ribbon(orb, "Inner ribbon", 640f, 1);
+            orb.localScale = Vector3.one * 0.1f;
+            ribbonA = Ribbon(orb, "Ribbon", 0);
+            ribbonB = Ribbon(orb, "Inner ribbon", 1);
             Image glass = CreateImage(orb, "Glass", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             glass.sprite = GlassShell();
             glass.raycastTarget = false;
             orb.gameObject.SetActive(false);
-
-            pillImage = CreateImage(
-                canvasObject.transform,
-                "Pill",
-                Color.white,
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0f, 36f),
-                new Vector2(78f, 34f));
-            pillImage.sprite = Capsule();
-            pillImage.raycastTarget = false;
-            pill = pillImage.rectTransform;
-
-            caption = CreateCaption(canvasObject.transform, typeface, "See it on your wall.");
-            caption.color = new Color(1f, 1f, 1f, 0f);
+            velocity = 0f;
         }
 
         void Update()
@@ -120,84 +118,135 @@ namespace Capstone.Placement
             if (done)
                 return;
 
-            phaseTime += Mathf.Min(Time.deltaTime, 0.033f);
-            if (phase == 0)
-                HoldCard();
-            else if (phase == 1)
-                OpenCircle();
-            else if (phase == 2)
-                HoldLine();
-            else
-                FloatBody();
-        }
+            float step = Mathf.Min(Time.deltaTime, 0.033f);
+            if (resting)
+            {
+                Rest(step);
+                return;
+            }
 
-        void HoldCard()
-        {
-            float bob = Mathf.Sin(phaseTime * 2.4f) * 12f;
-            pill.anchoredPosition = new Vector2(0f, 48f + bob);
-            caption.color = new Color(1f, 1f, 1f, Mathf.Clamp01((phaseTime - 0.15f) / 0.3f));
-            if (phaseTime < 1.45f)
+            velocity -= Gravity * step;
+            Vector2 position = ball.anchoredPosition;
+            position.y += velocity * step;
+            if (aimed)
+                position.x += horizontalVelocity * step;
+            ball.anchoredPosition = position;
+            ball.localScale = Vector3.Lerp(ball.localScale, Vector3.one, 1f - Mathf.Exp(-28f * step));
+            PlaceBounceShadow();
+
+            if (!towardWords)
+            {
+                if (!risen && velocity < 0f && position.y <= Centre)
+                {
+                    Kick(0f, Centre, apex);
+                    risen = true;
+                    return;
+                }
+
+                if (!risen || velocity > 0f)
+                    return;
+
+                towardWords = true;
+            }
+
+            if (!aimed && velocity <= 0f)
+            {
+                Aim(nextWord);
+                aimed = true;
+            }
+
+            if (!aimed || velocity >= 0f || nextWord >= words.Length)
                 return;
 
-            phase = 1;
-            phaseTime = 0f;
-            field.gameObject.SetActive(false);
-            pill.gameObject.SetActive(false);
-            caption.color = new Color(1f, 1f, 1f, 0f);
-            circle.gameObject.SetActive(true);
-            circle.rectTransform.localScale = Vector3.one * 18f;
-        }
-
-        void OpenCircle()
-        {
-            float t = Mathf.Clamp01(phaseTime / 0.58f);
-            float scale = Mathf.Lerp(18f, 0.12f, t * t);
-            circle.rectTransform.localScale = new Vector3(scale, scale, 1f);
-            if (t < 1f)
+            if (position.y > Centre)
                 return;
 
-            phase = 2;
-            phaseTime = 0f;
-            circle.gameObject.SetActive(false);
-            pill.gameObject.SetActive(true);
-            pill.sizeDelta = new Vector2(64f, 28f);
-            pillImage.color = Blue;
-            caption.text = "It keeps its real size.";
-            caption.color = new Color(Blue.r, Blue.g, Blue.b, 0f);
-        }
-
-        void HoldLine()
-        {
-            float bob = Mathf.Sin(phaseTime * 2.4f) * 8f;
-            pill.anchoredPosition = new Vector2(0f, 36f + bob);
-            float fade = Mathf.Clamp01(phaseTime / 0.28f);
-            caption.color = new Color(Blue.r, Blue.g, Blue.b, fade);
-            if (phaseTime < 1.25f)
+            words[nextWord].color = Pink;
+            if (nextWord == words.Length - 1)
+            {
+                resting = true;
+                restTime = 0f;
                 return;
+            }
 
-            phase = 3;
-            phaseTime = 0f;
-            pill.gameObject.SetActive(false);
-            orb.gameObject.SetActive(true);
+            float landedX = words[nextWord].rectTransform.anchoredPosition.x;
+            nextWord++;
+            Kick(landedX, Centre, hop);
         }
 
-        void FloatBody()
+        void Aim(int index)
         {
-            float arrive = Mathf.Clamp01(phaseTime / 0.72f);
+            float drop = ball.anchoredPosition.y - Centre;
+            float wordX = words[index].rectTransform.anchoredPosition.x;
+            if (drop < 12f)
+            {
+                horizontalVelocity = 0f;
+                return;
+            }
+
+            float a = 0.5f * Gravity;
+            float b = -velocity;
+            float disc = (b * b) + (2f * Gravity * drop);
+            float time = (-b + Mathf.Sqrt(Mathf.Max(0f, disc))) / (2f * a);
+            if (time < 0.04f)
+                time = 0.04f;
+            horizontalVelocity = (wordX - ball.anchoredPosition.x) / time;
+        }
+
+        void Kick(float x, float height, float rise)
+        {
+            ball.anchoredPosition = new Vector2(x, height);
+            velocity = Mathf.Sqrt(2f * Gravity * rise);
+            horizontalVelocity = 0f;
+            aimed = false;
+            ball.localScale = new Vector3(1.38f, 0.62f, 1f);
+        }
+
+        void PlaceBounceShadow()
+        {
+            float height = Mathf.Max(0f, ball.anchoredPosition.y - Centre);
+            float travel = Mathf.Clamp01(height / apex);
+            shadow.rectTransform.anchoredPosition = new Vector2(ball.anchoredPosition.x, -16f);
+            shadow.rectTransform.sizeDelta = new Vector2(70f, 18f);
+            float width = Mathf.Lerp(1.1f, 0.4f, travel);
+            shadow.rectTransform.localScale = new Vector3(width, Mathf.Lerp(1f, 0.55f, travel), 1f);
+            Color color = shadow.color;
+            color.a = Mathf.Lerp(0.22f, 0.04f, travel);
+            shadow.color = color;
+        }
+
+        void Rest(float step)
+        {
+            restTime += step;
+            float arrive = Mathf.Clamp01(restTime / 0.7f);
             float eased = 1f - ((1f - arrive) * (1f - arrive));
-            float breathe = 1f + (Mathf.Sin(phaseTime * 1.4f) * 0.018f);
-            orb.localScale = Vector3.one * Mathf.Lerp(0.18f, 1f, eased) * breathe;
-            float lift = Mathf.Sin(phaseTime * 1.15f) * 22f;
-            orb.anchoredPosition = new Vector2(Mathf.Sin(phaseTime * 0.7f) * 10f, 90f + lift);
-            ribbonA.localRotation = Quaternion.Euler(0f, 0f, phaseTime * 26f);
-            ribbonB.localRotation = Quaternion.Euler(0f, 0f, -phaseTime * 17f);
-            caption.color = new Color(Blue.r, Blue.g, Blue.b, 1f - eased);
+            if (!orb.gameObject.activeSelf)
+            {
+                orb.gameObject.SetActive(true);
+                orb.anchoredPosition = ball.anchoredPosition;
+                ball.gameObject.SetActive(false);
+            }
+
+            float breathe = 1f + (Mathf.Sin(restTime * 1.4f) * 0.018f);
+            orb.localScale = Vector3.one * Mathf.Lerp(0.1f, 1f, eased) * breathe;
+            float lift = Mathf.Sin(restTime * 1.15f) * 22f;
+            Vector2 home = new Vector2(Mathf.Sin(restTime * 0.7f) * 10f, 90f + lift);
+            orb.anchoredPosition = Vector2.Lerp(ball.anchoredPosition, home, eased);
+            ribbonA.localRotation = Quaternion.Euler(0f, 0f, restTime * 26f);
+            ribbonB.localRotation = Quaternion.Euler(0f, 0f, -restTime * 17f);
+            for (int i = 0; i < words.Length; i++)
+            {
+                Color color = words[i].color;
+                color.a = 1f - eased;
+                words[i].color = color;
+            }
 
             float height = Mathf.InverseLerp(-22f, 22f, lift);
+            shadow.rectTransform.sizeDelta = new Vector2(420f, 90f);
             shadow.rectTransform.anchoredPosition = new Vector2(orb.anchoredPosition.x, -250f);
-            shadow.rectTransform.localScale = new Vector3(Mathf.Lerp(1.05f, 0.72f, height), 1f, 1f);
+            shadow.rectTransform.localScale = new Vector3(Mathf.Lerp(0.3f, Mathf.Lerp(1.05f, 0.72f, height), eased), 1f, 1f);
             Color shade = shadow.color;
-            shade.a = Mathf.Lerp(0.05f, 0.2f, eased) * Mathf.Lerp(1f, 0.55f, height);
+            shade.a = Mathf.Lerp(0.08f, 0.18f, eased) * Mathf.Lerp(1f, 0.55f, height);
             shadow.color = shade;
         }
 
@@ -214,40 +263,93 @@ namespace Capstone.Placement
             Destroy(gameObject);
         }
 
-        static RectTransform Ribbon(Transform parent, string name, float size, int band)
+        static float VisibleHalfHeight(Canvas canvas)
         {
-            Image image = CreateImage(
-                parent,
-                name,
-                Color.white,
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                Vector2.zero,
-                new Vector2(size, size));
-            image.sprite = GlassRibbon(band);
-            image.raycastTarget = false;
-            return image.rectTransform;
+            Canvas.ForceUpdateCanvases();
+            float scale = canvas.scaleFactor;
+            if (scale < 0.01f)
+                scale = 1f;
+
+            float height = canvas.pixelRect.height / scale;
+            if (height < 400f)
+                height = 1920f;
+            return height * 0.5f;
         }
 
-        static Text CreateCaption(Transform parent, Font typeface, string message)
+        static Text[] CreateWords(Transform parent, Font typeface)
         {
-            GameObject host = new GameObject("Line");
+            const float maxWidth = 980f;
+            int fontSize = 46;
+            float gap = 16f;
+            Text[] placed = new Text[Line.Length];
+            for (int i = 0; i < Line.Length; i++)
+                placed[i] = CreateWord(parent, typeface, Line[i], fontSize);
+
+            float[] widths = new float[Line.Length];
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                float width = gap * (Line.Length - 1);
+                for (int i = 0; i < Line.Length; i++)
+                {
+                    placed[i].fontSize = fontSize;
+                    widths[i] = placed[i].preferredWidth;
+                    if (widths[i] < 8f)
+                        widths[i] = Line[i].Length * fontSize * 0.56f;
+                    width += widths[i];
+                }
+
+                if (width <= maxWidth || fontSize <= 30)
+                    break;
+
+                if (gap > 10f)
+                    gap -= 2f;
+                else
+                    fontSize -= 2;
+            }
+
+            float total = gap * (Line.Length - 1);
+            for (int i = 0; i < Line.Length; i++)
+                total += widths[i];
+
+            float x = -total * 0.5f;
+            for (int i = 0; i < Line.Length; i++)
+            {
+                RectTransform rect = placed[i].rectTransform;
+                rect.sizeDelta = new Vector2(widths[i] + 4f, fontSize + 18f);
+                rect.anchoredPosition = new Vector2(x + (widths[i] * 0.5f), -42f);
+                x += widths[i] + gap;
+            }
+
+            return placed;
+        }
+
+        static Text CreateWord(Transform parent, Font typeface, string message, int fontSize)
+        {
+            GameObject host = new GameObject(message);
             host.transform.SetParent(parent, false);
             Text text = host.AddComponent<Text>();
             text.font = typeface;
-            text.fontSize = 34;
+            text.fontSize = fontSize;
             text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
             text.text = message;
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
             RectTransform rect = text.rectTransform;
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(760f, 80f);
-            rect.anchoredPosition = new Vector2(0f, -36f);
+            rect.sizeDelta = new Vector2(240f, 72f);
             return text;
+        }
+
+        static RectTransform Ribbon(Transform parent, string name, int band)
+        {
+            Image image = CreateImage(parent, name, Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            image.sprite = GlassRibbon(band);
+            image.raycastTarget = false;
+            return image.rectTransform;
         }
 
         static Image CreateImage(Transform parent, string name, Color color, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size)
@@ -265,72 +367,42 @@ namespace Capstone.Placement
             return image;
         }
 
-        static Sprite VerticalGradient(Color top, Color bottom)
-        {
-            Texture2D texture = new Texture2D(4, 64, TextureFormat.RGBA32, false);
-            texture.wrapMode = TextureWrapMode.Clamp;
-            texture.filterMode = FilterMode.Bilinear;
-            for (int y = 0; y < 64; y++)
-            {
-                Color color = Color.Lerp(bottom, top, y / 63f);
-                for (int x = 0; x < 4; x++)
-                    texture.SetPixel(x, y, color);
-            }
-
-            texture.Apply();
-            return Sprite.Create(texture, new Rect(0f, 0f, 4f, 64f), new Vector2(0.5f, 0.5f));
-        }
-
-        static Sprite Disc(Color color, bool soft)
+        static Sprite BallSprite()
         {
             const int size = 128;
             Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
             texture.wrapMode = TextureWrapMode.Clamp;
             texture.filterMode = FilterMode.Bilinear;
             float centre = (size - 1) * 0.5f;
-            float radius = centre - 1f;
+            float radius = centre - 1.5f;
             for (int y = 0; y < size; y++)
             {
                 for (int x = 0; x < size; x++)
                 {
-                    float distance = Mathf.Sqrt(((x - centre) * (x - centre)) + ((y - centre) * (y - centre)));
-                    float edge = Mathf.Clamp01((radius + 1.2f - distance) / (soft ? 8f : 2.2f));
-                    Color pixel = color;
-                    pixel.a = edge;
-                    texture.SetPixel(x, y, pixel);
+                    float dx = x - centre;
+                    float dy = y - centre;
+                    float distance = Mathf.Sqrt((dx * dx) + (dy * dy));
+                    float edge = Mathf.Clamp01((radius + 1.4f - distance) / 2.4f);
+                    if (edge <= 0f)
+                    {
+                        texture.SetPixel(x, y, new Color(1f, 1f, 1f, 0f));
+                        continue;
+                    }
+
+                    float nx = dx / radius;
+                    float ny = dy / radius;
+                    float light = Mathf.Clamp01(0.4f + (ny * 0.36f) - (nx * 0.16f));
+                    float highlight = Mathf.Clamp01(1f - (Mathf.Sqrt(((nx + 0.28f) * (nx + 0.28f)) + ((ny - 0.34f) * (ny - 0.34f))) / 0.42f));
+                    highlight = highlight * highlight;
+                    Color color = Color.Lerp(DeepPink, Pink, light);
+                    color = Color.Lerp(color, Color.white, highlight * 0.9f);
+                    color.a = edge;
+                    texture.SetPixel(x, y, color);
                 }
             }
 
             texture.Apply();
             return Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
-        }
-
-        static Sprite Capsule()
-        {
-            const int width = 96;
-            const int height = 42;
-            Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
-            texture.wrapMode = TextureWrapMode.Clamp;
-            texture.filterMode = FilterMode.Bilinear;
-            float radius = (height - 1) * 0.5f;
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    float dx = 0f;
-                    if (x < radius)
-                        dx = radius - x;
-                    else if (x > width - 1 - radius)
-                        dx = x - (width - 1 - radius);
-                    float dy = y - radius;
-                    float distance = Mathf.Sqrt((dx * dx) + (dy * dy));
-                    float edge = Mathf.Clamp01((radius + 0.8f - distance) / 1.8f);
-                    texture.SetPixel(x, y, new Color(1f, 1f, 1f, edge));
-                }
-            }
-
-            texture.Apply();
-            return Sprite.Create(texture, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f));
         }
 
         static Sprite GlassShell()
