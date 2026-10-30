@@ -5,29 +5,35 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The first screen starts white. A pink ball drops, bounces to the top,
-    /// then turns each word of one sentence pink. It then comes toward the camera until the page is pink.
+    /// The first screen starts white. A pink ball drops to the centre of the canvas,
+    /// bounces high, then turns each word of one centred line pink.
+    /// It then comes toward the camera until the page is pink.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
-        static readonly string[][] Lines =
+        static readonly string[] Line =
         {
-            new[] { "See", "it", "on", "your", "wall", "at", "its" },
-            new[] { "real", "size,", "and", "ask", "one", "thing." }
+            "See", "it", "on", "your", "wall", "at", "its", "real", "size,", "and", "ask", "one", "thing."
         };
 
         static readonly Color Paper = Color.white;
         static readonly Color Pink = new Color(0.93f, 0.33f, 0.58f, 1f);
-        const float Gravity = 3400f;
-        const float Middle = 0f;
+        static readonly Color DeepPink = new Color(0.72f, 0.14f, 0.38f, 1f);
+        const float Gravity = 10800f;
+        const float Centre = 0f;
+        const float BallSize = 58f;
 
         Action finished;
         Image ground;
+        Image shadow;
         RectTransform ball;
         Text[] words;
         float velocity;
         float horizontalVelocity;
+        float apex;
+        float hop;
         int nextWord;
+        bool risen;
         bool towardWords;
         bool aimed;
         bool covering;
@@ -60,7 +66,21 @@ namespace Capstone.Placement
             screenTap.targetGraphic = ground;
             screenTap.onClick.AddListener(Finish);
 
+            float half = VisibleHalfHeight(canvas);
+            apex = half * 0.9f;
+            hop = half * 0.48f;
             words = CreateWords(canvasObject.transform, typeface);
+
+            shadow = CreateImage(
+                canvasObject.transform,
+                "Shadow",
+                new Color(0.45f, 0.18f, 0.28f, 0.16f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0f, -8f),
+                new Vector2(54f, 16f));
+            shadow.sprite = ShadowSprite();
+            shadow.raycastTarget = false;
 
             Image ballImage = CreateImage(
                 canvasObject.transform,
@@ -68,8 +88,8 @@ namespace Capstone.Placement
                 Color.white,
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
-                new Vector2(0f, 1100f),
-                new Vector2(78f, 78f));
+                new Vector2(0f, half + BallSize),
+                new Vector2(BallSize, BallSize));
             ballImage.sprite = BallSprite();
             ballImage.raycastTarget = false;
             ball = ballImage.rectTransform;
@@ -81,7 +101,7 @@ namespace Capstone.Placement
             if (done)
                 return;
 
-            float step = Time.deltaTime;
+            float step = Mathf.Min(Time.deltaTime, 0.033f);
             if (covering)
             {
                 Cover(step);
@@ -94,15 +114,22 @@ namespace Capstone.Placement
             if (aimed)
                 position.x += horizontalVelocity * step;
             ball.anchoredPosition = position;
-            ball.localScale = Vector3.Lerp(ball.localScale, Vector3.one, 1f - Mathf.Exp(-10f * step));
+            ball.localScale = Vector3.Lerp(ball.localScale, Vector3.one, 1f - Mathf.Exp(-28f * step));
+            PlaceShadow();
 
             if (!towardWords)
             {
-                if (velocity < 0f && position.y <= Middle)
-                    Kick(0f, Middle, 1000f);
-                else if (velocity > 0f && position.y >= 980f)
-                    towardWords = true;
-                return;
+                if (!risen && velocity < 0f && position.y <= Centre)
+                {
+                    Kick(0f, Centre, apex);
+                    risen = true;
+                    return;
+                }
+
+                if (!risen || velocity > 0f)
+                    return;
+
+                towardWords = true;
             }
 
             if (!aimed && velocity <= 0f)
@@ -114,8 +141,7 @@ namespace Capstone.Placement
             if (!aimed || velocity >= 0f || nextWord >= words.Length)
                 return;
 
-            float contact = words[nextWord].rectTransform.anchoredPosition.y + 58f;
-            if (position.y > contact)
+            if (position.y > Centre)
                 return;
 
             words[nextWord].color = Pink;
@@ -126,15 +152,15 @@ namespace Capstone.Placement
                 return;
             }
 
+            float landedX = words[nextWord].rectTransform.anchoredPosition.x;
             nextWord++;
-            Kick(words[nextWord - 1].rectTransform.anchoredPosition.x, contact, 120f);
+            Kick(landedX, Centre, hop);
         }
 
         void Aim(int index)
         {
-            Vector2 word = words[index].rectTransform.anchoredPosition;
-            float contact = word.y + 58f;
-            float drop = ball.anchoredPosition.y - contact;
+            float drop = ball.anchoredPosition.y - Centre;
+            float wordX = words[index].rectTransform.anchoredPosition.x;
             if (drop < 12f)
             {
                 horizontalVelocity = 0f;
@@ -145,9 +171,9 @@ namespace Capstone.Placement
             float b = -velocity;
             float disc = (b * b) + (2f * Gravity * drop);
             float time = (-b + Mathf.Sqrt(Mathf.Max(0f, disc))) / (2f * a);
-            if (time < 0.05f)
-                time = 0.05f;
-            horizontalVelocity = (word.x - ball.anchoredPosition.x) / time;
+            if (time < 0.04f)
+                time = 0.04f;
+            horizontalVelocity = (wordX - ball.anchoredPosition.x) / time;
         }
 
         void Kick(float x, float height, float rise)
@@ -156,18 +182,33 @@ namespace Capstone.Placement
             velocity = Mathf.Sqrt(2f * Gravity * rise);
             horizontalVelocity = 0f;
             aimed = false;
-            ball.localScale = new Vector3(1.28f, 0.72f, 1f);
+            ball.localScale = new Vector3(1.38f, 0.62f, 1f);
+        }
+
+        void PlaceShadow()
+        {
+            float height = Mathf.Max(0f, ball.anchoredPosition.y - Centre);
+            float travel = Mathf.Clamp01(height / apex);
+            float width = Mathf.Lerp(1.15f, 0.42f, travel);
+            shadow.rectTransform.anchoredPosition = new Vector2(ball.anchoredPosition.x, -10f);
+            shadow.rectTransform.localScale = new Vector3(width, Mathf.Lerp(1f, 0.55f, travel), 1f);
+            Color color = shadow.color;
+            color.a = Mathf.Lerp(0.2f, 0.04f, travel);
+            shadow.color = color;
         }
 
         void Cover(float step)
         {
             cover += step;
-            float rush = Mathf.Clamp01(cover / 0.85f);
+            float rush = Mathf.Clamp01(cover / 0.48f);
             rush = rush * rush;
-            ball.anchoredPosition = Vector2.Lerp(ball.anchoredPosition, Vector2.zero, 1f - Mathf.Exp(-6f * step));
-            float scale = Mathf.Lerp(1f, 46f, rush);
+            ball.anchoredPosition = Vector2.Lerp(ball.anchoredPosition, Vector2.zero, 1f - Mathf.Exp(-10f * step));
+            float scale = Mathf.Lerp(1f, 48f, rush);
             ball.localScale = new Vector3(scale, scale, 1f);
             ground.color = Color.Lerp(Paper, Pink, rush);
+            Color shade = shadow.color;
+            shade.a = Mathf.Lerp(shade.a, 0f, rush);
+            shadow.color = shade;
             if (rush >= 1f)
                 Finish();
         }
@@ -185,54 +226,74 @@ namespace Capstone.Placement
             Destroy(gameObject);
         }
 
-        static Text[] CreateWords(Transform parent, Font typeface)
+        static float VisibleHalfHeight(Canvas canvas)
         {
-            int count = 0;
-            for (int row = 0; row < Lines.Length; row++)
-                count += Lines[row].Length;
+            Canvas.ForceUpdateCanvases();
+            float scale = canvas.scaleFactor;
+            if (scale < 0.01f)
+                scale = 1f;
 
-            Text[] words = new Text[count];
-            int index = 0;
-            for (int row = 0; row < Lines.Length; row++)
-            {
-                string[] line = Lines[row];
-                float width = 0f;
-                Text[] placed = new Text[line.Length];
-                float[] widths = new float[line.Length];
-                for (int column = 0; column < line.Length; column++)
-                {
-                    placed[column] = CreateWord(parent, typeface, line[column]);
-                    widths[column] = placed[column].preferredWidth;
-                    if (widths[column] < 8f)
-                        widths[column] = line[column].Length * 34f;
-                    width += widths[column];
-                }
-
-                const float gap = 22f;
-                width += gap * (line.Length - 1);
-                float x = -width * 0.5f;
-                float y = -210f - (row * 108f);
-                for (int column = 0; column < line.Length; column++)
-                {
-                    RectTransform rect = placed[column].rectTransform;
-                    rect.sizeDelta = new Vector2(widths[column] + 8f, 80f);
-                    rect.anchoredPosition = new Vector2(x + (widths[column] * 0.5f), y);
-                    x += widths[column] + gap;
-                    words[index] = placed[column];
-                    index++;
-                }
-            }
-
-            return words;
+            float height = canvas.pixelRect.height / scale;
+            if (height < 400f)
+                height = 1920f;
+            return height * 0.5f;
         }
 
-        static Text CreateWord(Transform parent, Font typeface, string message)
+        static Text[] CreateWords(Transform parent, Font typeface)
+        {
+            const float maxWidth = 980f;
+            int fontSize = 46;
+            float gap = 16f;
+            Text[] placed = new Text[Line.Length];
+            for (int i = 0; i < Line.Length; i++)
+                placed[i] = CreateWord(parent, typeface, Line[i], fontSize);
+
+            float[] widths = new float[Line.Length];
+            for (int attempt = 0; attempt < 20; attempt++)
+            {
+                float width = gap * (Line.Length - 1);
+                for (int i = 0; i < Line.Length; i++)
+                {
+                    placed[i].fontSize = fontSize;
+                    widths[i] = placed[i].preferredWidth;
+                    if (widths[i] < 8f)
+                        widths[i] = Line[i].Length * fontSize * 0.56f;
+                    width += widths[i];
+                }
+
+                if (width <= maxWidth || fontSize <= 30)
+                    break;
+
+                if (gap > 10f)
+                    gap -= 2f;
+                else
+                    fontSize -= 2;
+            }
+
+            float total = gap * (Line.Length - 1);
+            for (int i = 0; i < Line.Length; i++)
+                total += widths[i];
+
+            float x = -total * 0.5f;
+            float y = -40f;
+            for (int i = 0; i < Line.Length; i++)
+            {
+                RectTransform rect = placed[i].rectTransform;
+                rect.sizeDelta = new Vector2(widths[i] + 4f, fontSize + 18f);
+                rect.anchoredPosition = new Vector2(x + (widths[i] * 0.5f), y);
+                x += widths[i] + gap;
+            }
+
+            return placed;
+        }
+
+        static Text CreateWord(Transform parent, Font typeface, string message, int fontSize)
         {
             GameObject host = new GameObject(message);
             host.transform.SetParent(parent, false);
             Text text = host.AddComponent<Text>();
             text.font = typeface;
-            text.fontSize = 58;
+            text.fontSize = fontSize;
             text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
@@ -243,7 +304,7 @@ namespace Capstone.Placement
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(400f, 80f);
+            rect.sizeDelta = new Vector2(240f, 72f);
             return text;
         }
 
@@ -264,27 +325,33 @@ namespace Capstone.Placement
 
         static Sprite BallSprite()
         {
-            const int size = 64;
+            const int size = 128;
             Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
             texture.wrapMode = TextureWrapMode.Clamp;
             texture.filterMode = FilterMode.Bilinear;
             float centre = (size - 1) * 0.5f;
+            float radius = centre - 1.5f;
             for (int y = 0; y < size; y++)
             {
                 for (int x = 0; x < size; x++)
                 {
                     float dx = x - centre;
                     float dy = y - centre;
-                    float distance = Mathf.Sqrt((dx * dx) + (dy * dy)) / centre;
-                    if (distance > 1f)
+                    float distance = Mathf.Sqrt((dx * dx) + (dy * dy));
+                    float edge = Mathf.Clamp01((radius + 1.4f - distance) / 2.6f);
+                    if (edge <= 0f)
                     {
                         texture.SetPixel(x, y, new Color(1f, 1f, 1f, 0f));
                         continue;
                     }
 
-                    float edge = Mathf.Clamp01((1f - distance) * size);
-                    float highlight = Mathf.Clamp01(1f - (Mathf.Sqrt(((dx + 10f) * (dx + 10f)) + ((dy - 12f) * (dy - 12f))) / 18f));
-                    Color color = Color.Lerp(Pink, Color.white, highlight * 0.85f);
+                    float nx = dx / radius;
+                    float ny = dy / radius;
+                    float light = Mathf.Clamp01(0.42f + (ny * 0.34f) - (nx * 0.16f));
+                    float highlight = Mathf.Clamp01(1f - (Mathf.Sqrt(((nx + 0.28f) * (nx + 0.28f)) + ((ny - 0.34f) * (ny - 0.34f))) / 0.46f));
+                    highlight = highlight * highlight;
+                    Color color = Color.Lerp(DeepPink, Pink, light);
+                    color = Color.Lerp(color, Color.white, highlight * 0.9f);
                     color.a = edge;
                     texture.SetPixel(x, y, color);
                 }
@@ -292,6 +359,28 @@ namespace Capstone.Placement
 
             texture.Apply();
             return Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite ShadowSprite()
+        {
+            const int width = 64;
+            const int height = 24;
+            Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float nx = (x - (width * 0.5f)) / (width * 0.5f);
+                    float ny = (y - (height * 0.5f)) / (height * 0.5f);
+                    float falloff = Mathf.Clamp01(1f - ((nx * nx) + (ny * ny)));
+                    texture.SetPixel(x, y, new Color(1f, 1f, 1f, falloff * falloff));
+                }
+            }
+
+            texture.Apply();
+            return Sprite.Create(texture, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f));
         }
     }
 }
