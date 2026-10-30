@@ -7,7 +7,7 @@ namespace Capstone.Placement
     /// <summary>
     /// The first screen is blue. A white ball bounces on each word and turns that word white.
     /// The ball then comes toward the camera until the page is white, and a translucent blue body floats.
-    /// Blue sheets then fan open and the front sheet peels away. A tap starts the session.
+    /// Soft blue cards then float in a row. A tap starts the session.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -31,7 +31,10 @@ namespace Capstone.Placement
         RectTransform ribbonA;
         RectTransform ribbonB;
         CanvasGroup orbFade;
-        Image[] sheets;
+        RectTransform[] cards;
+        RectTransform[] blobs;
+        CanvasGroup[] cardFade;
+        float[] cardHomeX;
         Text[] words;
         float velocity;
         float horizontalVelocity;
@@ -124,7 +127,7 @@ namespace Capstone.Placement
             glass.raycastTarget = false;
             orbFade = orbObject.AddComponent<CanvasGroup>();
             orb.gameObject.SetActive(false);
-            sheets = CreateSheets(canvasObject.transform);
+            CreateCards(canvasObject.transform, typeface);
             velocity = 0f;
         }
 
@@ -310,39 +313,31 @@ namespace Capstone.Placement
             resting = false;
             dealing = true;
             dealTime = 0f;
-            for (int i = 0; i < sheets.Length; i++)
-                sheets[i].gameObject.SetActive(true);
+            for (int i = 0; i < cards.Length; i++)
+                cards[i].gameObject.SetActive(true);
         }
 
         void Deal(float step)
         {
             dealTime += step;
-            float arrive = Mathf.Clamp01(dealTime / 0.55f);
-            float shown = 1f - ((1f - arrive) * (1f - arrive));
-            float peel = Mathf.Clamp01((dealTime - 0.8f) / 0.62f);
-            peel = peel * peel;
-            orb.localScale = Vector3.one * Mathf.Lerp(1f, 0.16f, shown);
-            orbFade.alpha = 1f - shown;
+            float leave = Mathf.Clamp01(dealTime / 0.45f);
+            orb.localScale = Vector3.one * Mathf.Lerp(1f, 0.12f, leave);
+            orbFade.alpha = 1f - leave;
             Color shade = shadow.color;
-            shade.a = Mathf.Lerp(shade.a, 0f, shown);
+            shade.a = Mathf.Lerp(shade.a, 0f, leave);
             shadow.color = shade;
 
-            for (int i = 0; i < sheets.Length; i++)
+            for (int i = 0; i < cards.Length; i++)
             {
-                int depth = sheets.Length - 1 - i;
-                float from = depth * 34f;
-                float settled = Mathf.Max(0, depth - 1) * 34f;
-                RectTransform rect = sheets[i].rectTransform;
-                bool leaving = i == sheets.Length - 1;
-                float y = leaving
-                    ? Mathf.Lerp(0f, 860f, peel)
-                    : Mathf.Lerp(from, settled, peel);
-                rect.anchoredPosition = new Vector2(0f, Mathf.Lerp(-30f, y, shown));
-                rect.localRotation = Quaternion.Euler(0f, 0f, leaving ? Mathf.Lerp(0f, -8f, peel) : 0f);
-                rect.localScale = Vector3.one * Mathf.Lerp(0.94f, 1f, shown);
-                Color color = sheets[i].color;
-                color.a = leaving ? 1f - peel : 1f;
-                sheets[i].color = color;
+                float shown = Mathf.Clamp01((dealTime - 0.1f - (i * 0.07f)) / 0.45f);
+                shown = 1f - ((1f - shown) * (1f - shown));
+                float bob = Mathf.Sin((dealTime * 1.15f) + (i * 0.9f)) * 12f;
+                cards[i].anchoredPosition = new Vector2(cardHomeX[i], Mathf.Lerp(80f, -16f + bob, shown));
+                cards[i].localScale = Vector3.one * Mathf.Lerp(0.94f, 1f, shown);
+                cardFade[i].alpha = shown;
+                float driftX = Mathf.Sin((dealTime * 0.8f) + (i * 1.3f)) * 16f;
+                float driftY = Mathf.Cos((dealTime * 1.05f) + i) * 12f;
+                blobs[i].anchoredPosition = new Vector2(driftX, 6f + driftY);
             }
         }
 
@@ -440,40 +435,96 @@ namespace Capstone.Placement
             return text;
         }
 
-        static Image[] CreateSheets(Transform parent)
+        void CreateCards(Transform parent, Font typeface)
         {
+            string[] titles =
+            {
+                "Choose\na work",
+                "Place it\non your wall",
+                "Ask\none thing",
+                "See\nthree"
+            };
             Color[] tops =
             {
-                new Color(0.62f, 0.84f, 1f, 0.7f),
-                new Color(0.4f, 0.66f, 1f, 0.68f),
-                new Color(0.24f, 0.5f, 0.98f, 0.66f),
-                new Color(0.52f, 0.76f, 1f, 0.72f)
+                new Color(0.78f, 0.9f, 1f, 0.62f),
+                new Color(0.62f, 0.8f, 1f, 0.58f),
+                new Color(0.7f, 0.86f, 1f, 0.6f),
+                new Color(0.55f, 0.76f, 1f, 0.56f)
             };
             Color[] bottoms =
             {
-                new Color(0.16f, 0.4f, 0.92f, 0.42f),
-                new Color(0.1f, 0.32f, 0.86f, 0.4f),
-                new Color(0.06f, 0.24f, 0.78f, 0.38f),
-                new Color(0.14f, 0.38f, 0.9f, 0.4f)
+                new Color(0.45f, 0.68f, 0.98f, 0.34f),
+                new Color(0.36f, 0.58f, 0.96f, 0.32f),
+                new Color(0.42f, 0.64f, 0.98f, 0.32f),
+                new Color(0.3f, 0.52f, 0.94f, 0.3f)
             };
-            Image[] sheets = new Image[tops.Length];
-            for (int i = 0; i < tops.Length; i++)
+            cards = new RectTransform[titles.Length];
+            blobs = new RectTransform[titles.Length];
+            cardFade = new CanvasGroup[titles.Length];
+            cardHomeX = new float[titles.Length];
+            Sprite blobSprite = SoftBlob();
+            const float width = 228f;
+            const float gap = 16f;
+            float total = (width * titles.Length) + (gap * (titles.Length - 1));
+            float x = (-total * 0.5f) + (width * 0.5f);
+            for (int i = 0; i < titles.Length; i++)
             {
-                Image sheet = CreateImage(
-                    parent,
-                    "Blue sheet",
+                GameObject host = new GameObject("Card", typeof(RectTransform));
+                host.transform.SetParent(parent, false);
+                RectTransform rect = host.GetComponent<RectTransform>();
+                rect.anchorMin = new Vector2(0.5f, 0.5f);
+                rect.anchorMax = new Vector2(0.5f, 0.5f);
+                rect.pivot = new Vector2(0.5f, 0.5f);
+                rect.sizeDelta = new Vector2(width, 300f);
+                rect.anchoredPosition = new Vector2(x, 80f);
+                Image face = host.AddComponent<Image>();
+                face.sprite = RoundedGradient(tops[i], bottoms[i]);
+                face.raycastTarget = false;
+                cardFade[i] = host.AddComponent<CanvasGroup>();
+                cardFade[i].alpha = 0f;
+                Image blob = CreateImage(
+                    rect,
+                    "Blob",
                     Color.white,
                     new Vector2(0.5f, 0.5f),
                     new Vector2(0.5f, 0.5f),
-                    new Vector2(0f, -30f),
-                    new Vector2(700f, 1040f));
-                sheet.sprite = RoundedGradient(tops[i], bottoms[i]);
-                sheet.raycastTarget = false;
-                sheet.gameObject.SetActive(false);
-                sheets[i] = sheet;
+                    new Vector2(0f, 6f),
+                    new Vector2(108f, 108f));
+                blob.sprite = blobSprite;
+                blob.raycastTarget = false;
+                Text title = CreateWord(rect, typeface, titles[i], 22);
+                title.color = new Color(0.1f, 0.28f, 0.62f, 1f);
+                title.rectTransform.anchoredPosition = new Vector2(0f, 92f);
+                title.rectTransform.sizeDelta = new Vector2(200f, 80f);
+                host.SetActive(false);
+                cards[i] = rect;
+                blobs[i] = blob.rectTransform;
+                cardHomeX[i] = x;
+                x += width + gap;
+            }
+        }
+
+        static Sprite SoftBlob()
+        {
+            const int size = 64;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            float centre = (size - 1) * 0.5f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = (x - centre) / centre;
+                    float dy = (y - centre) / centre;
+                    float falloff = Mathf.Clamp01(1f - Mathf.Sqrt((dx * dx) + (dy * dy)));
+                    falloff = falloff * falloff;
+                    texture.SetPixel(x, y, new Color(0.72f, 0.88f, 1f, falloff * 0.9f));
+                }
             }
 
-            return sheets;
+            texture.Apply();
+            return Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
         }
 
         static Sprite RoundedGradient(Color top, Color bottom)
