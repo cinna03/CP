@@ -30,7 +30,7 @@ namespace Capstone.Placement
     /// No wall means a retry message and no invented size.
     /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
     /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
-    /// On a phone, the same controls fit the portrait width and stay clear of the gesture bar.
+    /// On a phone, the session opens on the wall. Move until a vertical wall is found, then press Place.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -54,6 +54,8 @@ namespace Capstone.Placement
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
         public const string ChooseRoomMessage = "Choose the room that fits. Then place a work, ask a question, and keep or dismiss.";
+        public const string ScanWallMessage = "Move the phone slowly across the wall you want to test.";
+        public const string WallFoundMessage = "Wall found. Press Place. The work keeps its stored centimetres.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
 
@@ -86,6 +88,7 @@ namespace Capstone.Placement
         Button studyButtonWidget;
         Button consentButtonWidget;
         bool roomChosen;
+        bool scanning;
         CanvasScaler screenFit;
         RectTransform screenColumn;
 
@@ -125,6 +128,20 @@ namespace Capstone.Placement
                 HideSimulatedRoom();
             }
             BuildControls();
+        }
+
+        void Update()
+        {
+            if (!scanning || status == null || step != PrototypeScreen.Wall)
+                return;
+
+            ARRaycastHit hit;
+            ARPlane plane;
+            string next = TryHitVerticalWall(out hit, out plane) ? WallFoundMessage : ScanWallMessage;
+            if (status.text != next)
+                status.text = next;
+            if (stepLine != null && stepLine.text != next)
+                stepLine.text = next;
         }
 
         void LateUpdate()
@@ -217,6 +234,7 @@ namespace Capstone.Placement
             string roomLine = Application.isEditor && rooms != null && rooms.Current != null
                 ? " " + rooms.Current.Describe()
                 : "";
+            scanning = false;
             status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current) + roomLine;
         }
 
@@ -285,6 +303,7 @@ namespace Capstone.Placement
         {
             if (Blocked(StudyCondition.Dialogue))
                 return;
+            scanning = false;
             string typed = concernField != null ? concernField.text : string.Empty;
             DialogueReply reply = RuleEngine.Match(typed, StarterRules.All);
             if (reply.Matched && feedback != null)
@@ -590,7 +609,7 @@ namespace Capstone.Placement
         string StepInstruction()
         {
             if (step == PrototypeScreen.Wall)
-                return WallStepMessage;
+                return Application.isEditor ? WallStepMessage : ScanWallMessage;
             if (step == PrototypeScreen.Recommend)
                 return RecommendStepMessage;
             return WorksStepMessage;
@@ -738,6 +757,7 @@ namespace Capstone.Placement
 
             Destroy(placed);
             placed = null;
+            scanning = !Application.isEditor;
             status.text = RemovedMessage;
         }
 
@@ -949,6 +969,11 @@ namespace Capstone.Placement
             ApplyStepVisibility();
             if (Application.isEditor && !roomChosen)
                 status.text = ChooseRoomMessage;
+            else if (!Application.isEditor)
+            {
+                scanning = true;
+                OpenStep(PrototypeScreen.Wall);
+            }
         }
 
         static void CreateShade(Transform parent)
