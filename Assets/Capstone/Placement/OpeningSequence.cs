@@ -39,7 +39,7 @@ namespace Capstone.Placement
         Text line;
         Text nextLabel;
         Image[] dots;
-        GlassBodyGraphic body;
+        RectTransform body;
         GameObject words;
         Button screenTap;
 
@@ -70,18 +70,17 @@ namespace Capstone.Placement
             screenTap.targetGraphic = ground;
             screenTap.onClick.AddListener(Reveal);
 
-            GameObject bodyObject = new GameObject("Glowing body", typeof(RectTransform));
-            bodyObject.transform.SetParent(canvasObject.transform, false);
-            body = bodyObject.AddComponent<GlassBodyGraphic>();
-            body.sprite = GlassBody();
-            body.raycastTarget = false;
-            body.color = Color.white;
-            RectTransform bodyRect = body.rectTransform;
-            bodyRect.anchorMin = new Vector2(0.5f, 0.5f);
-            bodyRect.anchorMax = new Vector2(0.5f, 0.5f);
-            bodyRect.pivot = new Vector2(0.5f, 0.5f);
-            bodyRect.sizeDelta = new Vector2(620f, 620f);
-            bodyRect.anchoredPosition = Vector2.zero;
+            Image bodyImage = CreateImage(
+                canvasObject.transform,
+                "Glowing body",
+                Color.white,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(620f, 620f));
+            bodyImage.sprite = GlassBody();
+            bodyImage.raycastTarget = false;
+            body = bodyImage.rectTransform;
 
             words = new GameObject("Words", typeof(RectTransform));
             words.transform.SetParent(canvasObject.transform, false);
@@ -125,12 +124,15 @@ namespace Capstone.Placement
             Vector2 sway = new Vector2(
                 (Mathf.Sin(clock * 0.37f) * 16f) + (Mathf.Sin(clock * 0.71f) * 7f),
                 (Mathf.Sin(clock * 0.53f) * 24f) + (Mathf.Cos(clock * 0.29f) * 8f));
-            body.rectTransform.anchoredPosition = Vector2.Lerp(
-                body.rectTransform.anchoredPosition,
+            body.anchoredPosition = Vector2.Lerp(
+                body.anchoredPosition,
                 home + sway,
                 1f - Mathf.Exp(-2.2f * Time.deltaTime));
-            body.clock = clock;
-            body.SetVerticesDirty();
+            float squash = Mathf.Sin(clock * 0.85f);
+            float wide = 1f + (0.09f * squash) + (0.035f * Mathf.Sin(clock * 1.6f));
+            float tall = 1f - (0.08f * squash) + (0.04f * Mathf.Sin((clock * 1.25f) + 1.2f));
+            body.localScale = new Vector3(wide, tall, 1f);
+            body.localRotation = Quaternion.Euler(0f, 0f, Mathf.Sin(clock * 0.55f) * 7f);
         }
 
         void Reveal()
@@ -283,7 +285,7 @@ namespace Capstone.Placement
             texture.wrapMode = TextureWrapMode.Clamp;
             texture.filterMode = FilterMode.Bilinear;
             Vector3 light = new Vector3(-0.35f, 0.55f, 0.76f).normalized;
-            Color rose = new Color(0.925f, 0.306f, 0.40f, 1f);
+            Color rose = new Color(0.86f, 0.22f, 0.34f, 1f);
             Color blush = new Color(1f, 0.690f, 0.722f, 1f);
             Color glass = new Color(0.980f, 0.976f, 0.976f, 1f);
             Color clear = new Color(1f, 1f, 1f, 0f);
@@ -339,64 +341,6 @@ namespace Capstone.Placement
 
             float span = (value - start) / (end - start);
             return span * span * (3f - (2f * span));
-        }
-    }
-
-    /// <summary>
-    /// A round glass body whose edge changes shape while the picture inside drifts.
-    /// </summary>
-    public sealed class GlassBodyGraphic : MaskableGraphic
-    {
-        public Sprite sprite;
-        public float clock;
-
-        public override Texture mainTexture
-        {
-            get { return sprite != null ? sprite.texture : null; }
-        }
-
-        protected override void OnPopulateMesh(VertexHelper helper)
-        {
-            helper.Clear();
-            Rect rect = GetPixelAdjustedRect();
-            float radiusX = rect.width * 0.5f;
-            float radiusY = rect.height * 0.5f;
-            Vector2 centre = rect.center;
-            const int steps = 72;
-            float drift = clock * 0.22f;
-
-            UIVertex middle = UIVertex.simpleVert;
-            middle.color = color;
-            middle.position = centre;
-            middle.uv0 = new Vector4(0.5f, 0.5f, 0f, 0f);
-            helper.AddVert(middle);
-
-            for (int i = 0; i < steps; i++)
-            {
-                float angle = (i / (float)steps) * Mathf.PI * 2f;
-                float swell = 1f
-                    + (0.07f * Mathf.Sin((clock * 1.15f) + (angle * 2f)))
-                    + (0.05f * Mathf.Sin((clock * 0.68f) + (angle * 3f)))
-                    + (0.035f * Mathf.Sin((clock * 1.7f) - angle));
-                float wide = 1f + (0.06f * Mathf.Sin(clock * 0.8f));
-                float tall = 1f - (0.05f * Mathf.Sin(clock * 0.8f));
-                Vector2 point = new Vector2(
-                    Mathf.Cos(angle) * radiusX * swell * wide,
-                    Mathf.Sin(angle) * radiusY * swell * tall);
-
-                UIVertex vertex = UIVertex.simpleVert;
-                vertex.color = color;
-                vertex.position = centre + point;
-                vertex.uv0 = new Vector4(
-                    0.5f + (Mathf.Cos(angle + drift) * 0.43f),
-                    0.5f + (Mathf.Sin(angle + drift) * 0.43f),
-                    0f,
-                    0f);
-                helper.AddVert(vertex);
-            }
-
-            for (int i = 0; i < steps; i++)
-                helper.AddTriangle(0, 1 + i, 1 + ((i + 1) % steps));
         }
     }
 }
