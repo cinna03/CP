@@ -6,7 +6,7 @@ namespace Capstone.Placement
 {
     /// <summary>
     /// The first screen is blue. A white ball bounces on each word and turns that word white.
-    /// The ball then comes toward the camera until the page is white, and a glass body floats until a tap.
+    /// The ball then comes toward the camera until the page is white, and a translucent blue body floats until a tap.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -487,11 +487,11 @@ namespace Capstone.Placement
 
                     float edge = Mathf.Clamp01((1.01f - distance) / 0.035f);
                     float rim = Mathf.Clamp01((distance - 0.78f) / 0.18f) * Mathf.Clamp01((1f - distance) / 0.08f);
-                    float body = Mathf.Clamp01(1f - distance) * 0.16f;
+                    float body = Mathf.Clamp01(1f - distance) * 0.1f;
                     float highlight = Mathf.Clamp01(1f - (Mathf.Sqrt(((dx + 0.32f) * (dx + 0.32f)) + ((dy - 0.38f) * (dy - 0.38f))) / 0.42f));
                     highlight = highlight * highlight;
-                    Color color = Color.Lerp(new Color(0.93f, 0.96f, 1f, 1f), Color.white, highlight);
-                    color.a = Mathf.Clamp01((body + (rim * 0.72f) + (highlight * 0.55f)) * edge);
+                    Color color = Color.Lerp(new Color(0.35f, 0.62f, 1f, 1f), new Color(0.78f, 0.9f, 1f, 1f), highlight);
+                    color.a = Mathf.Clamp01((body + (rim * 0.42f) + (highlight * 0.28f)) * edge);
                     texture.SetPixel(x, y, color);
                 }
             }
@@ -509,11 +509,11 @@ namespace Capstone.Placement
             float centre = (size - 1) * 0.5f;
             float radius = centre - 2f;
             Color inner = band == 0
-                ? new Color(0.55f, 0.82f, 0.28f, 1f)
-                : new Color(0.95f, 0.28f, 0.48f, 1f);
+                ? new Color(0.45f, 0.72f, 1f, 1f)
+                : new Color(0.12f, 0.38f, 0.92f, 1f);
             Color outer = band == 0
-                ? new Color(0.98f, 0.62f, 0.18f, 1f)
-                : new Color(0.98f, 0.78f, 0.28f, 1f);
+                ? new Color(0.7f, 0.86f, 1f, 1f)
+                : new Color(0.28f, 0.58f, 1f, 1f);
             float near = band == 0 ? 0.34f : 0.5f;
             float far = band == 0 ? 0.62f : 0.78f;
             for (int y = 0; y < size; y++)
@@ -526,7 +526,7 @@ namespace Capstone.Placement
                     float angle = Mathf.Atan2(dy, dx);
                     float across = Mathf.Clamp01((distance - near) / 0.08f) * Mathf.Clamp01((far - distance) / 0.08f);
                     float sweep = Mathf.Clamp01(0.5f + (0.5f * Mathf.Sin((angle * (band == 0 ? 1.4f : 2f)) + (band * 1.2f))));
-                    float alpha = across * sweep * (band == 0 ? 0.78f : 0.62f);
+                    float alpha = across * sweep * (band == 0 ? 0.34f : 0.26f);
                     if (distance > 0.96f)
                         alpha = 0f;
                     float mix = Mathf.Clamp01(0.5f + (0.5f * Mathf.Sin(angle + distance)));
