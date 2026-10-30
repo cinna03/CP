@@ -5,8 +5,8 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The first screen after the app opens: a blue field and one white line at a time.
-    /// A tap leaves this screen and starts the session.
+    /// The first screen starts white. A pink ball drops, bounces to the top,
+    /// then turns each line pink. It then comes toward the camera until the page is pink.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -17,12 +17,20 @@ namespace Capstone.Placement
             "Ask one thing."
         };
 
-        const float Hold = 1.7f;
+        static readonly Color Paper = Color.white;
+        static readonly Color Pink = new Color(0.93f, 0.33f, 0.58f, 1f);
+        const float Gravity = 3400f;
+        const float Middle = 0f;
 
         Action finished;
-        float clock;
-        Text line;
-        int shown = -1;
+        Image ground;
+        RectTransform ball;
+        Text[] words;
+        float velocity;
+        int nextWord;
+        bool covering;
+        float cover;
+        bool done;
 
         public static void Play(Font typeface, Action onFinished)
         {
@@ -45,68 +53,135 @@ namespace Capstone.Placement
             scaler.matchWidthOrHeight = 0f;
             canvasObject.AddComponent<GraphicRaycaster>();
 
-            Image ground = CreateImage(canvasObject.transform, "Blue field", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            ground.sprite = BlueField();
+            ground = CreateImage(canvasObject.transform, "Paper", Paper, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             Button screenTap = ground.gameObject.AddComponent<Button>();
             screenTap.targetGraphic = ground;
             screenTap.onClick.AddListener(Finish);
 
-            line = CreateLine(canvasObject.transform, typeface);
-            Show(0);
+            words = new Text[Lines.Length];
+            for (int i = 0; i < Lines.Length; i++)
+            {
+                words[i] = CreateLine(canvasObject.transform, typeface, Lines[i], -80f - (i * 150f));
+                words[i].color = Color.white;
+            }
+
+            Image ballImage = CreateImage(
+                canvasObject.transform,
+                "Pink ball",
+                Color.white,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0f, 1100f),
+                new Vector2(78f, 78f));
+            ballImage.sprite = BallSprite();
+            ballImage.raycastTarget = false;
+            ball = ballImage.rectTransform;
+            velocity = 0f;
         }
 
         void Update()
         {
-            clock += Time.deltaTime;
-            float span = Hold;
-            float local = clock % span;
-            int index = Mathf.FloorToInt(clock / span) % Lines.Length;
-            if (index != shown)
-                Show(index);
+            if (done)
+                return;
 
-            float fade = 1f;
-            if (local < 0.28f)
-                fade = local / 0.28f;
-            else if (local > span - 0.28f)
-                fade = (span - local) / 0.28f;
-            Color color = line.color;
-            color.a = Mathf.Clamp01(fade);
-            line.color = color;
+            float step = Time.deltaTime;
+            if (covering)
+            {
+                Cover(step);
+                return;
+            }
+
+            velocity -= Gravity * step;
+            Vector2 position = ball.anchoredPosition;
+            position.y += velocity * step;
+            ball.anchoredPosition = position;
+            ball.localScale = Vector3.Lerp(ball.localScale, Vector3.one, 1f - Mathf.Exp(-10f * step));
+
+            if (nextWord == 0 && velocity < 0f && position.y <= Middle)
+            {
+                Kick(Middle, 1000f);
+                return;
+            }
+
+            if (nextWord == 0 && velocity > 0f && position.y >= 980f)
+            {
+                nextWord = 1;
+                return;
+            }
+
+            int word = nextWord - 1;
+            if (word < 0 || word >= words.Length || velocity >= 0f)
+                return;
+
+            float target = words[word].rectTransform.anchoredPosition.y;
+            if (position.y > target + 28f)
+                return;
+
+            words[word].color = Pink;
+            if (word == words.Length - 1)
+            {
+                covering = true;
+                cover = 0f;
+                return;
+            }
+
+            Kick(target, 170f);
+            nextWord = word + 2;
         }
 
-        void Show(int index)
+        void Kick(float height, float rise)
         {
-            shown = index;
-            line.text = Lines[index];
+            Vector2 position = ball.anchoredPosition;
+            position.y = height;
+            ball.anchoredPosition = position;
+            velocity = Mathf.Sqrt(2f * Gravity * rise);
+            ball.localScale = new Vector3(1.28f, 0.72f, 1f);
+        }
+
+        void Cover(float step)
+        {
+            cover += step;
+            float rush = Mathf.Clamp01(cover / 0.85f);
+            rush = rush * rush;
+            ball.anchoredPosition = Vector2.Lerp(ball.anchoredPosition, Vector2.zero, 1f - Mathf.Exp(-6f * step));
+            float scale = Mathf.Lerp(1f, 46f, rush);
+            ball.localScale = new Vector3(scale, scale, 1f);
+            ground.color = Color.Lerp(Paper, Pink, rush);
+            if (rush >= 1f)
+                Finish();
         }
 
         void Finish()
         {
-            Action done = finished;
+            if (done)
+                return;
+
+            done = true;
+            Action complete = finished;
             finished = null;
-            if (done != null)
-                done();
+            if (complete != null)
+                complete();
             Destroy(gameObject);
         }
 
-        static Text CreateLine(Transform parent, Font typeface)
+        static Text CreateLine(Transform parent, Font typeface, string message, float height)
         {
-            GameObject host = new GameObject("Line");
+            GameObject host = new GameObject(message);
             host.transform.SetParent(parent, false);
             Text text = host.AddComponent<Text>();
             text.font = typeface;
-            text.fontSize = 72;
+            text.fontSize = 64;
             text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = Color.white;
+            text.text = message;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
             RectTransform rect = text.rectTransform;
             rect.anchorMin = new Vector2(0.5f, 0.5f);
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(860f, 220f);
-            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(900f, 120f);
+            rect.anchoredPosition = new Vector2(0f, height);
             return text;
         }
 
@@ -125,23 +200,36 @@ namespace Capstone.Placement
             return image;
         }
 
-        static Sprite BlueField()
+        static Sprite BallSprite()
         {
-            const int height = 64;
-            Texture2D texture = new Texture2D(4, height, TextureFormat.RGBA32, false);
+            const int size = 64;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
             texture.wrapMode = TextureWrapMode.Clamp;
             texture.filterMode = FilterMode.Bilinear;
-            Color top = new Color(0.05f, 0.28f, 0.92f, 1f);
-            Color bottom = new Color(0.16f, 0.52f, 1f, 1f);
-            for (int y = 0; y < height; y++)
+            float centre = (size - 1) * 0.5f;
+            for (int y = 0; y < size; y++)
             {
-                Color band = Color.Lerp(bottom, top, y / (float)(height - 1));
-                for (int x = 0; x < 4; x++)
-                    texture.SetPixel(x, y, band);
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x - centre;
+                    float dy = y - centre;
+                    float distance = Mathf.Sqrt((dx * dx) + (dy * dy)) / centre;
+                    if (distance > 1f)
+                    {
+                        texture.SetPixel(x, y, new Color(1f, 1f, 1f, 0f));
+                        continue;
+                    }
+
+                    float edge = Mathf.Clamp01((1f - distance) * size);
+                    float highlight = Mathf.Clamp01(1f - (Mathf.Sqrt(((dx + 10f) * (dx + 10f)) + ((dy - 12f) * (dy - 12f))) / 18f));
+                    Color color = Color.Lerp(Pink, Color.white, highlight * 0.85f);
+                    color.a = edge;
+                    texture.SetPixel(x, y, color);
+                }
             }
 
             texture.Apply();
-            return Sprite.Create(texture, new Rect(0f, 0f, 4f, height), new Vector2(0.5f, 0.5f));
+            return Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
         }
     }
 }
