@@ -1,13 +1,14 @@
 using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Capstone.Placement
 {
     /// <summary>
     /// The first screen is blue. A white ball bounces on each word and turns that word white.
-    /// The ball then comes toward the camera until the page is white, and a translucent blue body floats.
-    /// Soft blue cards then float in a row. A tap starts the session.
+    /// The ball then comes toward the camera until the page is white. The blue body waits for a tap.
+    /// The cards then float, and each card moves when it is tapped or the pointer rests on it.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -35,6 +36,9 @@ namespace Capstone.Placement
         RectTransform[] blobs;
         CanvasGroup[] cardFade;
         float[] cardHomeX;
+        float[] cardSlide;
+        float[] cardLift;
+        int hotCard = -1;
         Text[] words;
         float velocity;
         float horizontalVelocity;
@@ -77,7 +81,8 @@ namespace Capstone.Placement
             Image ground = CreateImage(canvasObject.transform, "Paper", Paper, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             Button screenTap = ground.gameObject.AddComponent<Button>();
             screenTap.targetGraphic = ground;
-            screenTap.onClick.AddListener(Finish);
+            screenTap.transition = Selectable.Transition.None;
+            screenTap.onClick.AddListener(PaperTap);
 
             field = CreateImage(canvasObject.transform, "Blue field", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             field.sprite = VerticalGradient(BlueTop, BlueDeep);
@@ -124,7 +129,12 @@ namespace Capstone.Placement
             ribbonB = Ribbon(orb, "Inner ribbon", 1);
             Image glass = CreateImage(orb, "Glass", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             glass.sprite = GlassShell();
-            glass.raycastTarget = false;
+            glass.raycastTarget = true;
+            glass.alphaHitTestMinimumThreshold = 0.08f;
+            Button bodyTap = glass.gameObject.AddComponent<Button>();
+            bodyTap.targetGraphic = glass;
+            bodyTap.transition = Selectable.Transition.None;
+            bodyTap.onClick.AddListener(OpenCards);
             orbFade = orbObject.AddComponent<CanvasGroup>();
             orb.gameObject.SetActive(false);
             CreateCards(canvasObject.transform, typeface);
@@ -307,7 +317,11 @@ namespace Capstone.Placement
             Color shade = shadow.color;
             shade.a = Mathf.Lerp(0f, 0.18f, eased) * Mathf.Lerp(1f, 0.55f, height);
             shadow.color = shade;
-            if (restTime < 2.15f)
+        }
+
+        void OpenCards()
+        {
+            if (!resting || dealing || done)
                 return;
 
             resting = false;
@@ -315,6 +329,29 @@ namespace Capstone.Placement
             dealTime = 0f;
             for (int i = 0; i < cards.Length; i++)
                 cards[i].gameObject.SetActive(true);
+        }
+
+        public void TouchCard(int index)
+        {
+            hotCard = index;
+        }
+
+        public void ReleaseCard(int index)
+        {
+            if (hotCard == index)
+                hotCard = -1;
+        }
+
+        public void TapCard(int index)
+        {
+            hotCard = index;
+            cardSlide[index] = 140f;
+        }
+
+        void PaperTap()
+        {
+            if (dealing)
+                Finish();
         }
 
         void Deal(float step)
@@ -331,9 +368,19 @@ namespace Capstone.Placement
             {
                 float shown = Mathf.Clamp01((dealTime - 0.1f - (i * 0.07f)) / 0.45f);
                 shown = 1f - ((1f - shown) * (1f - shown));
-                float bob = Mathf.Sin((dealTime * 1.15f) + (i * 0.9f)) * 12f;
-                cards[i].anchoredPosition = new Vector2(cardHomeX[i], Mathf.Lerp(80f, -16f + bob, shown));
-                cards[i].localScale = Vector3.one * Mathf.Lerp(0.94f, 1f, shown);
+                float bob = Mathf.Sin((dealTime * 1.15f) + (i * 0.9f)) * 8f;
+                bool touched = i == hotCard;
+                float wantLift = touched ? 46f : 0f;
+                float neighbor = 0f;
+                if (hotCard >= 0 && i != hotCard)
+                    neighbor = i < hotCard ? -22f : 22f;
+                cardLift[i] = Mathf.Lerp(cardLift[i], wantLift, 1f - Mathf.Exp(-12f * step));
+                cardSlide[i] = Mathf.Lerp(cardSlide[i], neighbor, 1f - Mathf.Exp(-3.5f * step));
+                cards[i].anchoredPosition = new Vector2(
+                    cardHomeX[i] + cardSlide[i],
+                    Mathf.Lerp(80f, -16f + bob + cardLift[i], shown));
+                float scale = touched ? 1.06f : 1f;
+                cards[i].localScale = Vector3.one * Mathf.Lerp(0.94f, scale, shown);
                 cardFade[i].alpha = shown;
                 float driftX = Mathf.Sin((dealTime * 0.8f) + (i * 1.3f)) * 16f;
                 float driftY = Mathf.Cos((dealTime * 1.05f) + i) * 12f;
@@ -462,6 +509,8 @@ namespace Capstone.Placement
             blobs = new RectTransform[titles.Length];
             cardFade = new CanvasGroup[titles.Length];
             cardHomeX = new float[titles.Length];
+            cardSlide = new float[titles.Length];
+            cardLift = new float[titles.Length];
             Sprite blobSprite = SoftBlob();
             const float width = 228f;
             const float gap = 16f;
@@ -479,7 +528,10 @@ namespace Capstone.Placement
                 rect.anchoredPosition = new Vector2(x, 80f);
                 Image face = host.AddComponent<Image>();
                 face.sprite = RoundedGradient(tops[i], bottoms[i]);
-                face.raycastTarget = false;
+                face.raycastTarget = true;
+                CardTouch touch = host.AddComponent<CardTouch>();
+                touch.opening = this;
+                touch.index = i;
                 cardFade[i] = host.AddComponent<CanvasGroup>();
                 cardFade[i].alpha = 0f;
                 Image blob = CreateImage(
@@ -495,12 +547,34 @@ namespace Capstone.Placement
                 Text title = CreateWord(rect, typeface, titles[i], 22);
                 title.color = new Color(0.1f, 0.28f, 0.62f, 1f);
                 title.rectTransform.anchoredPosition = new Vector2(0f, 92f);
+                title.raycastTarget = false;
                 title.rectTransform.sizeDelta = new Vector2(200f, 80f);
                 host.SetActive(false);
                 cards[i] = rect;
                 blobs[i] = blob.rectTransform;
                 cardHomeX[i] = x;
                 x += width + gap;
+            }
+        }
+
+        sealed class CardTouch : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
+        {
+            public OpeningSequence opening;
+            public int index;
+
+            public void OnPointerEnter(PointerEventData eventData)
+            {
+                opening.TouchCard(index);
+            }
+
+            public void OnPointerExit(PointerEventData eventData)
+            {
+                opening.ReleaseCard(index);
+            }
+
+            public void OnPointerClick(PointerEventData eventData)
+            {
+                opening.TapCard(index);
             }
         }
 
