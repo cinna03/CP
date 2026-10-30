@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using Capstone.Catalogue;
+using Capstone.Ranking;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -8,7 +11,7 @@ namespace Capstone.Placement
     /// <summary>
     /// The first screen is blue. A white ball bounces on each word and turns that word white.
     /// The ball then comes toward the camera until the page is white. The blue body waits for a tap.
-    /// The cards then float, and each card moves when it is tapped or the pointer rests on it.
+    /// Each card is highlighted for five seconds, then the row slides up and the works float in the space it leaves.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -24,7 +27,7 @@ namespace Capstone.Placement
         const float Centre = 0f;
         const float BallSize = 58f;
 
-        Action finished;
+        Action<string> finished;
         Image field;
         Image shadow;
         RectTransform ball;
@@ -36,9 +39,16 @@ namespace Capstone.Placement
         RectTransform[] blobs;
         CanvasGroup[] cardFade;
         float[] cardHomeX;
-        float[] cardSlide;
-        float[] cardLift;
-        int hotCard = -1;
+        RectTransform[] works;
+        string[] workIds;
+        int focusedWork = -1;
+        bool sliding;
+        float slideTime;
+        bool browsing;
+        Font cardFont;
+        Transform canvasRoot;
+        string chosenId;
+        const float HighlightSeconds = 5f;
         Text[] words;
         float velocity;
         float horizontalVelocity;
@@ -57,7 +67,7 @@ namespace Capstone.Placement
         float dealTime;
         bool done;
 
-        public static void Play(Font typeface, Action onFinished)
+        public static void Play(Font typeface, Action<string> onFinished)
         {
             GameObject host = new GameObject("Opening");
             OpeningSequence sequence = host.AddComponent<OpeningSequence>();
@@ -68,6 +78,8 @@ namespace Capstone.Placement
         void Build(Font typeface)
         {
             GameObject canvasObject = new GameObject("Opening canvas");
+            canvasRoot = canvasObject.transform;
+            cardFont = typeface;
             canvasObject.transform.SetParent(transform, false);
             Canvas canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -331,26 +343,35 @@ namespace Capstone.Placement
                 cards[i].gameObject.SetActive(true);
         }
 
-        public void TouchCard(int index)
+        public void FocusWork(int index)
         {
-            hotCard = index;
+            if (!browsing || works == null || index < 0 || index >= works.Length)
+                return;
+
+            focusedWork = index;
+            for (int i = 0; i < works.Length; i++)
+                works[i].localScale = Vector3.one * (i == index ? 1.05f : 1f);
+            works[index].SetAsLastSibling();
         }
 
-        public void ReleaseCard(int index)
+        public void ChooseWork(int index)
         {
-            if (hotCard == index)
-                hotCard = -1;
-        }
+            if (!browsing || workIds == null || index < 0 || index >= workIds.Length)
+                return;
 
-        public void TapCard(int index)
-        {
-            hotCard = index;
-            cardSlide[index] = 140f;
+            if (focusedWork != index)
+            {
+                FocusWork(index);
+                return;
+            }
+
+            chosenId = workIds[index];
+            Finish();
         }
 
         void PaperTap()
         {
-            if (dealing)
+            if (browsing)
                 Finish();
         }
 
@@ -364,27 +385,85 @@ namespace Capstone.Placement
             shade.a = Mathf.Lerp(shade.a, 0f, leave);
             shadow.color = shade;
 
+            if (sliding)
+            {
+                SlideCards(step);
+                return;
+            }
+
+            int highlight = Mathf.FloorToInt(dealTime / HighlightSeconds);
+            if (highlight >= cards.Length)
+            {
+                sliding = true;
+                slideTime = 0f;
+                return;
+            }
+
             for (int i = 0; i < cards.Length; i++)
             {
-                float shown = Mathf.Clamp01((dealTime - 0.1f - (i * 0.07f)) / 0.45f);
+                float shown = Mathf.Clamp01((dealTime - (i * 0.08f)) / 0.35f);
                 shown = 1f - ((1f - shown) * (1f - shown));
-                float bob = Mathf.Sin((dealTime * 1.15f) + (i * 0.9f)) * 8f;
-                bool touched = i == hotCard;
-                float wantLift = touched ? 46f : 0f;
-                float neighbor = 0f;
-                if (hotCard >= 0 && i != hotCard)
-                    neighbor = i < hotCard ? -22f : 22f;
-                cardLift[i] = Mathf.Lerp(cardLift[i], wantLift, 1f - Mathf.Exp(-12f * step));
-                cardSlide[i] = Mathf.Lerp(cardSlide[i], neighbor, 1f - Mathf.Exp(-3.5f * step));
-                cards[i].anchoredPosition = new Vector2(
-                    cardHomeX[i] + cardSlide[i],
-                    Mathf.Lerp(80f, -16f + bob + cardLift[i], shown));
-                float scale = touched ? 1.06f : 1f;
-                cards[i].localScale = Vector3.one * Mathf.Lerp(0.94f, scale, shown);
-                cardFade[i].alpha = shown;
-                float driftX = Mathf.Sin((dealTime * 0.8f) + (i * 1.3f)) * 16f;
-                float driftY = Mathf.Cos((dealTime * 1.05f) + i) * 12f;
+                bool on = i == highlight;
+                float lift = on ? 36f : 0f;
+                cards[i].anchoredPosition = new Vector2(cardHomeX[i], Mathf.Lerp(80f, -16f + lift, shown));
+                cards[i].localScale = Vector3.one * (on ? 1.08f : 0.96f) * Mathf.Lerp(0.94f, 1f, shown);
+                cardFade[i].alpha = on ? shown : shown * 0.42f;
+                float driftX = Mathf.Sin((dealTime * 0.8f) + (i * 1.3f)) * 10f;
+                float driftY = Mathf.Cos((dealTime * 1.05f) + i) * 8f;
                 blobs[i].anchoredPosition = new Vector2(driftX, 6f + driftY);
+            }
+        }
+
+        void SlideCards(float step)
+        {
+            slideTime += step;
+            float t = Mathf.Clamp01(slideTime / 0.85f);
+            float rise = t * t * 980f;
+            for (int i = 0; i < cards.Length; i++)
+            {
+                cards[i].anchoredPosition = new Vector2(cardHomeX[i], -16f + rise + (i * 18f));
+                cardFade[i].alpha = 1f - t;
+            }
+
+            if (t < 1f)
+                return;
+
+            for (int i = 0; i < cards.Length; i++)
+                cards[i].gameObject.SetActive(false);
+
+            sliding = false;
+            browsing = true;
+            ShowWorks();
+        }
+
+        void ShowWorks()
+        {
+            IReadOnlyList<Artwork> catalogue = SampleCatalogue.All;
+            works = new RectTransform[catalogue.Count];
+            workIds = new string[catalogue.Count];
+            Vector2[] spots =
+            {
+                new Vector2(150f, 180f),
+                new Vector2(-230f, 300f),
+                new Vector2(-190f, -250f),
+                new Vector2(40f, -380f),
+                new Vector2(250f, -80f)
+            };
+            Vector2[] sizes =
+            {
+                new Vector2(470f, 680f),
+                new Vector2(400f, 460f),
+                new Vector2(430f, 280f),
+                new Vector2(360f, 300f),
+                new Vector2(320f, 260f)
+            };
+            for (int i = 0; i < catalogue.Count; i++)
+            {
+                Artwork work = catalogue[i];
+                workIds[i] = work.Id;
+                Vector2 spot = i < spots.Length ? spots[i] : new Vector2(0f, -40f * i);
+                Vector2 size = i < sizes.Length ? sizes[i] : new Vector2(340f, 280f);
+                works[i] = CreateWorkCard(canvasRoot, cardFont, work, spot, size, i);
             }
         }
 
@@ -394,10 +473,11 @@ namespace Capstone.Placement
                 return;
 
             done = true;
-            Action complete = finished;
+            Action<string> complete = finished;
+            string id = chosenId;
             finished = null;
             if (complete != null)
-                complete();
+                complete(id);
             Destroy(gameObject);
         }
 
@@ -509,8 +589,6 @@ namespace Capstone.Placement
             blobs = new RectTransform[titles.Length];
             cardFade = new CanvasGroup[titles.Length];
             cardHomeX = new float[titles.Length];
-            cardSlide = new float[titles.Length];
-            cardLift = new float[titles.Length];
             Sprite blobSprite = SoftBlob();
             const float width = 228f;
             const float gap = 16f;
@@ -528,10 +606,7 @@ namespace Capstone.Placement
                 rect.anchoredPosition = new Vector2(x, 80f);
                 Image face = host.AddComponent<Image>();
                 face.sprite = RoundedGradient(tops[i], bottoms[i]);
-                face.raycastTarget = true;
-                CardTouch touch = host.AddComponent<CardTouch>();
-                touch.opening = this;
-                touch.index = i;
+                face.raycastTarget = false;
                 cardFade[i] = host.AddComponent<CanvasGroup>();
                 cardFade[i].alpha = 0f;
                 Image blob = CreateImage(
@@ -557,24 +632,70 @@ namespace Capstone.Placement
             }
         }
 
-        sealed class CardTouch : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
+        RectTransform CreateWorkCard(Transform parent, Font typeface, Artwork work, Vector2 spot, Vector2 size, int index)
+        {
+            GameObject host = new GameObject(work.Title, typeof(RectTransform));
+            host.transform.SetParent(parent, false);
+            RectTransform rect = host.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = size;
+            rect.anchoredPosition = spot;
+            Image face = host.AddComponent<Image>();
+            face.sprite = RoundedGradient(new Color(0.97f, 0.98f, 1f, 0.94f), new Color(0.9f, 0.94f, 1f, 0.88f));
+            face.raycastTarget = true;
+            CardTouch touch = host.AddComponent<CardTouch>();
+            touch.opening = this;
+            touch.index = index;
+            Image wash = CreateImage(
+                rect,
+                "Wash",
+                ColourWash(work.Colour),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(size.x * 0.18f, -10f),
+                new Vector2(size.y * 0.42f, size.y * 0.42f));
+            wash.sprite = SoftBlob();
+            wash.raycastTarget = false;
+            Text title = CreateWord(rect, typeface, work.Title, size.y > 500f ? 40 : 28);
+            title.color = new Color(0.1f, 0.18f, 0.32f, 1f);
+            title.raycastTarget = false;
+            title.alignment = TextAnchor.UpperLeft;
+            title.rectTransform.anchoredPosition = new Vector2(0f, (size.y * 0.5f) - 70f);
+            title.rectTransform.sizeDelta = new Vector2(size.x - 48f, 90f);
+            string measure = work.WidthCm.ToString("0") + " x " + work.HeightCm.ToString("0") + " cm";
+            Text detail = CreateWord(rect, typeface, measure, 22);
+            detail.color = new Color(0.2f, 0.32f, 0.5f, 1f);
+            detail.raycastTarget = false;
+            detail.alignment = TextAnchor.UpperLeft;
+            detail.rectTransform.anchoredPosition = new Vector2(0f, (size.y * 0.5f) - 140f);
+            detail.rectTransform.sizeDelta = new Vector2(size.x - 48f, 40f);
+            return rect;
+        }
+
+        static Color ColourWash(string colour)
+        {
+            if (colour == "orange")
+                return new Color(1f, 0.72f, 0.45f, 0.85f);
+            if (colour == "red")
+                return new Color(0.95f, 0.4f, 0.45f, 0.8f);
+            return new Color(0.45f, 0.68f, 1f, 0.85f);
+        }
+
+        sealed class CardTouch : MonoBehaviour, IPointerEnterHandler, IPointerClickHandler
         {
             public OpeningSequence opening;
             public int index;
 
             public void OnPointerEnter(PointerEventData eventData)
             {
-                opening.TouchCard(index);
-            }
-
-            public void OnPointerExit(PointerEventData eventData)
-            {
-                opening.ReleaseCard(index);
+                opening.FocusWork(index);
             }
 
             public void OnPointerClick(PointerEventData eventData)
             {
-                opening.TapCard(index);
+                opening.ChooseWork(index);
             }
         }
 
