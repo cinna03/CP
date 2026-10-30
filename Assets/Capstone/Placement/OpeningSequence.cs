@@ -5,8 +5,8 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The first screen is white. A ball bounces on each word and turns that word pink.
-    /// The ball then becomes a glass body, which floats until a tap starts the session.
+    /// The first screen is blue. A white ball bounces on each word and turns that word white.
+    /// The ball then comes toward the camera until the page is white, and a glass body floats until a tap.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -16,13 +16,14 @@ namespace Capstone.Placement
         };
 
         static readonly Color Paper = Color.white;
-        static readonly Color Pink = new Color(0.93f, 0.33f, 0.58f, 1f);
-        static readonly Color DeepPink = new Color(0.72f, 0.14f, 0.38f, 1f);
+        static readonly Color BlueTop = new Color(0.22f, 0.52f, 1f, 1f);
+        static readonly Color BlueDeep = new Color(0.04f, 0.22f, 0.86f, 1f);
         const float Gravity = 10800f;
         const float Centre = 0f;
         const float BallSize = 58f;
 
         Action finished;
+        Image field;
         Image shadow;
         RectTransform ball;
         RectTransform orb;
@@ -37,6 +38,9 @@ namespace Capstone.Placement
         bool risen;
         bool towardWords;
         bool aimed;
+        bool covering;
+        float coverTime;
+        Vector2 coverOrigin;
         bool resting;
         float restTime;
         bool done;
@@ -67,6 +71,10 @@ namespace Capstone.Placement
             screenTap.targetGraphic = ground;
             screenTap.onClick.AddListener(Finish);
 
+            field = CreateImage(canvasObject.transform, "Blue field", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            field.sprite = VerticalGradient(BlueTop, BlueDeep);
+            field.raycastTarget = false;
+
             float half = VisibleHalfHeight(canvas);
             apex = half * 0.9f;
             hop = half * 0.42f;
@@ -75,7 +83,7 @@ namespace Capstone.Placement
             shadow = CreateImage(
                 canvasObject.transform,
                 "Shadow",
-                new Color(0.55f, 0.25f, 0.4f, 0.16f),
+                new Color(0.02f, 0.08f, 0.28f, 0.2f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0f, -18f),
@@ -119,6 +127,12 @@ namespace Capstone.Placement
                 return;
 
             float step = Mathf.Min(Time.deltaTime, 0.033f);
+            if (covering)
+            {
+                Cover(step);
+                return;
+            }
+
             if (resting)
             {
                 Rest(step);
@@ -161,11 +175,14 @@ namespace Capstone.Placement
             if (position.y > Centre)
                 return;
 
-            words[nextWord].color = Pink;
+            words[nextWord].color = Color.white;
             if (nextWord == words.Length - 1)
             {
-                resting = true;
-                restTime = 0f;
+                covering = true;
+                coverTime = 0f;
+                coverOrigin = new Vector2(words[nextWord].rectTransform.anchoredPosition.x, Centre);
+                ball.anchoredPosition = coverOrigin;
+                ball.localScale = Vector3.one;
                 return;
             }
 
@@ -215,38 +232,64 @@ namespace Capstone.Placement
             shadow.color = color;
         }
 
+        void Cover(float step)
+        {
+            coverTime += step;
+            float t = Mathf.Clamp01(coverTime / 0.95f);
+            float rush = t * t;
+            ball.anchoredPosition = Vector2.Lerp(coverOrigin, Vector2.zero, rush);
+            float scale = Mathf.Lerp(1f, 56f, rush);
+            ball.localScale = new Vector3(scale, scale, 1f);
+            Color fieldColor = field.color;
+            fieldColor.a = 1f - rush;
+            field.color = fieldColor;
+            for (int i = 0; i < words.Length; i++)
+            {
+                Color color = words[i].color;
+                color.a = 1f - rush;
+                words[i].color = color;
+            }
+
+            Color shade = shadow.color;
+            shade.a = Mathf.Lerp(0.2f, 0f, rush);
+            shadow.color = shade;
+            if (t < 1f)
+                return;
+
+            covering = false;
+            resting = true;
+            restTime = 0f;
+            ball.gameObject.SetActive(false);
+            field.color = new Color(1f, 1f, 1f, 0f);
+            shadow.color = new Color(shade.r, shade.g, shade.b, 0f);
+        }
+
         void Rest(float step)
         {
             restTime += step;
-            float arrive = Mathf.Clamp01(restTime / 0.7f);
+            float arrive = Mathf.Clamp01((restTime - 0.12f) / 0.8f);
             float eased = 1f - ((1f - arrive) * (1f - arrive));
             if (!orb.gameObject.activeSelf)
             {
                 orb.gameObject.SetActive(true);
-                orb.anchoredPosition = ball.anchoredPosition;
-                ball.gameObject.SetActive(false);
+                orb.anchoredPosition = new Vector2(0f, 40f);
+                orb.localScale = Vector3.one * 0.08f;
             }
 
             float breathe = 1f + (Mathf.Sin(restTime * 1.4f) * 0.018f);
-            orb.localScale = Vector3.one * Mathf.Lerp(0.1f, 1f, eased) * breathe;
+            orb.localScale = Vector3.one * Mathf.Lerp(0.08f, 1f, eased) * breathe;
             float lift = Mathf.Sin(restTime * 1.15f) * 22f;
             Vector2 home = new Vector2(Mathf.Sin(restTime * 0.7f) * 10f, 90f + lift);
-            orb.anchoredPosition = Vector2.Lerp(ball.anchoredPosition, home, eased);
+            orb.anchoredPosition = Vector2.Lerp(new Vector2(0f, 40f), home, eased);
             ribbonA.localRotation = Quaternion.Euler(0f, 0f, restTime * 26f);
             ribbonB.localRotation = Quaternion.Euler(0f, 0f, -restTime * 17f);
-            for (int i = 0; i < words.Length; i++)
-            {
-                Color color = words[i].color;
-                color.a = 1f - eased;
-                words[i].color = color;
-            }
 
             float height = Mathf.InverseLerp(-22f, 22f, lift);
             shadow.rectTransform.sizeDelta = new Vector2(420f, 90f);
             shadow.rectTransform.anchoredPosition = new Vector2(orb.anchoredPosition.x, -250f);
-            shadow.rectTransform.localScale = new Vector3(Mathf.Lerp(0.3f, Mathf.Lerp(1.05f, 0.72f, height), eased), 1f, 1f);
+            shadow.rectTransform.localScale = new Vector3(Mathf.Lerp(1.05f, 0.72f, height), 1f, 1f);
             Color shade = shadow.color;
-            shade.a = Mathf.Lerp(0.08f, 0.18f, eased) * Mathf.Lerp(1f, 0.55f, height);
+            shade.a = Mathf.Lerp(0f, 0.18f, eased) * Mathf.Lerp(1f, 0.55f, height);
             shadow.color = shade;
         }
 
@@ -332,7 +375,7 @@ namespace Capstone.Placement
             text.fontSize = fontSize;
             text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
+            text.color = new Color(1f, 1f, 1f, 0f);
             text.text = message;
             text.horizontalOverflow = HorizontalWrapMode.Overflow;
             text.verticalOverflow = VerticalWrapMode.Overflow;
@@ -367,6 +410,22 @@ namespace Capstone.Placement
             return image;
         }
 
+        static Sprite VerticalGradient(Color top, Color bottom)
+        {
+            Texture2D texture = new Texture2D(4, 64, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            for (int y = 0; y < 64; y++)
+            {
+                Color color = Color.Lerp(bottom, top, y / 63f);
+                for (int x = 0; x < 4; x++)
+                    texture.SetPixel(x, y, color);
+            }
+
+            texture.Apply();
+            return Sprite.Create(texture, new Rect(0f, 0f, 4f, 64f), new Vector2(0.5f, 0.5f));
+        }
+
         static Sprite BallSprite()
         {
             const int size = 128;
@@ -391,11 +450,11 @@ namespace Capstone.Placement
 
                     float nx = dx / radius;
                     float ny = dy / radius;
-                    float light = Mathf.Clamp01(0.4f + (ny * 0.36f) - (nx * 0.16f));
+                    float light = Mathf.Clamp01(0.72f + (ny * 0.22f) - (nx * 0.08f));
                     float highlight = Mathf.Clamp01(1f - (Mathf.Sqrt(((nx + 0.28f) * (nx + 0.28f)) + ((ny - 0.34f) * (ny - 0.34f))) / 0.42f));
                     highlight = highlight * highlight;
-                    Color color = Color.Lerp(DeepPink, Pink, light);
-                    color = Color.Lerp(color, Color.white, highlight * 0.9f);
+                    Color color = Color.Lerp(new Color(0.78f, 0.88f, 1f, 1f), Color.white, light);
+                    color = Color.Lerp(color, Color.white, highlight * 0.95f);
                     color.a = edge;
                     texture.SetPixel(x, y, color);
                 }
