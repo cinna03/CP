@@ -6,7 +6,8 @@ namespace Capstone.Placement
 {
     /// <summary>
     /// The first screen is blue. A white ball bounces on each word and turns that word white.
-    /// The ball then comes toward the camera until the page is white, and a translucent blue body floats until a tap.
+    /// The ball then comes toward the camera until the page is white, and a translucent blue body floats.
+    /// Blue sheets then fan open and the front sheet peels away. A tap starts the session.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -29,6 +30,8 @@ namespace Capstone.Placement
         RectTransform orb;
         RectTransform ribbonA;
         RectTransform ribbonB;
+        CanvasGroup orbFade;
+        Image[] sheets;
         Text[] words;
         float velocity;
         float horizontalVelocity;
@@ -43,6 +46,8 @@ namespace Capstone.Placement
         Vector2 coverOrigin;
         bool resting;
         float restTime;
+        bool dealing;
+        float dealTime;
         bool done;
 
         public static void Play(Font typeface, Action onFinished)
@@ -117,7 +122,9 @@ namespace Capstone.Placement
             Image glass = CreateImage(orb, "Glass", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             glass.sprite = GlassShell();
             glass.raycastTarget = false;
+            orbFade = orbObject.AddComponent<CanvasGroup>();
             orb.gameObject.SetActive(false);
+            sheets = CreateSheets(canvasObject.transform);
             velocity = 0f;
         }
 
@@ -130,6 +137,12 @@ namespace Capstone.Placement
             if (covering)
             {
                 Cover(step);
+                return;
+            }
+
+            if (dealing)
+            {
+                Deal(step);
                 return;
             }
 
@@ -291,6 +304,46 @@ namespace Capstone.Placement
             Color shade = shadow.color;
             shade.a = Mathf.Lerp(0f, 0.18f, eased) * Mathf.Lerp(1f, 0.55f, height);
             shadow.color = shade;
+            if (restTime < 2.15f)
+                return;
+
+            resting = false;
+            dealing = true;
+            dealTime = 0f;
+            for (int i = 0; i < sheets.Length; i++)
+                sheets[i].gameObject.SetActive(true);
+        }
+
+        void Deal(float step)
+        {
+            dealTime += step;
+            float arrive = Mathf.Clamp01(dealTime / 0.55f);
+            float shown = 1f - ((1f - arrive) * (1f - arrive));
+            float peel = Mathf.Clamp01((dealTime - 0.8f) / 0.62f);
+            peel = peel * peel;
+            orb.localScale = Vector3.one * Mathf.Lerp(1f, 0.16f, shown);
+            orbFade.alpha = 1f - shown;
+            Color shade = shadow.color;
+            shade.a = Mathf.Lerp(shade.a, 0f, shown);
+            shadow.color = shade;
+
+            for (int i = 0; i < sheets.Length; i++)
+            {
+                int depth = sheets.Length - 1 - i;
+                float from = depth * 34f;
+                float settled = Mathf.Max(0, depth - 1) * 34f;
+                RectTransform rect = sheets[i].rectTransform;
+                bool leaving = i == sheets.Length - 1;
+                float y = leaving
+                    ? Mathf.Lerp(0f, 860f, peel)
+                    : Mathf.Lerp(from, settled, peel);
+                rect.anchoredPosition = new Vector2(0f, Mathf.Lerp(-30f, y, shown));
+                rect.localRotation = Quaternion.Euler(0f, 0f, leaving ? Mathf.Lerp(0f, -8f, peel) : 0f);
+                rect.localScale = Vector3.one * Mathf.Lerp(0.94f, 1f, shown);
+                Color color = sheets[i].color;
+                color.a = leaving ? 1f - peel : 1f;
+                sheets[i].color = color;
+            }
         }
 
         void Finish()
@@ -385,6 +438,74 @@ namespace Capstone.Placement
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.sizeDelta = new Vector2(240f, 72f);
             return text;
+        }
+
+        static Image[] CreateSheets(Transform parent)
+        {
+            Color[] tops =
+            {
+                new Color(0.62f, 0.84f, 1f, 0.7f),
+                new Color(0.4f, 0.66f, 1f, 0.68f),
+                new Color(0.24f, 0.5f, 0.98f, 0.66f),
+                new Color(0.52f, 0.76f, 1f, 0.72f)
+            };
+            Color[] bottoms =
+            {
+                new Color(0.16f, 0.4f, 0.92f, 0.42f),
+                new Color(0.1f, 0.32f, 0.86f, 0.4f),
+                new Color(0.06f, 0.24f, 0.78f, 0.38f),
+                new Color(0.14f, 0.38f, 0.9f, 0.4f)
+            };
+            Image[] sheets = new Image[tops.Length];
+            for (int i = 0; i < tops.Length; i++)
+            {
+                Image sheet = CreateImage(
+                    parent,
+                    "Blue sheet",
+                    Color.white,
+                    new Vector2(0.5f, 0.5f),
+                    new Vector2(0.5f, 0.5f),
+                    new Vector2(0f, -30f),
+                    new Vector2(700f, 1040f));
+                sheet.sprite = RoundedGradient(tops[i], bottoms[i]);
+                sheet.raycastTarget = false;
+                sheet.gameObject.SetActive(false);
+                sheets[i] = sheet;
+            }
+
+            return sheets;
+        }
+
+        static Sprite RoundedGradient(Color top, Color bottom)
+        {
+            const int width = 140;
+            const int height = 208;
+            const float radius = 28f;
+            Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            float halfWidth = (width * 0.5f) - radius;
+            float halfHeight = (height * 0.5f) - radius;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float px = x - ((width - 1) * 0.5f);
+                    float py = y - ((height - 1) * 0.5f);
+                    float qx = Mathf.Abs(px) - halfWidth;
+                    float qy = Mathf.Abs(py) - halfHeight;
+                    float outside = Mathf.Sqrt((Mathf.Max(qx, 0f) * Mathf.Max(qx, 0f)) + (Mathf.Max(qy, 0f) * Mathf.Max(qy, 0f)));
+                    float box = Mathf.Min(Mathf.Max(qx, qy), 0f);
+                    float distance = outside + box - radius;
+                    float edge = Mathf.Clamp01((1.4f - distance) / 2.4f);
+                    Color color = Color.Lerp(bottom, top, y / (height - 1f));
+                    color.a *= edge;
+                    texture.SetPixel(x, y, color);
+                }
+            }
+
+            texture.Apply();
+            return Sprite.Create(texture, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f));
         }
 
         static RectTransform Ribbon(Transform parent, string name, int band)
