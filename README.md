@@ -1,6 +1,6 @@
 # Capstone
 
-A portrait prototype that places one catalogue work on a detected wall at the centimetres stored on that work. The buyer starts with one of 25 consent codes, sets style, mood, and colour, then picks a work. The camera opens when that work is placed. One question is matched from a written English, French, and Kinyarwanda table. Keep, save, or dismiss ranks three other works and shows their story notes.
+A portrait prototype that places one catalogue work on a detected wall at the centimetres stored on that work. The buyer starts with one of 25 consent codes, answers three questions for style, mood, and colour, then picks a work. I don't know leaves that category open. The camera opens when that work is placed. One question is matched from a written English, French, and Kinyarwanda table. Keep, save, or dismiss ranks three other works and shows their story notes.
 
 This folder is the implementation. The five-page technical report and the walkthrough video are separate from this code.
 
@@ -29,8 +29,8 @@ In the editor, Play asks for Room 1, Room 2, or Room 3 when the buyer is ready t
 `BuyerPath` is the order. The placement screen follows it.
 
 1. Consent code. `ConsentCodes` holds the 25 codes. `BuyerSession.TryStart` accepts one of them, trims spaces, and marks consent. Any other text stays on the code page and says `Try again.`
-2. Style, mood, and colour. The choice becomes `PreferenceProfile.FromInitialTags`.
-3. Catalogue. The buyer picks a work, then presses `Place this work`.
+2. Three questions. `PreferenceQuiz` stores a style, a mood, and a colour. `I don't know` leaves that category blank. `PreferenceProfile.FromInitialTags` keeps only the answers that were given. A blank tag adds no weight.
+3. Catalogue. The list is the works that meet those answers. `See every work` clears the filter. The buyer picks a work, then presses `Place this work`.
 4. Wall. This is the only step that opens the camera. The quad uses `Artwork.WallSizeMetres`, which comes from the stored centimetres.
 5. One question, or Skip. `RuleEngine.Match` reads `StarterRules`. The reply language is the language of the matched words. No match returns one fixed prompt and logs nothing.
 6. Keep, save, or dismiss. `Recommender.RankThree` returns three other works. The status line includes each story note.
@@ -44,6 +44,7 @@ A keep, save, dismiss, matched question, or chosen rank is stored only after con
 | --- | --- | --- |
 | 25 consent codes and session start | `Assets/Capstone/Session` | `BuyerSessionTests`, `BuyerPathTests` |
 | Buyer order, camera only at the wall | `BuyerPath` | `BuyerPathTests` |
+| Starting questions, blank tag stays open | `PreferenceQuiz` | `PreferenceQuizTests` |
 | Stored centimetres to wall size | `Assets/Capstone/Catalogue` | `ArtworkScaleTests`, `ArtworkRecordTests` |
 | Pose on a vertical face | `ArtworkWallPose` | `ArtworkWallPoseTests` |
 | Style, mood, colour filter | `CatalogueFilter` | `CatalogueFilterTests` |
@@ -72,10 +73,10 @@ The tests are Edit Mode tests in the Unity Test Runner.
 
 The fixtures sit under `Assets/Capstone/**/Tests`. They cover the empty code, a code outside the 25, each of the 25 codes, a question in each language, an unmatched question, a tie, keep, save, and dismiss, a rank that leaves out the current work, a missing story note, and a size that stays the stored centimetres.
 
-On 31 Oct 2026 the 79 tests that do not need the Unity editor were compiled and run: catalogue, ranking, dialogue, and session. All 79 passed. The list is `TEST-RESULTS.txt`. The wall-pose and room tests use Unity types, so they run in the Test Runner with the rest.
+On 31 Oct 2026 the 85 tests that do not need the Unity editor were compiled and run: catalogue, ranking, dialogue, and session. All 85 passed. The list is `TEST-RESULTS.txt`. The wall-pose and room tests use Unity types, so they run in the Test Runner with the rest.
 
 Two runtimes were used for the placement path. The editor runs the same session order in one of three rooms. An iPhone 13 on iOS 27.2 ran the same wall raycast and the same stored-size quad on a real wall: the phone asks for a slow scan, the centre ring turns green on a vertical plane, and Place uses that hit. Frame time was not instrumented, so this folder does not claim a performance number. The study package target remains Android API 30 with ARCore required.
 
 ## Play
 
-Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Set the tags, choose a work, then place it. Ask one thing or press Skip. Keep, save, or dismiss shows three works with their story notes.
+Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Answer the three questions, or press `I don't know`. `See every work` opens the whole catalogue. Choose a work, then place it. Ask one thing or press Skip. Keep, save, or dismiss shows three works with their story notes.

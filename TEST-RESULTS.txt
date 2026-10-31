@@ -2,7 +2,7 @@ Capstone logic tests
 Run: 31 Oct 2026
 Compiler: Unity 6000.5.0f1 Mono mcs
 Suites: Catalogue, Ranking, Dialogue, Session
-Result: 79 passed, 0 failed
+Result: 85 passed, 0 failed
 
 These tests do not reference UnityEngine, so they were run outside the open editor.
 ArtworkWallPoseTests and DemoRoomTests use Unity types and run from Window > General > Test Runner.
@@ -76,6 +76,12 @@ PASS BuyerSessionTests.ABlankConsentCodeDoesNotStart
 PASS BuyerSessionTests.AConsentCodeStartsTheSessionAndMarksConsent
 PASS BuyerSessionTests.ACodeOutsideTheTwentyFiveDoesNotStart
 PASS BuyerSessionTests.EachOfTheTwentyFiveCodesStartsOnce
+PASS PreferenceQuizTests.AStyleAnswerStoresOnlyThatTag
+PASS PreferenceQuizTests.AnUnknownAnswerLeavesThatCategoryOpen
+PASS PreferenceQuizTests.ThreeUnknownAnswersStoreNothing
+PASS PreferenceQuizTests.ALaterAnswerDoesNotOverwriteAFinishedQuiz
+PASS PreferenceQuizTests.RestartClearsTheAnswersAndReturnsToTheFirstQuestion
+PASS PreferenceQuizTests.EachQuestionOffersABlankTagLast
 PASS PrototypeScreenTests.ANewScreenOpensOnWorks
 PASS PrototypeScreenTests.ThePrototypeOpensWallAndRecommend
 PASS PrototypeScreenTests.BaselineStaysOnWorks

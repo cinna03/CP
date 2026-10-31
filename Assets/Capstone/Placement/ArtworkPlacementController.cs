@@ -30,7 +30,7 @@ namespace Capstone.Placement
     /// No wall means a retry message and no invented size.
     /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
     /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
-    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer then sets a style, a mood, and a colour, and picks a work from the catalogue. The camera opens when that work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can set new tags and place another work, or end. The five uncertainty questions stay on the paper form.
+    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer then answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue lists the works that meet the answers, and See every work skips that list. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -58,8 +58,10 @@ namespace Capstone.Placement
         public const string WallFoundMessage = "Wall detected. You are ready to test the art piece. Press Place.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
-        public const string TagsMessage = "Set a style, a mood, and a colour.";
-        public const string TagsSetMessage = "Tags are set. Choose a work from the catalogue.";
+        public const string TagsMessage = "What are you looking for?";
+        public const string MatchMessage = "These pieces match what you said. See every work skips this list.";
+        public const string NoQuizMatchMessage = "Nothing matches every answer. See every work.";
+        public const string OpenCatalogueMessage = "The whole catalogue is open.";
         public const string AskOrSkipMessage = "Ask one thing, or skip.";
         public const string SkippedMessage = "Skipped. Keep, save, or dismiss this work.";
         public const string EndedMessage = "Session ended. The five uncertainty questions stay on the paper form.";
@@ -107,18 +109,14 @@ namespace Capstone.Placement
         bool ended;
         string pathStep = BuyerPath.Start();
         GameObject skipButton;
-        string pickedStyle = "sample";
-        string pickedMood = "calm";
-        string pickedColour = "blue";
+        PreferenceQuiz quiz = new PreferenceQuiz();
+        bool narrowed;
         GameObject tagsPanel;
-        Image styleSampleImage;
-        Image styleBoldImage;
-        Image moodCalmImage;
-        Image moodQuietImage;
-        Image moodBrightImage;
-        Image colourBlueImage;
-        Image colourOrangeImage;
-        Image colourRedImage;
+        Text quizPrompt;
+        Button[] quizButtons = new Button[4];
+        Text[] quizLabels = new Text[4];
+        Image[] quizImages = new Image[4];
+        GameObject seeEveryButton;
         CanvasScaler screenFit;
         RectTransform screenColumn;
         static readonly Color AimSearching = Color.white;
@@ -375,20 +373,56 @@ namespace Capstone.Placement
 
         public void ConfirmTags()
         {
-            feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(pickedStyle, pickedMood, pickedColour));
+            ShowMatches();
+        }
+
+        void AnswerQuiz(string tag)
+        {
+            quiz.Answer(tag);
+            if (quiz.Finished)
+            {
+                ShowMatches();
+                return;
+            }
+
+            ShowQuestion();
+            if (status != null)
+                status.text = quiz.Prompt();
+        }
+
+        void ShowMatches()
+        {
+            feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(quiz.Style, quiz.Mood, quiz.Colour));
             tagsChosen = true;
             ended = false;
+            narrowed = quiz.AnyAnswered();
             pathStep = BuyerPath.Next(pathStep, BuyerPath.Continue);
-            UseFilter(null, null, null, 0f, 0f);
+            UseFilter(Blank(quiz.Style), Blank(quiz.Mood), Blank(quiz.Colour), 0f, 0f);
             OpenStep(PrototypeScreen.Works);
-            status.text = TagsSetMessage + " " + pickedStyle + ", " + pickedMood + ", " + pickedColour + ".";
+            if (status != null)
+                status.text = MatchLine();
+        }
+
+        string MatchLine()
+        {
+            if (!narrowed)
+                return OpenCatalogueMessage;
+            int count = shown != null ? shown.Count : 0;
+            if (count == 0)
+                return NoQuizMatchMessage;
+            return MatchMessage;
+        }
+
+        static string Blank(string tag)
+        {
+            return string.IsNullOrWhiteSpace(tag) ? null : tag;
         }
 
         public void BeginPlacement()
         {
-            if (current == null)
+            if (current == null || shown == null || shown.Count == 0)
             {
-                status.text = NoCatalogueMessage;
+                status.text = shown != null && shown.Count == 0 ? NoMatchMessage : NoCatalogueMessage;
                 return;
             }
 
@@ -406,15 +440,16 @@ namespace Capstone.Placement
 
         public void ChangeTags()
         {
+            quiz.Restart();
             tagsChosen = false;
+            narrowed = false;
             ended = false;
             scanning = false;
             awaitingRoom = false;
             pathStep = BuyerPath.Next(BuyerPath.Rank, BuyerPath.ChangeTags);
+            ShowQuestion();
             OpenStep(PrototypeScreen.Works);
-            status.text = TagsMessage;
-            if (stepLine != null)
-                stepLine.text = "These tags start the next work.";
+            status.text = quiz.Prompt();
         }
 
         public void EndSession()
@@ -462,48 +497,56 @@ namespace Capstone.Placement
             }
         }
 
-        void PickStyle(string tag)
-        {
-            pickedStyle = tag;
-            PaintTag(styleSampleImage, tag == "sample");
-            PaintTag(styleBoldImage, tag == "bold");
-        }
-
-        void PickMood(string tag)
-        {
-            pickedMood = tag;
-            PaintTag(moodCalmImage, tag == "calm");
-            PaintTag(moodQuietImage, tag == "quiet");
-            PaintTag(moodBrightImage, tag == "bright");
-        }
-
-        void PickColour(string tag)
-        {
-            pickedColour = tag;
-            PaintTag(colourBlueImage, tag == "blue");
-            PaintTag(colourOrangeImage, tag == "orange");
-            PaintTag(colourRedImage, tag == "red");
-        }
-
-        static void PaintTag(Image image, bool chosen)
-        {
-            if (image != null)
-                image.color = chosen ? StepOn : StepOff;
-        }
-
         void StartBuyerPath()
         {
             scanning = false;
             wallReady = false;
             tagsChosen = false;
+            narrowed = false;
             ended = false;
             awaitingRoom = false;
+            quiz.Restart();
             pathStep = BuyerPath.Start();
+            ShowQuestion();
             OpenStep(PrototypeScreen.Works);
             if (status != null)
-                status.text = TagsMessage;
-            if (stepLine != null)
-                stepLine.text = "These tags start the session. The catalogue comes next.";
+                status.text = quiz.Prompt();
+        }
+
+        void ShowQuestion()
+        {
+            if (quizPrompt != null)
+                quizPrompt.text = quiz.Prompt();
+
+            PreferenceQuiz.Choice[] choices = quiz.CurrentChoices();
+            for (int i = 0; i < quizButtons.Length; i++)
+            {
+                Button button = quizButtons[i];
+                if (button == null)
+                    continue;
+
+                bool show = i < choices.Length;
+                button.gameObject.SetActive(show);
+                if (!show)
+                    continue;
+
+                PreferenceQuiz.Choice choice = choices[i];
+                RectTransform rect = button.GetComponent<RectTransform>();
+                int fromTop = choices.Length - 1 - i;
+                rect.anchoredPosition = new Vector2(24f, 80f + (fromTop * 160f));
+                if (quizLabels[i] != null)
+                    quizLabels[i].text = choice.Label;
+
+                bool unknown = string.IsNullOrEmpty(choice.Tag);
+                if (quizImages[i] != null)
+                    quizImages[i].color = unknown ? new Color(0.75f, 0.82f, 0.90f, 1f) : StepOn;
+                if (quizLabels[i] != null)
+                    quizLabels[i].color = unknown ? new Color(0.07f, 0.18f, 0.42f, 1f) : Color.white;
+
+                string tag = choice.Tag;
+                button.onClick.RemoveAllListeners();
+                button.onClick.AddListener(() => AnswerQuiz(tag));
+            }
         }
 
         string ReplyForCurrentWork(DialogueReply reply)
@@ -682,7 +725,11 @@ namespace Capstone.Placement
 
         public void ShowAll()
         {
+            narrowed = false;
             UseFilter(null, null, null, 0f, 0f);
+            ApplyStepVisibility();
+            if (status != null)
+                status.text = OpenCatalogueMessage;
         }
 
         public void ShowBlue()
@@ -788,6 +835,7 @@ namespace Capstone.Placement
             SetButtonActive(recommendNavImage, false);
             if (worksPanel != null)
                 worksPanel.SetActive(tagsChosen && !ended && !choosing && !phoneScan && PrototypeScreen.ShowsWorks(step));
+            SetObjectActive(seeEveryButton, narrowed && tagsChosen && !ended && !choosing && !phoneScan);
             if (wallPanel != null)
                 wallPanel.SetActive(tagsChosen && !ended && !choosing && PrototypeScreen.ShowsWall(step));
             if (recommendPanel != null)
@@ -855,7 +903,9 @@ namespace Capstone.Placement
             if (ended)
                 return EndedMessage;
             if (!tagsChosen)
-                return "These tags start the session. The catalogue comes next.";
+                return "I don't know leaves this category open.";
+            if (narrowed && step == PrototypeScreen.Works)
+                return "These match what you said. See every work skips this list.";
             if (step == PrototypeScreen.Wall)
                 return Application.isEditor ? WallStepMessage : ScanWallMessage;
             if (step == PrototypeScreen.Recommend)
@@ -1187,19 +1237,27 @@ namespace Capstone.Placement
 
             uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             tagsPanel = CreatePanel(column.transform, "Tags");
-            Cover(tagsPanel, new Color(0.90f, 0.95f, 1f, 1f));
-            styleSampleImage = CreateButton(tagsPanel.transform, uiFont, "Style: sample", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 1060f), new Vector2(500f, 110f), () => PickStyle("sample"), 32).GetComponent<Image>();
-            styleBoldImage = CreateButton(tagsPanel.transform, uiFont, "Style: bold", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(556f, 1060f), new Vector2(500f, 110f), () => PickStyle("bold"), 32).GetComponent<Image>();
-            moodCalmImage = CreateButton(tagsPanel.transform, uiFont, "Mood: calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 900f), new Vector2(330f, 110f), () => PickMood("calm"), 30).GetComponent<Image>();
-            moodQuietImage = CreateButton(tagsPanel.transform, uiFont, "Mood: quiet", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 900f), new Vector2(330f, 110f), () => PickMood("quiet"), 30).GetComponent<Image>();
-            moodBrightImage = CreateButton(tagsPanel.transform, uiFont, "Mood: bright", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(716f, 900f), new Vector2(330f, 110f), () => PickMood("bright"), 30).GetComponent<Image>();
-            colourBlueImage = CreateButton(tagsPanel.transform, uiFont, "Colour: blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 740f), new Vector2(330f, 110f), () => PickColour("blue"), 28).GetComponent<Image>();
-            colourOrangeImage = CreateButton(tagsPanel.transform, uiFont, "Colour: orange", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 740f), new Vector2(330f, 110f), () => PickColour("orange"), 28).GetComponent<Image>();
-            colourRedImage = CreateButton(tagsPanel.transform, uiFont, "Colour: red", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(716f, 740f), new Vector2(330f, 110f), () => PickColour("red"), 28).GetComponent<Image>();
-            CreateButton(tagsPanel.transform, uiFont, "Continue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 480f), new Vector2(1032f, 130f), ConfirmTags, 40);
-            PickStyle(pickedStyle);
-            PickMood(pickedMood);
-            PickColour(pickedColour);
+            Cover(tagsPanel, new Color(0.86f, 0.93f, 1f, 1f));
+            quizPrompt = CreateLabel(tagsPanel.transform, uiFont, TagsMessage, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -340f), 52);
+            quizPrompt.color = new Color(0.07f, 0.18f, 0.42f, 1f);
+            quizPrompt.rectTransform.sizeDelta = new Vector2(960f, 220f);
+            for (int i = 0; i < quizButtons.Length; i++)
+            {
+                Button button = CreateButton(
+                    tagsPanel.transform,
+                    uiFont,
+                    "Answer",
+                    new Vector2(0f, 0f),
+                    new Vector2(0f, 0f),
+                    new Vector2(24f, 80f),
+                    new Vector2(1032f, 140f),
+                    () => { },
+                    36);
+                quizButtons[i] = button;
+                quizImages[i] = button.GetComponent<Image>();
+                quizLabels[i] = button.GetComponentInChildren<Text>();
+            }
+            ShowQuestion();
             statusShade = CreateShade(column.transform);
             aimMark = CreateAimMark(column.transform);
             status = CreateLabel(column.transform, uiFont, WorksStatus(), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -24f), 30);
@@ -1221,6 +1279,7 @@ namespace Capstone.Placement
             Cover(recommendPanel, new Color(0.94f, 0.96f, 1f, 1f));
             workList = CreatePanel(worksPanel.transform, "Work list").GetComponent<RectTransform>();
 
+            seeEveryButton = CreateButton(worksPanel.transform, uiFont, "See every work", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 700f), new Vector2(1032f, 100f), ShowAll, 32).gameObject;
             CreateButton(worksPanel.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 590f), new Vector2(250f, 70f), ShowAll, 28);
             CreateButton(worksPanel.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(282f, 590f), new Vector2(250f, 70f), ShowBlue, 28);
             CreateButton(worksPanel.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 590f), new Vector2(250f, 70f), ShowCalm, 28);
