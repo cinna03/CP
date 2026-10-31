@@ -30,7 +30,7 @@ In the editor, Play asks for Room 1, Room 2, or Room 3 when the buyer is ready t
 
 1. Consent code. `ConsentCodes` holds the 25 codes. `BuyerSession.TryStart` accepts one of them, trims spaces, and marks consent. Any other text stays on the code page and says `Try again.`
 2. Three questions. `PreferenceQuiz` stores a style, a mood, and a colour. `I don't know` leaves that category blank. `PreferenceProfile.FromInitialTags` keeps only the answers that were given. A blank tag adds no weight.
-3. Catalogue. The list is the works that meet those answers. `See every work` clears the filter. The buyer picks a work, then presses `Place this work`.
+3. Catalogue. The works that meet those answers open as the top picks. `Browse for more` lists every piece. `Top picks` returns to the matches. The buyer picks a work, then presses `Place this work`.
 4. Wall. This is the only step that opens the camera. The quad uses `Artwork.WallSizeMetres`, which comes from the stored centimetres.
 5. One question, or Skip. `RuleEngine.Match` reads `StarterRules`. The reply language is the language of the matched words. No match returns one fixed prompt and logs nothing.
 6. Keep, save, or dismiss. `Recommender.RankThree` returns three other works. The status line includes each story note.
@@ -79,4 +79,4 @@ Two runtimes were used for the placement path. The editor runs the same session 
 
 ## Play
 
-Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Answer the three questions, or press `I don't know`. `See every work` opens the whole catalogue. Choose a work, then place it. Ask one thing or press Skip. Keep, save, or dismiss shows three works with their story notes.
+Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Answer the three questions, or press `I don't know`. The catalogue opens on the top picks. `Browse for more` lists every piece. Choose a work, then place it. Ask one thing or press Skip. Keep, save, or dismiss shows three works with their story notes.

@@ -30,7 +30,7 @@ namespace Capstone.Placement
     /// No wall means a retry message and no invented size.
     /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
     /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
-    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer then answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue lists the works that meet the answers, and See every work skips that list. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
+    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer then answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -59,9 +59,9 @@ namespace Capstone.Placement
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
         public const string TagsMessage = "What are you looking for?";
-        public const string MatchMessage = "These pieces match what you said. See every work skips this list.";
-        public const string NoQuizMatchMessage = "Nothing matches every answer. See every work.";
-        public const string OpenCatalogueMessage = "The whole catalogue is open.";
+        public const string MatchMessage = "Top picks for what you said.";
+        public const string NoQuizMatchMessage = "Nothing matches every answer. Browse for more.";
+        public const string BrowseMessage = "Every piece in the catalogue.";
         public const string AskOrSkipMessage = "Ask one thing, or skip.";
         public const string SkippedMessage = "Skipped. Keep, save, or dismiss this work.";
         public const string EndedMessage = "Session ended. The five uncertainty questions stay on the paper form.";
@@ -111,12 +111,16 @@ namespace Capstone.Placement
         GameObject skipButton;
         PreferenceQuiz quiz = new PreferenceQuiz();
         bool narrowed;
+        bool browsing;
         GameObject tagsPanel;
         Text quizPrompt;
         Button[] quizButtons = new Button[4];
         Text[] quizLabels = new Text[4];
         Image[] quizImages = new Image[4];
-        GameObject seeEveryButton;
+        GameObject browseButton;
+        GameObject topPicksButton;
+        GameObject browseFilters;
+        Text catalogueHeading;
         CanvasScaler screenFit;
         RectTransform screenColumn;
         static readonly Color AimSearching = Color.white;
@@ -396,6 +400,7 @@ namespace Capstone.Placement
             tagsChosen = true;
             ended = false;
             narrowed = quiz.AnyAnswered();
+            browsing = !narrowed;
             pathStep = BuyerPath.Next(pathStep, BuyerPath.Continue);
             UseFilter(Blank(quiz.Style), Blank(quiz.Mood), Blank(quiz.Colour), 0f, 0f);
             OpenStep(PrototypeScreen.Works);
@@ -405,8 +410,8 @@ namespace Capstone.Placement
 
         string MatchLine()
         {
-            if (!narrowed)
-                return OpenCatalogueMessage;
+            if (!narrowed || browsing)
+                return BrowseMessage;
             int count = shown != null ? shown.Count : 0;
             if (count == 0)
                 return NoQuizMatchMessage;
@@ -443,6 +448,7 @@ namespace Capstone.Placement
             quiz.Restart();
             tagsChosen = false;
             narrowed = false;
+            browsing = false;
             ended = false;
             scanning = false;
             awaitingRoom = false;
@@ -503,6 +509,7 @@ namespace Capstone.Placement
             wallReady = false;
             tagsChosen = false;
             narrowed = false;
+            browsing = false;
             ended = false;
             awaitingRoom = false;
             quiz.Restart();
@@ -725,25 +732,38 @@ namespace Capstone.Placement
 
         public void ShowAll()
         {
-            narrowed = false;
+            browsing = true;
             UseFilter(null, null, null, 0f, 0f);
             ApplyStepVisibility();
             if (status != null)
-                status.text = OpenCatalogueMessage;
+                status.text = BrowseMessage;
+        }
+
+        public void ShowTopPicks()
+        {
+            browsing = false;
+            narrowed = quiz.AnyAnswered();
+            UseFilter(Blank(quiz.Style), Blank(quiz.Mood), Blank(quiz.Colour), 0f, 0f);
+            ApplyStepVisibility();
+            if (status != null)
+                status.text = MatchLine();
         }
 
         public void ShowBlue()
         {
+            browsing = true;
             UseFilter(null, null, "blue", 0f, 0f);
         }
 
         public void ShowCalm()
         {
+            browsing = true;
             UseFilter(null, "calm", null, 0f, 0f);
         }
 
         public void ShowFitsFifty()
         {
+            browsing = true;
             UseFilter(null, null, null, 50f, 50f);
         }
 
@@ -754,6 +774,7 @@ namespace Capstone.Placement
             if (shown.Count == 0)
             {
                 RefreshWorkList();
+                PaintCatalogueHeading();
                 status.text = NoMatchMessage;
                 return;
             }
@@ -781,7 +802,16 @@ namespace Capstone.Placement
             }
 
             RefreshWorkList();
+            PaintCatalogueHeading();
             status.text = WorksStatus();
+        }
+
+        void PaintCatalogueHeading()
+        {
+            if (catalogueHeading == null)
+                return;
+
+            catalogueHeading.text = narrowed && !browsing ? "Top picks" : "All pieces";
         }
 
         public void ShowWorks()
@@ -833,9 +863,12 @@ namespace Capstone.Placement
             SetButtonActive(worksNavImage, false);
             SetButtonActive(wallNavImage, false);
             SetButtonActive(recommendNavImage, false);
+            bool onWorks = tagsChosen && !ended && !choosing && !phoneScan && PrototypeScreen.ShowsWorks(step);
             if (worksPanel != null)
-                worksPanel.SetActive(tagsChosen && !ended && !choosing && !phoneScan && PrototypeScreen.ShowsWorks(step));
-            SetObjectActive(seeEveryButton, narrowed && tagsChosen && !ended && !choosing && !phoneScan);
+                worksPanel.SetActive(onWorks);
+            SetObjectActive(browseButton, onWorks && narrowed && !browsing);
+            SetObjectActive(topPicksButton, onWorks && narrowed && browsing);
+            SetObjectActive(browseFilters, onWorks && (browsing || !narrowed));
             if (wallPanel != null)
                 wallPanel.SetActive(tagsChosen && !ended && !choosing && PrototypeScreen.ShowsWall(step));
             if (recommendPanel != null)
@@ -904,8 +937,10 @@ namespace Capstone.Placement
                 return EndedMessage;
             if (!tagsChosen)
                 return "I don't know leaves this category open.";
-            if (narrowed && step == PrototypeScreen.Works)
-                return "These match what you said. See every work skips this list.";
+            if (narrowed && !browsing && step == PrototypeScreen.Works)
+                return "These are the top picks. Browse for more shows every piece.";
+            if (browsing && narrowed && step == PrototypeScreen.Works)
+                return "Top picks returns to the matches.";
             if (step == PrototypeScreen.Wall)
                 return Application.isEditor ? WallStepMessage : ScanWallMessage;
             if (step == PrototypeScreen.Recommend)
@@ -1278,12 +1313,17 @@ namespace Capstone.Placement
             Cover(worksPanel, new Color(0.94f, 0.96f, 1f, 1f));
             Cover(recommendPanel, new Color(0.94f, 0.96f, 1f, 1f));
             workList = CreatePanel(worksPanel.transform, "Work list").GetComponent<RectTransform>();
+            catalogueHeading = CreateLabel(worksPanel.transform, uiFont, "Top picks", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -480f), 42);
+            catalogueHeading.color = new Color(0.07f, 0.18f, 0.42f, 1f);
+            catalogueHeading.rectTransform.sizeDelta = new Vector2(1000f, 80f);
 
-            seeEveryButton = CreateButton(worksPanel.transform, uiFont, "See every work", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 700f), new Vector2(1032f, 100f), ShowAll, 32).gameObject;
-            CreateButton(worksPanel.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 590f), new Vector2(250f, 70f), ShowAll, 28);
-            CreateButton(worksPanel.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(282f, 590f), new Vector2(250f, 70f), ShowBlue, 28);
-            CreateButton(worksPanel.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 590f), new Vector2(250f, 70f), ShowCalm, 28);
-            CreateButton(worksPanel.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(814f, 590f), new Vector2(250f, 70f), ShowFitsFifty, 28);
+            browseButton = CreateButton(worksPanel.transform, uiFont, "Browse for more", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 700f), new Vector2(1032f, 100f), ShowAll, 32).gameObject;
+            topPicksButton = CreateButton(worksPanel.transform, uiFont, "Top picks", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 700f), new Vector2(1032f, 100f), ShowTopPicks, 32).gameObject;
+            browseFilters = CreatePanel(worksPanel.transform, "Browse filters");
+            CreateButton(browseFilters.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 590f), new Vector2(250f, 70f), ShowAll, 28);
+            CreateButton(browseFilters.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(282f, 590f), new Vector2(250f, 70f), ShowBlue, 28);
+            CreateButton(browseFilters.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 590f), new Vector2(250f, 70f), ShowCalm, 28);
+            CreateButton(browseFilters.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(814f, 590f), new Vector2(250f, 70f), ShowFitsFifty, 28);
             CreateButton(worksPanel.transform, uiFont, "Place this work", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -360f), new Vector2(1000f, 100f), BeginPlacement, 36);
             RefreshWorkList();
 
