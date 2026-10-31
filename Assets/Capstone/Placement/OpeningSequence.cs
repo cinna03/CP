@@ -1,10 +1,6 @@
 using System;
-using System.Collections.Generic;
-using Capstone.Catalogue;
-using Capstone.Ranking;
 using Capstone.Session;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
@@ -38,16 +34,6 @@ namespace Capstone.Placement
         RectTransform ribbonA;
         RectTransform ribbonB;
         CanvasGroup orbFade;
-        RectTransform[] cards;
-        RectTransform[] blobs;
-        CanvasGroup[] cardFade;
-        float[] cardHomeX;
-        RectTransform[] works;
-        string[] workIds;
-        int focusedWork = -1;
-        bool sliding;
-        float slideTime;
-        bool browsing;
         bool recordingCode;
         GameObject consentPanel;
         Text codeLine;
@@ -58,7 +44,6 @@ namespace Capstone.Placement
         Font cardFont;
         Transform canvasRoot;
         string chosenId;
-        const float HighlightSeconds = 5f;
         Text[] words;
         float velocity;
         float horizontalVelocity;
@@ -73,8 +58,6 @@ namespace Capstone.Placement
         Vector2 coverOrigin;
         bool resting;
         float restTime;
-        bool dealing;
-        float dealTime;
         bool done;
 
         public static void Play(Font typeface, Action<string, string> onFinished)
@@ -164,19 +147,13 @@ namespace Capstone.Placement
             if (recordingCode && !done)
                 ReadCodeKeys();
 
-            if (done || recordingCode || browsing)
+            if (done || recordingCode)
                 return;
 
             float step = Mathf.Min(Time.deltaTime, 0.033f);
             if (covering)
             {
                 Cover(step);
-                return;
-            }
-
-            if (dealing)
-            {
-                Deal(step);
                 return;
             }
 
@@ -394,94 +371,9 @@ namespace Capstone.Placement
                 touchKeyboard = TouchScreenKeyboard.Open(string.Empty, TouchScreenKeyboardType.ASCIICapable, false, false, false, false, "Consent code");
         }
 
-        public void FocusWork(int index)
-        {
-            if (!browsing || works == null || index < 0 || index >= works.Length)
-                return;
-
-            focusedWork = index;
-            for (int i = 0; i < works.Length; i++)
-                works[i].localScale = Vector3.one * (i == index ? 1.05f : 1f);
-            works[index].SetAsLastSibling();
-        }
-
-        public void ChooseWork(int index)
-        {
-            if (!browsing || workIds == null || index < 0 || index >= workIds.Length)
-                return;
-
-            FocusWork(index);
-            chosenId = workIds[index];
-            Finish();
-        }
-
-
-        void Deal(float step)
-        {
-            if (browsing || recordingCode)
-                return;
-
-            dealTime += step;
-            float leave = Mathf.Clamp01(dealTime / 0.45f);
-            orb.localScale = Vector3.one * Mathf.Lerp(1f, 0.12f, leave);
-            orbFade.alpha = 1f - leave;
-            Color shade = shadow.color;
-            shade.a = Mathf.Lerp(shade.a, 0f, leave);
-            shadow.color = shade;
-
-            if (sliding)
-            {
-                SlideCards(step);
-                return;
-            }
-
-            int highlight = Mathf.FloorToInt(dealTime / HighlightSeconds);
-            if (highlight >= cards.Length)
-            {
-                sliding = true;
-                slideTime = 0f;
-                return;
-            }
-
-            for (int i = 0; i < cards.Length; i++)
-            {
-                float shown = Mathf.Clamp01((dealTime - (i * 0.08f)) / 0.35f);
-                shown = 1f - ((1f - shown) * (1f - shown));
-                bool on = i == highlight;
-                float lift = on ? 36f : 0f;
-                cards[i].anchoredPosition = new Vector2(cardHomeX[i], Mathf.Lerp(80f, -16f + lift, shown));
-                cards[i].localScale = Vector3.one * (on ? 1.08f : 0.96f) * Mathf.Lerp(0.94f, 1f, shown);
-                cardFade[i].alpha = on ? shown : shown * 0.42f;
-                float driftX = Mathf.Sin((dealTime * 0.8f) + (i * 1.3f)) * 10f;
-                float driftY = Mathf.Cos((dealTime * 1.05f) + i) * 8f;
-                blobs[i].anchoredPosition = new Vector2(driftX, 6f + driftY);
-            }
-        }
-
-        void SlideCards(float step)
-        {
-            slideTime += step;
-            float t = Mathf.Clamp01(slideTime / 0.85f);
-            float rise = t * t * 980f;
-            for (int i = 0; i < cards.Length; i++)
-            {
-                cards[i].anchoredPosition = new Vector2(cardHomeX[i], -16f + rise + (i * 18f));
-                cardFade[i].alpha = 1f - t;
-            }
-
-            if (t < 1f)
-                return;
-
-            for (int i = 0; i < cards.Length; i++)
-                cards[i].gameObject.SetActive(false);
-
-            sliding = false;
-            dealing = false;
-        }
-
         void ShowConsent()
         {
-            Transform root = paper != null ? paper.transform.parent : canvasRoot;
+            Transform root = canvasRoot != null ? canvasRoot : (paper != null ? paper.transform.parent : null);
             if (paper != null)
                 paper.color = new Color(0.86f, 0.93f, 1f, 1f);
 
@@ -680,41 +572,6 @@ namespace Capstone.Placement
             Finish();
         }
 
-        void ShowWorks()
-        {
-            IReadOnlyList<Artwork> catalogue = SampleCatalogue.All;
-            works = new RectTransform[catalogue.Count];
-            workIds = new string[catalogue.Count];
-            Text heading = CreateWord(canvasRoot, cardFont, "Choose a work", 42);
-            heading.color = new Color(0.1f, 0.22f, 0.48f, 1f);
-            heading.rectTransform.anchoredPosition = new Vector2(0f, 620f);
-            heading.rectTransform.sizeDelta = new Vector2(800f, 70f);
-            Vector2[] spots =
-            {
-                new Vector2(120f, 20f),
-                new Vector2(-210f, 170f),
-                new Vector2(-150f, -250f),
-                new Vector2(190f, -280f),
-                new Vector2(200f, 250f)
-            };
-            Vector2[] sizes =
-            {
-                new Vector2(440f, 560f),
-                new Vector2(360f, 400f),
-                new Vector2(380f, 250f),
-                new Vector2(340f, 260f),
-                new Vector2(300f, 230f)
-            };
-            for (int i = 0; i < catalogue.Count; i++)
-            {
-                Artwork work = catalogue[i];
-                workIds[i] = work.Id;
-                Vector2 spot = i < spots.Length ? spots[i] : new Vector2(0f, -40f * i);
-                Vector2 size = i < sizes.Length ? sizes[i] : new Vector2(340f, 280f);
-                works[i] = CreateWorkCard(canvasRoot, cardFont, work, spot, size, i);
-            }
-        }
-
         void Finish()
         {
             if (done)
@@ -810,198 +667,6 @@ namespace Capstone.Placement
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.sizeDelta = new Vector2(240f, 72f);
             return text;
-        }
-
-        void CreateCards(Transform parent, Font typeface)
-        {
-            string[] titles =
-            {
-                "Choose\na work",
-                "Place it\non your wall",
-                "Ask\none thing",
-                "See\nthree"
-            };
-            Color[] tops =
-            {
-                new Color(0.78f, 0.9f, 1f, 0.62f),
-                new Color(0.62f, 0.8f, 1f, 0.58f),
-                new Color(0.7f, 0.86f, 1f, 0.6f),
-                new Color(0.55f, 0.76f, 1f, 0.56f)
-            };
-            Color[] bottoms =
-            {
-                new Color(0.45f, 0.68f, 0.98f, 0.34f),
-                new Color(0.36f, 0.58f, 0.96f, 0.32f),
-                new Color(0.42f, 0.64f, 0.98f, 0.32f),
-                new Color(0.3f, 0.52f, 0.94f, 0.3f)
-            };
-            cards = new RectTransform[titles.Length];
-            blobs = new RectTransform[titles.Length];
-            cardFade = new CanvasGroup[titles.Length];
-            cardHomeX = new float[titles.Length];
-            Sprite blobSprite = SoftBlob();
-            const float width = 228f;
-            const float gap = 16f;
-            float total = (width * titles.Length) + (gap * (titles.Length - 1));
-            float x = (-total * 0.5f) + (width * 0.5f);
-            for (int i = 0; i < titles.Length; i++)
-            {
-                GameObject host = new GameObject("Card", typeof(RectTransform));
-                host.transform.SetParent(parent, false);
-                RectTransform rect = host.GetComponent<RectTransform>();
-                rect.anchorMin = new Vector2(0.5f, 0.5f);
-                rect.anchorMax = new Vector2(0.5f, 0.5f);
-                rect.pivot = new Vector2(0.5f, 0.5f);
-                rect.sizeDelta = new Vector2(width, 300f);
-                rect.anchoredPosition = new Vector2(x, 80f);
-                Image face = host.AddComponent<Image>();
-                face.sprite = RoundedGradient(tops[i], bottoms[i]);
-                face.raycastTarget = false;
-                cardFade[i] = host.AddComponent<CanvasGroup>();
-                cardFade[i].alpha = 0f;
-                Image blob = CreateImage(
-                    rect,
-                    "Blob",
-                    Color.white,
-                    new Vector2(0.5f, 0.5f),
-                    new Vector2(0.5f, 0.5f),
-                    new Vector2(0f, 6f),
-                    new Vector2(108f, 108f));
-                blob.sprite = blobSprite;
-                blob.raycastTarget = false;
-                Text title = CreateWord(rect, typeface, titles[i], 22);
-                title.color = new Color(0.1f, 0.28f, 0.62f, 1f);
-                title.rectTransform.anchoredPosition = new Vector2(0f, 92f);
-                title.raycastTarget = false;
-                title.rectTransform.sizeDelta = new Vector2(200f, 80f);
-                host.SetActive(false);
-                cards[i] = rect;
-                blobs[i] = blob.rectTransform;
-                cardHomeX[i] = x;
-                x += width + gap;
-            }
-        }
-
-        RectTransform CreateWorkCard(Transform parent, Font typeface, Artwork work, Vector2 spot, Vector2 size, int index)
-        {
-            GameObject host = new GameObject(work.Title, typeof(RectTransform));
-            host.transform.SetParent(parent, false);
-            RectTransform rect = host.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.5f, 0.5f);
-            rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = size;
-            rect.anchoredPosition = spot;
-            Image face = host.AddComponent<Image>();
-            face.sprite = RoundedGradient(Color.white, new Color(0.86f, 0.92f, 1f, 1f));
-            face.raycastTarget = true;
-            CardTouch touch = host.AddComponent<CardTouch>();
-            touch.opening = this;
-            touch.index = index;
-            Image wash = CreateImage(
-                rect,
-                "Wash",
-                ColourWash(work.Colour),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(size.x * 0.18f, -10f),
-                new Vector2(size.y * 0.42f, size.y * 0.42f));
-            wash.sprite = SoftBlob();
-            wash.raycastTarget = false;
-            Text title = CreateWord(rect, typeface, work.Title, size.y > 500f ? 40 : 28);
-            title.color = new Color(0.1f, 0.18f, 0.32f, 1f);
-            title.raycastTarget = false;
-            title.alignment = TextAnchor.UpperLeft;
-            title.rectTransform.anchoredPosition = new Vector2(0f, (size.y * 0.5f) - 70f);
-            title.rectTransform.sizeDelta = new Vector2(size.x - 48f, 90f);
-            string measure = work.WidthCm.ToString("0") + " x " + work.HeightCm.ToString("0") + " cm";
-            Text detail = CreateWord(rect, typeface, measure, 22);
-            detail.color = new Color(0.2f, 0.32f, 0.5f, 1f);
-            detail.raycastTarget = false;
-            detail.alignment = TextAnchor.UpperLeft;
-            detail.rectTransform.anchoredPosition = new Vector2(0f, (size.y * 0.5f) - 140f);
-            detail.rectTransform.sizeDelta = new Vector2(size.x - 48f, 40f);
-            return rect;
-        }
-
-        static Color ColourWash(string colour)
-        {
-            if (colour == "orange")
-                return new Color(1f, 0.72f, 0.45f, 0.85f);
-            if (colour == "red")
-                return new Color(0.95f, 0.4f, 0.45f, 0.8f);
-            return new Color(0.45f, 0.68f, 1f, 0.85f);
-        }
-
-        sealed class CardTouch : MonoBehaviour, IPointerEnterHandler, IPointerClickHandler
-        {
-            public OpeningSequence opening;
-            public int index;
-
-            public void OnPointerEnter(PointerEventData eventData)
-            {
-                opening.FocusWork(index);
-            }
-
-            public void OnPointerClick(PointerEventData eventData)
-            {
-                opening.ChooseWork(index);
-            }
-        }
-
-        static Sprite SoftBlob()
-        {
-            const int size = 64;
-            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            texture.wrapMode = TextureWrapMode.Clamp;
-            texture.filterMode = FilterMode.Bilinear;
-            float centre = (size - 1) * 0.5f;
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float dx = (x - centre) / centre;
-                    float dy = (y - centre) / centre;
-                    float falloff = Mathf.Clamp01(1f - Mathf.Sqrt((dx * dx) + (dy * dy)));
-                    falloff = falloff * falloff;
-                    texture.SetPixel(x, y, new Color(0.72f, 0.88f, 1f, falloff * 0.9f));
-                }
-            }
-
-            texture.Apply();
-            return Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
-        }
-
-        static Sprite RoundedGradient(Color top, Color bottom)
-        {
-            const int width = 140;
-            const int height = 208;
-            const float radius = 28f;
-            Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
-            texture.wrapMode = TextureWrapMode.Clamp;
-            texture.filterMode = FilterMode.Bilinear;
-            float halfWidth = (width * 0.5f) - radius;
-            float halfHeight = (height * 0.5f) - radius;
-            for (int y = 0; y < height; y++)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    float px = x - ((width - 1) * 0.5f);
-                    float py = y - ((height - 1) * 0.5f);
-                    float qx = Mathf.Abs(px) - halfWidth;
-                    float qy = Mathf.Abs(py) - halfHeight;
-                    float outside = Mathf.Sqrt((Mathf.Max(qx, 0f) * Mathf.Max(qx, 0f)) + (Mathf.Max(qy, 0f) * Mathf.Max(qy, 0f)));
-                    float box = Mathf.Min(Mathf.Max(qx, qy), 0f);
-                    float distance = outside + box - radius;
-                    float edge = Mathf.Clamp01((1.4f - distance) / 2.4f);
-                    Color color = Color.Lerp(bottom, top, y / (height - 1f));
-                    color.a *= edge;
-                    texture.SetPixel(x, y, color);
-                }
-            }
-
-            texture.Apply();
-            return Sprite.Create(texture, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f));
         }
 
         static RectTransform Ribbon(Transform parent, string name, int band)
