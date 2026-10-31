@@ -10,11 +10,9 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The first screen is blue. A white ball bounces on each word and turns that word white.
-    /// The ball then comes toward the camera until the page is white. The blue body waits for a tap.
-    /// Each card is highlighted for five seconds, then the row slides up.
-    /// A tap on the page skips the stage that is playing: the ball skips to the white page, the white page opens the cards, and the cards open the consent codes.
-    /// One of the 25 consent codes is chosen, then the works are shown.
+    /// Animation one plays through: a white ball bounces on each word, then covers the page.
+    /// Animation two is the blue circle. It stays until the circle itself is tapped.
+    /// That tap opens the session so the buyer can record one of the 25 consent codes.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -97,10 +95,7 @@ namespace Capstone.Placement
             canvasObject.AddComponent<GraphicRaycaster>();
 
             Image ground = CreateImage(canvasObject.transform, "Paper", Paper, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            Button screenTap = ground.gameObject.AddComponent<Button>();
-            screenTap.targetGraphic = ground;
-            screenTap.transition = Selectable.Transition.None;
-            screenTap.onClick.AddListener(PaperTap);
+            ground.raycastTarget = false;
 
             field = CreateImage(canvasObject.transform, "Blue field", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             field.sprite = VerticalGradient(BlueTop, BlueDeep);
@@ -148,14 +143,13 @@ namespace Capstone.Placement
             Image glass = CreateImage(orb, "Glass", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             glass.sprite = GlassShell();
             glass.raycastTarget = true;
-            glass.alphaHitTestMinimumThreshold = 0.08f;
+            glass.alphaHitTestMinimumThreshold = 0f;
             Button bodyTap = glass.gameObject.AddComponent<Button>();
             bodyTap.targetGraphic = glass;
             bodyTap.transition = Selectable.Transition.None;
-            bodyTap.onClick.AddListener(OpenCards);
+            bodyTap.onClick.AddListener(OpenSession);
             orbFade = orbObject.AddComponent<CanvasGroup>();
             orb.gameObject.SetActive(false);
-            CreateCards(canvasObject.transform, typeface);
             velocity = 0f;
         }
 
@@ -359,16 +353,16 @@ namespace Capstone.Placement
             shadow.color = shade;
         }
 
-        void OpenCards()
+        void OpenSession()
         {
-            if (!resting || dealing || done)
+            if (!resting || done || recordingCode)
                 return;
 
             resting = false;
-            dealing = true;
-            dealTime = 0f;
-            for (int i = 0; i < cards.Length; i++)
-                cards[i].gameObject.SetActive(true);
+            if (orb != null)
+                orb.gameObject.SetActive(false);
+            recordingCode = true;
+            ShowConsent();
         }
 
         public void FocusWork(int index)
@@ -392,75 +386,6 @@ namespace Capstone.Placement
             Finish();
         }
 
-        void PaperTap()
-        {
-            if (done || recordingCode)
-                return;
-
-            if (browsing)
-            {
-                Finish();
-                return;
-            }
-
-            if (dealing)
-            {
-                SkipCards();
-                return;
-            }
-
-            if (resting)
-            {
-                OpenCards();
-                return;
-            }
-
-            if (covering)
-            {
-                ArriveOnWhite();
-                OpenCards();
-                return;
-            }
-
-            SkipBall();
-        }
-
-        void SkipBall()
-        {
-            towardWords = true;
-            risen = true;
-            aimed = true;
-            nextWord = words != null ? words.Length : 0;
-            ArriveOnWhite();
-        }
-
-        void SkipCards()
-        {
-            dealing = false;
-            sliding = false;
-            resting = false;
-            covering = false;
-            if (orb != null)
-                orb.gameObject.SetActive(false);
-            if (cards != null)
-            {
-                for (int i = 0; i < cards.Length; i++)
-                {
-                    if (cards[i] != null)
-                        cards[i].gameObject.SetActive(false);
-                }
-            }
-
-            if (shadow != null)
-            {
-                Color shade = shadow.color;
-                shade.a = 0f;
-                shadow.color = shade;
-            }
-
-            recordingCode = true;
-            ShowConsent();
-        }
 
         void Deal(float step)
         {
@@ -523,8 +448,6 @@ namespace Capstone.Placement
 
             sliding = false;
             dealing = false;
-            recordingCode = true;
-            ShowConsent();
         }
 
         void ShowConsent()
@@ -537,12 +460,13 @@ namespace Capstone.Placement
             panel.offsetMin = Vector2.zero;
             panel.offsetMax = Vector2.zero;
 
+            consentPanel.transform.SetAsLastSibling();
             Image ground = consentPanel.AddComponent<Image>();
-            ground.color = new Color(0.93f, 0.96f, 1f, 1f);
+            ground.color = new Color(0.05f, 0.1f, 0.24f, 1f);
             ground.raycastTarget = true;
 
             Text heading = CreateWord(consentPanel.transform, cardFont, "Choose your consent code", 44);
-            heading.color = new Color(0.08f, 0.18f, 0.42f, 1f);
+            heading.color = Color.white;
             heading.rectTransform.anchoredPosition = new Vector2(0f, 620f);
             heading.rectTransform.sizeDelta = new Vector2(900f, 80f);
 
@@ -555,7 +479,7 @@ namespace Capstone.Placement
                 Image chip = CreateImage(
                     consentPanel.transform,
                     code,
-                    new Color(0.1f, 0.32f, 0.78f, 1f),
+                    Color.white,
                     new Vector2(0.5f, 0.5f),
                     new Vector2(0.5f, 0.5f),
                     new Vector2((column - 2) * 196f, 360f - (row * 120f)),
@@ -564,7 +488,7 @@ namespace Capstone.Placement
                 button.targetGraphic = chip;
                 button.onClick.AddListener(() => RecordConsentCode(code));
                 Text label = CreateWord(chip.transform, cardFont, code, 26);
-                label.color = Color.white;
+                label.color = new Color(0.05f, 0.1f, 0.24f, 1f);
                 label.raycastTarget = false;
                 label.rectTransform.anchoredPosition = Vector2.zero;
                 label.rectTransform.sizeDelta = new Vector2(168f, 72f);
@@ -578,11 +502,9 @@ namespace Capstone.Placement
                 return;
 
             consentCode = started.ParticipantCode;
-            recordingCode = false;
-            browsing = true;
             if (consentPanel != null)
                 consentPanel.SetActive(false);
-            ShowWorks();
+            Finish();
         }
 
         void ShowWorks()
@@ -1009,11 +931,11 @@ namespace Capstone.Placement
 
                     float edge = Mathf.Clamp01((1.01f - distance) / 0.035f);
                     float rim = Mathf.Clamp01((distance - 0.78f) / 0.18f) * Mathf.Clamp01((1f - distance) / 0.08f);
-                    float body = Mathf.Clamp01(1f - distance) * 0.1f;
+                    float body = Mathf.Clamp01(1f - distance) * 0.55f;
                     float highlight = Mathf.Clamp01(1f - (Mathf.Sqrt(((dx + 0.32f) * (dx + 0.32f)) + ((dy - 0.38f) * (dy - 0.38f))) / 0.42f));
                     highlight = highlight * highlight;
-                    Color color = Color.Lerp(new Color(0.35f, 0.62f, 1f, 1f), new Color(0.78f, 0.9f, 1f, 1f), highlight);
-                    color.a = Mathf.Clamp01((body + (rim * 0.42f) + (highlight * 0.28f)) * edge);
+                    Color color = Color.Lerp(new Color(0.2f, 0.48f, 0.95f, 1f), new Color(0.75f, 0.88f, 1f, 1f), highlight);
+                    color.a = Mathf.Clamp01((body + (rim * 0.9f) + (highlight * 0.35f)) * edge);
                     texture.SetPixel(x, y, color);
                 }
             }
