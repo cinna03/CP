@@ -246,5 +246,19 @@ namespace Capstone.Session.Tests
             Assert.IsFalse(BuyerSession.TryStart("KGL-04", out session));
             Assert.IsNull(session);
         }
+
+        [Test]
+        public void EachOfTheTwentyFiveCodesStartsOnce()
+        {
+            for (int i = 0; i < ConsentCodes.All.Length; i++)
+            {
+                BuyerSession session;
+                string code = ConsentCodes.All[i];
+                Assert.IsTrue(BuyerSession.TryStart("  " + code.ToLowerInvariant() + "  ", out session));
+                Assert.AreEqual(code, session.ParticipantCode);
+                Assert.IsTrue(session.ConsentLogged);
+                Assert.AreEqual(0, session.Count);
+            }
+        }
     }
 }
