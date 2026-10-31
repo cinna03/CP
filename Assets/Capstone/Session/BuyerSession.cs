@@ -5,7 +5,8 @@ namespace Capstone.Session
 {
     /// <summary>
     /// The events of one buyer session, kept in memory on the device.
-    /// Consent starts unmarked. A keep, save, dismiss, matched question, or chosen rank is stored only after that.
+    /// A blank consent code does not start a session. A real code starts one and marks consent.
+    /// Consent starts unmarked when a session is built directly. A keep, save, dismiss, matched question, or chosen rank is stored only after that.
     /// Marking consent does not invent earlier events. An unmatched question is not logged.
     /// A choice is rank 1, 2, or 3. A missing rank is not stored.
     /// A keep, save, or dismiss stores up to three recommended artwork ids, in rank order.
@@ -14,6 +15,19 @@ namespace Capstone.Session
     {
         readonly List<SessionEvent> events = new List<SessionEvent>();
         bool consentLogged;
+
+        public static bool TryStart(string consentCode, out BuyerSession session)
+        {
+            if (string.IsNullOrWhiteSpace(consentCode))
+            {
+                session = null;
+                return false;
+            }
+
+            session = new BuyerSession(consentCode.Trim());
+            session.MarkConsent();
+            return true;
+        }
 
         public BuyerSession(string participantCode)
         {

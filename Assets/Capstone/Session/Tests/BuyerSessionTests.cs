@@ -208,5 +208,27 @@ namespace Capstone.Session.Tests
 
             Assert.AreEqual("participantCode", error.ParamName);
         }
+
+        [Test]
+        public void ABlankConsentCodeDoesNotStart()
+        {
+            BuyerSession session;
+
+            Assert.IsFalse(BuyerSession.TryStart("  ", out session));
+            Assert.IsNull(session);
+            Assert.IsFalse(BuyerSession.TryStart(null, out session));
+            Assert.IsNull(session);
+        }
+
+        [Test]
+        public void AConsentCodeStartsTheSessionAndMarksConsent()
+        {
+            BuyerSession session;
+
+            Assert.IsTrue(BuyerSession.TryStart("  KGL-04  ", out session));
+            Assert.AreEqual("KGL-04", session.ParticipantCode);
+            Assert.IsTrue(session.ConsentLogged);
+            Assert.AreEqual(0, session.Count);
+        }
     }
 }
