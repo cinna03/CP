@@ -1,8 +1,13 @@
 # Capstone
 
-A portrait prototype that places one catalogue work on a detected wall at the centimetres stored on that work. The buyer starts with one of 25 consent codes, answers three questions for style, mood, and colour, then picks a work. I don't know leaves that category open. The camera opens when that work is placed. One question is matched from a written English, French, and Kinyarwanda table. Keep, save, or dismiss ranks three other works and shows their story notes.
+A portrait prototype that places one catalogue work on a detected wall at the centimetres stored on that work. The buyer starts with one of 25 consent codes, answers three questions for style, mood, and colour, then picks a work. `I don't know` leaves that category open. The camera opens when that work is placed. One question is matched from a written English, French, and Kinyarwanda table. Keep, save, or dismiss ranks three other works and shows their story notes.
 
-This folder is the implementation. The five-page technical report and the walkthrough video are separate from this code.
+The study build target is Android. The same placement code was also run in the Unity editor and on an iPhone 13.
+
+## Report and walkthrough
+
+- [Technical report](https://docs.google.com/document/d/1FnrBSD-Siu4OH1_nqBLnR40Lywg4CWovJblIVUfLC8w/edit?usp=sharing)
+- [Walkthrough](https://docs.google.com/document/d/1a8V0p_fyev1bv5dwrCKxBHr8cWHnt2GFvpGJb5y5KMQ/edit?usp=sharing)
 
 ## Open the project
 
@@ -18,17 +23,32 @@ Packages used by the prototype:
 | Universal Render Pipeline | 17.5.0 |
 | AR Foundation | 6.5.0 |
 | ARCore | 6.5.0 |
+| ARKit | 6.5.0 |
+| XR Interaction Toolkit | 3.5.0 |
+| XR Management | 4.5.4 |
 | Input System | 1.19.0 |
 
-The study build target is Android, minimum SDK API 30, ARM64, IL2CPP. ARCore is required. The scene in the build is `Assets/Scenes/SampleScene.unity`.
+Android minimum SDK is API 30, ARM64, IL2CPP. ARCore is required. The scene in the build is `Assets/Scenes/SampleScene.unity`.
 
 In the editor, Play asks for Room 1, Room 2, or Room 3 when the buyer is ready to place. Place then uses that room wall. On a phone, Place raycasts the centre of the screen onto a vertical plane.
+
+## Folder layout
+
+| Path | What it holds |
+| --- | --- |
+| `Assets/Capstone/Session` | Consent codes, the buyer order, the three starting questions, and the session text |
+| `Assets/Capstone/Catalogue` | Artwork records, stored centimetres, the tag filter, and story notes |
+| `Assets/Capstone/Dialogue` | The written rule table and the matcher |
+| `Assets/Capstone/Ranking` | Tag weights and the top three works |
+| `Assets/Capstone/Placement` | The opening, the wall pose, and the screen |
+| `Assets/Scenes/SampleScene.unity` | The scene in the build |
+| `TEST-RESULTS.txt` | The 85 logic tests that passed on 31 Oct 2026 |
 
 ## Buyer order
 
 `BuyerPath` is the order. The placement screen follows it.
 
-1. Consent code. `ConsentCodes` holds the 25 codes. `BuyerSession.TryStart` accepts one of them, trims spaces, and marks consent. Any other text stays on the code page and says `Try again.`
+1. Consent code. The opening plays through, then the blue circle stays until that circle is tapped. `ConsentCodes` holds the 25 codes. `BuyerSession.TryStart` accepts one of them, trims spaces, and marks consent. Any other text stays on the code page and says `Try again.`
 2. Three questions. `PreferenceQuiz` stores a style, a mood, and a colour. `I don't know` leaves that category blank. `PreferenceProfile.FromInitialTags` keeps only the answers that were given. A blank tag adds no weight.
 3. Catalogue. The works that meet those answers open as the top picks. `Browse for more` lists every piece. `Top picks` returns to the matches. The buyer picks a work, then presses `Place this work`.
 4. Wall. This is the only step that opens the camera. The quad uses `Artwork.WallSizeMetres`, which comes from the stored centimetres.
@@ -61,6 +81,8 @@ The rule table tokenizes the question into letters. Each rule counts hits in Eng
 
 Ranking adds the style weight, the mood weight, and the colour weight on each other work. Keep and save add one to the placed work's tags. Dismiss subtracts one. A matched colour concern adds one to that colour. The current work is left out. A higher score wins. An equal score uses the artwork id, earlier id first. The result is three works.
 
+The starting questions use the same tags. An answer stores one style, one mood, or one colour. A blank answer adds no weight, and `CatalogueFilter` drops nothing in that category. The top picks are that filter. The rank of three still runs after the wall, from the stored tags, the wall action, and any matched concern.
+
 Placement does not choose a size. `ArtworkScale` turns the stored centimetres into metres, and `ArtworkWallPose` puts that quad on the hit point, flat to the wall, facing the camera.
 
 ## Tests
@@ -71,7 +93,7 @@ The tests are Edit Mode tests in the Unity Test Runner.
 2. Choose `EditMode`.
 3. Press `Run All`.
 
-The fixtures sit under `Assets/Capstone/**/Tests`. They cover the empty code, a code outside the 25, each of the 25 codes, a question in each language, an unmatched question, a tie, keep, save, and dismiss, a rank that leaves out the current work, a missing story note, and a size that stays the stored centimetres.
+The fixtures sit under `Assets/Capstone/**/Tests`. They cover the empty code, a code outside the 25, each of the 25 codes, a blank quiz answer, a question in each language, an unmatched question, a tie, keep, save, and dismiss, a rank that leaves out the current work, a missing story note, and a size that stays the stored centimetres.
 
 On 31 Oct 2026 the 85 tests that do not need the Unity editor were compiled and run: catalogue, ranking, dialogue, and session. All 85 passed. The list is `TEST-RESULTS.txt`. The wall-pose and room tests use Unity types, so they run in the Test Runner with the rest.
 
