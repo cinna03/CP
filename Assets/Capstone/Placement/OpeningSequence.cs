@@ -12,7 +12,7 @@ namespace Capstone.Placement
     /// <summary>
     /// Animation one plays through: a white ball bounces on each word, then covers the page.
     /// Animation two is the blue circle. It stays until the circle itself is tapped.
-    /// That tap opens the session so the buyer can record one of the 25 consent codes.
+    /// That tap asks for a consent code. A matching code starts the session. Any other code asks for another attempt.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -48,6 +48,8 @@ namespace Capstone.Placement
         bool browsing;
         bool recordingCode;
         GameObject consentPanel;
+        InputField consentField;
+        Text consentHint;
         string consentCode = string.Empty;
         Font cardFont;
         Transform canvasRoot;
@@ -361,6 +363,8 @@ namespace Capstone.Placement
             resting = false;
             if (orb != null)
                 orb.gameObject.SetActive(false);
+            if (ball != null)
+                ball.gameObject.SetActive(false);
             recordingCode = true;
             ShowConsent();
         }
@@ -459,52 +463,127 @@ namespace Capstone.Placement
             panel.anchorMax = Vector2.one;
             panel.offsetMin = Vector2.zero;
             panel.offsetMax = Vector2.zero;
-
             consentPanel.transform.SetAsLastSibling();
-            Image ground = consentPanel.AddComponent<Image>();
-            ground.color = new Color(0.05f, 0.1f, 0.24f, 1f);
-            ground.raycastTarget = true;
 
-            Text heading = CreateWord(consentPanel.transform, cardFont, "Choose your consent code", 44);
-            heading.color = Color.white;
-            heading.rectTransform.anchoredPosition = new Vector2(0f, 620f);
-            heading.rectTransform.sizeDelta = new Vector2(900f, 80f);
+            Image wash = consentPanel.AddComponent<Image>();
+            wash.color = new Color(0.78f, 0.9f, 1f, 1f);
+            wash.raycastTarget = true;
 
-            string[] codes = ConsentCodes.All;
-            for (int i = 0; i < codes.Length; i++)
-            {
-                int column = i % 5;
-                int row = i / 5;
-                string code = codes[i];
-                Image chip = CreateImage(
-                    consentPanel.transform,
-                    code,
-                    Color.white,
-                    new Vector2(0.5f, 0.5f),
-                    new Vector2(0.5f, 0.5f),
-                    new Vector2((column - 2) * 196f, 360f - (row * 120f)),
-                    new Vector2(180f, 96f));
-                Button button = chip.gameObject.AddComponent<Button>();
-                button.targetGraphic = chip;
-                button.onClick.AddListener(() => RecordConsentCode(code));
-                Text label = CreateWord(chip.transform, cardFont, code, 26);
-                label.color = new Color(0.05f, 0.1f, 0.24f, 1f);
-                label.raycastTarget = false;
-                label.rectTransform.anchoredPosition = Vector2.zero;
-                label.rectTransform.sizeDelta = new Vector2(168f, 72f);
-            }
+            Image card = CreateImage(
+                consentPanel.transform,
+                "Code card",
+                Color.white,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(760f, 620f));
+            card.sprite = RoundedGradient(new Color(0.9f, 0.96f, 1f, 1f), new Color(0.55f, 0.78f, 0.98f, 1f));
+
+            Image circle = CreateImage(
+                card.transform,
+                "Blue circle",
+                Color.white,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(180f, 40f),
+                new Vector2(280f, 280f));
+            circle.sprite = SoftBlob();
+            circle.color = new Color(0.45f, 0.72f, 1f, 0.55f);
+            circle.raycastTarget = false;
+
+            Text heading = CreateWord(card.transform, cardFont, "Consent code", 48);
+            heading.color = new Color(0.08f, 0.2f, 0.45f, 1f);
+            heading.rectTransform.anchoredPosition = new Vector2(0f, 180f);
+            heading.rectTransform.sizeDelta = new Vector2(640f, 80f);
+
+            consentField = CreateCodeField(card.transform, cardFont);
+            consentField.onSubmit.AddListener(typed => SubmitConsentCode());
+            consentHint = CreateWord(card.transform, cardFont, string.Empty, 28);
+            consentHint.color = new Color(0.45f, 0.12f, 0.28f, 1f);
+            consentHint.rectTransform.anchoredPosition = new Vector2(0f, -20f);
+            consentHint.rectTransform.sizeDelta = new Vector2(560f, 48f);
+
+            Image enter = CreateImage(
+                card.transform,
+                "Enter",
+                new Color(0.08f, 0.22f, 0.55f, 1f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0f, -160f),
+                new Vector2(220f, 88f));
+            enter.sprite = RoundedGradient(new Color(0.2f, 0.45f, 0.9f, 1f), new Color(0.06f, 0.18f, 0.5f, 1f));
+            Button enterButton = enter.gameObject.AddComponent<Button>();
+            enterButton.targetGraphic = enter;
+            enterButton.onClick.AddListener(SubmitConsentCode);
+            Text enterLabel = CreateWord(enter.transform, cardFont, "Enter", 32);
+            enterLabel.color = Color.white;
+            enterLabel.raycastTarget = false;
+            enterLabel.rectTransform.anchoredPosition = Vector2.zero;
+            enterLabel.rectTransform.sizeDelta = new Vector2(180f, 70f);
+            Canvas.ForceUpdateCanvases();
         }
 
-        void RecordConsentCode(string code)
+        void SubmitConsentCode()
         {
-            BuyerSession started;
-            if (!BuyerSession.TryStart(code, out started))
+            if (done)
                 return;
+
+            string typed = consentField != null ? consentField.text : string.Empty;
+            BuyerSession started;
+            if (!BuyerSession.TryStart(typed, out started))
+            {
+                if (consentHint != null)
+                    consentHint.text = "Try again.";
+                if (consentField != null)
+                    consentField.text = string.Empty;
+                return;
+            }
 
             consentCode = started.ParticipantCode;
             if (consentPanel != null)
                 consentPanel.SetActive(false);
             Finish();
+        }
+
+        static InputField CreateCodeField(Transform parent, Font typeface)
+        {
+            Image image = CreateImage(
+                parent,
+                "Code",
+                Color.white,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0f, 60f),
+                new Vector2(560f, 100f));
+            InputField field = image.gameObject.AddComponent<InputField>();
+            Text text = CreateFieldLine(image.transform, typeface, string.Empty, new Color(0.08f, 0.14f, 0.28f, 1f), FontStyle.Normal, 36);
+            Text placeholder = CreateFieldLine(image.transform, typeface, "Consent code", new Color(0.45f, 0.55f, 0.7f, 0.9f), FontStyle.Italic, 30);
+            field.textComponent = text;
+            field.placeholder = placeholder;
+            field.lineType = InputField.LineType.SingleLine;
+            field.caretColor = new Color(0.08f, 0.22f, 0.55f, 1f);
+            return field;
+        }
+
+        static Text CreateFieldLine(Transform parent, Font typeface, string message, Color color, FontStyle style, int fontSize)
+        {
+            GameObject host = new GameObject(message.Length == 0 ? "Text" : "Placeholder", typeof(RectTransform));
+            host.transform.SetParent(parent, false);
+            Text text = host.AddComponent<Text>();
+            text.font = typeface;
+            text.fontSize = fontSize;
+            text.fontStyle = style;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.color = color;
+            text.text = message;
+            text.supportRichText = false;
+            text.raycastTarget = false;
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(24f, 8f);
+            rect.offsetMax = new Vector2(-24f, -8f);
+            return text;
         }
 
         void ShowWorks()
