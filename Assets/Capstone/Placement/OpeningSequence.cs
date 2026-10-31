@@ -5,6 +5,7 @@ using Capstone.Ranking;
 using Capstone.Session;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Capstone.Placement
@@ -29,6 +30,7 @@ namespace Capstone.Placement
         const float BallSize = 58f;
 
         Action<string, string> finished;
+        Image paper;
         Image field;
         Image shadow;
         RectTransform ball;
@@ -48,9 +50,11 @@ namespace Capstone.Placement
         bool browsing;
         bool recordingCode;
         GameObject consentPanel;
-        InputField consentField;
+        Text codeLine;
         Text consentHint;
+        string typedCode = string.Empty;
         string consentCode = string.Empty;
+        TouchScreenKeyboard touchKeyboard;
         Font cardFont;
         Transform canvasRoot;
         string chosenId;
@@ -96,8 +100,8 @@ namespace Capstone.Placement
             scaler.matchWidthOrHeight = 0f;
             canvasObject.AddComponent<GraphicRaycaster>();
 
-            Image ground = CreateImage(canvasObject.transform, "Paper", Paper, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-            ground.raycastTarget = false;
+            paper = CreateImage(canvasObject.transform, "Paper", Paper, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            paper.raycastTarget = false;
 
             field = CreateImage(canvasObject.transform, "Blue field", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             field.sprite = VerticalGradient(BlueTop, BlueDeep);
@@ -157,6 +161,9 @@ namespace Capstone.Placement
 
         void Update()
         {
+            if (recordingCode && !done)
+                ReadCodeKeys();
+
             if (done || recordingCode || browsing)
                 return;
 
@@ -365,8 +372,26 @@ namespace Capstone.Placement
                 orb.gameObject.SetActive(false);
             if (ball != null)
                 ball.gameObject.SetActive(false);
+            if (paper != null)
+                paper.color = new Color(0.07f, 0.18f, 0.42f, 1f);
+            if (field != null)
+                field.gameObject.SetActive(false);
+            if (shadow != null)
+                shadow.gameObject.SetActive(false);
+            if (words != null)
+            {
+                for (int i = 0; i < words.Length; i++)
+                {
+                    if (words[i] != null)
+                        words[i].gameObject.SetActive(false);
+                }
+            }
+
             recordingCode = true;
+            typedCode = string.Empty;
             ShowConsent();
+            if (!Application.isEditor)
+                touchKeyboard = TouchScreenKeyboard.Open(string.Empty, TouchScreenKeyboardType.ASCIICapable, false, false, false, false, "Consent code");
         }
 
         public void FocusWork(int index)
@@ -456,71 +481,180 @@ namespace Capstone.Placement
 
         void ShowConsent()
         {
-            consentPanel = new GameObject("Consent", typeof(RectTransform));
-            consentPanel.transform.SetParent(canvasRoot, false);
-            RectTransform panel = consentPanel.GetComponent<RectTransform>();
-            panel.anchorMin = Vector2.zero;
-            panel.anchorMax = Vector2.one;
-            panel.offsetMin = Vector2.zero;
-            panel.offsetMax = Vector2.zero;
-            consentPanel.transform.SetAsLastSibling();
+            Transform root = paper != null ? paper.transform.parent : canvasRoot;
+            if (paper != null)
+                paper.color = new Color(0.86f, 0.93f, 1f, 1f);
 
-            Image wash = consentPanel.AddComponent<Image>();
-            wash.color = new Color(0.78f, 0.9f, 1f, 1f);
-            wash.raycastTarget = true;
+            Image backCard = CreateImage(
+                root,
+                "Back card",
+                new Color(0.78f, 0.9f, 1f, 1f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(150f, -30f),
+                new Vector2(640f, 860f));
+            backCard.raycastTarget = false;
+            backCard.transform.SetAsLastSibling();
+            Image blueCircle = CreateImage(
+                backCard.transform,
+                "Blue circle",
+                new Color(0.35f, 0.62f, 1f, 1f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(90f, 40f),
+                new Vector2(340f, 340f));
+            blueCircle.sprite = SolidCircle();
+            blueCircle.raycastTarget = false;
 
             Image card = CreateImage(
-                consentPanel.transform,
+                root,
                 "Code card",
                 Color.white,
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
-                Vector2.zero,
-                new Vector2(760f, 620f));
-            card.sprite = RoundedGradient(new Color(0.9f, 0.96f, 1f, 1f), new Color(0.55f, 0.78f, 0.98f, 1f));
+                new Vector2(-90f, 50f),
+                new Vector2(680f, 820f));
+            consentPanel = card.gameObject;
+            card.transform.SetAsLastSibling();
 
-            Image circle = CreateImage(
+            Text heading = CreateWord(card.transform, cardFont, "Consent code", 56);
+            heading.color = new Color(0.06f, 0.12f, 0.28f, 1f);
+            heading.alignment = TextAnchor.MiddleLeft;
+            heading.rectTransform.anchoredPosition = new Vector2(0f, 280f);
+            heading.rectTransform.sizeDelta = new Vector2(560f, 90f);
+
+            Image well = CreateImage(
                 card.transform,
-                "Blue circle",
-                Color.white,
+                "Code",
+                new Color(0.9f, 0.95f, 1f, 1f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
-                new Vector2(180f, 40f),
-                new Vector2(280f, 280f));
-            circle.sprite = SoftBlob();
-            circle.color = new Color(0.45f, 0.72f, 1f, 0.55f);
-            circle.raycastTarget = false;
+                new Vector2(0f, 80f),
+                new Vector2(520f, 110f));
+            well.raycastTarget = false;
+            codeLine = CreateWord(well.transform, cardFont, "Type your code", 36);
+            codeLine.fontStyle = FontStyle.Italic;
+            codeLine.color = new Color(0.4f, 0.5f, 0.65f, 1f);
+            codeLine.alignment = TextAnchor.MiddleLeft;
+            codeLine.rectTransform.anchoredPosition = new Vector2(16f, 0f);
+            codeLine.rectTransform.sizeDelta = new Vector2(470f, 80f);
 
-            Text heading = CreateWord(card.transform, cardFont, "Consent code", 48);
-            heading.color = new Color(0.08f, 0.2f, 0.45f, 1f);
-            heading.rectTransform.anchoredPosition = new Vector2(0f, 180f);
-            heading.rectTransform.sizeDelta = new Vector2(640f, 80f);
-
-            consentField = CreateCodeField(card.transform, cardFont);
-            consentField.onSubmit.AddListener(typed => SubmitConsentCode());
-            consentHint = CreateWord(card.transform, cardFont, string.Empty, 28);
-            consentHint.color = new Color(0.45f, 0.12f, 0.28f, 1f);
-            consentHint.rectTransform.anchoredPosition = new Vector2(0f, -20f);
-            consentHint.rectTransform.sizeDelta = new Vector2(560f, 48f);
+            consentHint = CreateWord(card.transform, cardFont, string.Empty, 30);
+            consentHint.color = new Color(0.6f, 0.1f, 0.18f, 1f);
+            consentHint.alignment = TextAnchor.MiddleLeft;
+            consentHint.rectTransform.anchoredPosition = new Vector2(0f, -10f);
+            consentHint.rectTransform.sizeDelta = new Vector2(520f, 50f);
 
             Image enter = CreateImage(
                 card.transform,
                 "Enter",
-                new Color(0.08f, 0.22f, 0.55f, 1f),
+                new Color(0.06f, 0.12f, 0.28f, 1f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
-                new Vector2(0f, -160f),
-                new Vector2(220f, 88f));
-            enter.sprite = RoundedGradient(new Color(0.2f, 0.45f, 0.9f, 1f), new Color(0.06f, 0.18f, 0.5f, 1f));
+                new Vector2(180f, -250f),
+                new Vector2(160f, 160f));
+            enter.sprite = SolidCircle();
             Button enterButton = enter.gameObject.AddComponent<Button>();
             enterButton.targetGraphic = enter;
             enterButton.onClick.AddListener(SubmitConsentCode);
-            Text enterLabel = CreateWord(enter.transform, cardFont, "Enter", 32);
+            Text enterLabel = CreateWord(enter.transform, cardFont, "Enter", 28);
             enterLabel.color = Color.white;
+            enterLabel.alignment = TextAnchor.MiddleCenter;
             enterLabel.raycastTarget = false;
             enterLabel.rectTransform.anchoredPosition = Vector2.zero;
-            enterLabel.rectTransform.sizeDelta = new Vector2(180f, 70f);
-            Canvas.ForceUpdateCanvases();
+            enterLabel.rectTransform.sizeDelta = new Vector2(140f, 60f);
+        }
+
+        static Sprite SolidCircle()
+        {
+            const int size = 64;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            float centre = (size - 1) * 0.5f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = (x - centre) / centre;
+                    float dy = (y - centre) / centre;
+                    bool inside = (dx * dx) + (dy * dy) <= 1f;
+                    texture.SetPixel(x, y, inside ? Color.white : new Color(1f, 1f, 1f, 0f));
+                }
+            }
+
+            texture.Apply();
+            return Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
+        }
+
+        void ReadCodeKeys()
+        {
+            if (touchKeyboard != null)
+            {
+                typedCode = touchKeyboard.text ?? string.Empty;
+                PaintCode();
+                if (touchKeyboard.status == TouchScreenKeyboard.Status.Done)
+                    SubmitConsentCode();
+                return;
+            }
+
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null)
+                return;
+
+            if (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame)
+            {
+                SubmitConsentCode();
+                return;
+            }
+
+            if (keyboard.backspaceKey.wasPressedThisFrame)
+            {
+                if (typedCode.Length > 0)
+                    typedCode = typedCode.Substring(0, typedCode.Length - 1);
+                PaintCode();
+                return;
+            }
+
+            if (typedCode.Length >= 12)
+                return;
+
+            string next = TypedCharacter(keyboard);
+            if (next.Length == 0)
+                return;
+
+            typedCode += next;
+            PaintCode();
+        }
+
+        static string TypedCharacter(Keyboard keyboard)
+        {
+            for (int letter = (int)Key.A; letter <= (int)Key.Z; letter++)
+            {
+                Key key = (Key)letter;
+                if (keyboard[key].wasPressedThisFrame)
+                    return key.ToString();
+            }
+
+            return string.Empty;
+        }
+
+        void PaintCode()
+        {
+            if (codeLine == null)
+                return;
+
+            if (typedCode.Length == 0)
+            {
+                codeLine.text = "Consent code";
+                codeLine.fontStyle = FontStyle.Italic;
+                codeLine.color = new Color(0.45f, 0.55f, 0.7f, 0.95f);
+                return;
+            }
+
+            codeLine.text = typedCode;
+            codeLine.fontStyle = FontStyle.Bold;
+            codeLine.color = new Color(0.08f, 0.16f, 0.32f, 1f);
         }
 
         void SubmitConsentCode()
@@ -528,14 +662,15 @@ namespace Capstone.Placement
             if (done)
                 return;
 
-            string typed = consentField != null ? consentField.text : string.Empty;
             BuyerSession started;
-            if (!BuyerSession.TryStart(typed, out started))
+            if (!BuyerSession.TryStart(typedCode, out started))
             {
+                typedCode = string.Empty;
+                PaintCode();
                 if (consentHint != null)
                     consentHint.text = "Try again.";
-                if (consentField != null)
-                    consentField.text = string.Empty;
+                if (touchKeyboard != null)
+                    touchKeyboard.text = string.Empty;
                 return;
             }
 
@@ -543,47 +678,6 @@ namespace Capstone.Placement
             if (consentPanel != null)
                 consentPanel.SetActive(false);
             Finish();
-        }
-
-        static InputField CreateCodeField(Transform parent, Font typeface)
-        {
-            Image image = CreateImage(
-                parent,
-                "Code",
-                Color.white,
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0f, 60f),
-                new Vector2(560f, 100f));
-            InputField field = image.gameObject.AddComponent<InputField>();
-            Text text = CreateFieldLine(image.transform, typeface, string.Empty, new Color(0.08f, 0.14f, 0.28f, 1f), FontStyle.Normal, 36);
-            Text placeholder = CreateFieldLine(image.transform, typeface, "Consent code", new Color(0.45f, 0.55f, 0.7f, 0.9f), FontStyle.Italic, 30);
-            field.textComponent = text;
-            field.placeholder = placeholder;
-            field.lineType = InputField.LineType.SingleLine;
-            field.caretColor = new Color(0.08f, 0.22f, 0.55f, 1f);
-            return field;
-        }
-
-        static Text CreateFieldLine(Transform parent, Font typeface, string message, Color color, FontStyle style, int fontSize)
-        {
-            GameObject host = new GameObject(message.Length == 0 ? "Text" : "Placeholder", typeof(RectTransform));
-            host.transform.SetParent(parent, false);
-            Text text = host.AddComponent<Text>();
-            text.font = typeface;
-            text.fontSize = fontSize;
-            text.fontStyle = style;
-            text.alignment = TextAnchor.MiddleLeft;
-            text.color = color;
-            text.text = message;
-            text.supportRichText = false;
-            text.raycastTarget = false;
-            RectTransform rect = text.rectTransform;
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(24f, 8f);
-            rect.offsetMax = new Vector2(-24f, -8f);
-            return text;
         }
 
         void ShowWorks()
