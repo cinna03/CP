@@ -4,8 +4,10 @@ using Capstone.Catalogue;
 namespace Capstone.Ranking
 {
     /// <summary>
-    /// Five local sample works for the ranker. sample-wall and sample-wide use the same ids,
-    /// sizes, and tags as the two works the placement screen can swap.
+    /// Five local stand-in works. Each record already has the catalogue fields:
+    /// stored centimetres, style, mood, colour, and a story note.
+    /// A consented work replaces the image and the notes. The id, the size, and the tags stay the shape the ranker and the wall already read.
+    /// sample-wall and sample-wide use the same ids, sizes, and tags as the two works the placement screen can swap.
     /// </summary>
     public static class SampleCatalogue
     {
