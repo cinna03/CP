@@ -13,6 +13,7 @@ namespace Capstone.Placement
     /// The first screen is blue. A white ball bounces on each word and turns that word white.
     /// The ball then comes toward the camera until the page is white. The blue body waits for a tap.
     /// Each card is highlighted for five seconds, then the row slides up.
+    /// A tap on the page skips the stage that is playing: the ball skips to the white page, the white page opens the cards, and the cards open the consent codes.
     /// One of the 25 consent codes is chosen, then the works are shown.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
@@ -299,12 +300,34 @@ namespace Capstone.Placement
             if (t < 1f)
                 return;
 
+            ArriveOnWhite();
+        }
+
+        void ArriveOnWhite()
+        {
             covering = false;
             resting = true;
             restTime = 0f;
-            ball.gameObject.SetActive(false);
-            field.color = new Color(1f, 1f, 1f, 0f);
-            shadow.color = new Color(shade.r, shade.g, shade.b, 0f);
+            if (ball != null)
+                ball.gameObject.SetActive(false);
+            if (field != null)
+                field.color = new Color(1f, 1f, 1f, 0f);
+            if (words != null)
+            {
+                for (int i = 0; i < words.Length; i++)
+                {
+                    Color color = words[i].color;
+                    color.a = 0f;
+                    words[i].color = color;
+                }
+            }
+
+            if (shadow != null)
+            {
+                Color shade = shadow.color;
+                shade.a = 0f;
+                shadow.color = shade;
+            }
         }
 
         void Rest(float step)
@@ -371,8 +394,72 @@ namespace Capstone.Placement
 
         void PaperTap()
         {
+            if (done || recordingCode)
+                return;
+
             if (browsing)
+            {
                 Finish();
+                return;
+            }
+
+            if (dealing)
+            {
+                SkipCards();
+                return;
+            }
+
+            if (resting)
+            {
+                OpenCards();
+                return;
+            }
+
+            if (covering)
+            {
+                ArriveOnWhite();
+                OpenCards();
+                return;
+            }
+
+            SkipBall();
+        }
+
+        void SkipBall()
+        {
+            towardWords = true;
+            risen = true;
+            aimed = true;
+            nextWord = words != null ? words.Length : 0;
+            ArriveOnWhite();
+        }
+
+        void SkipCards()
+        {
+            dealing = false;
+            sliding = false;
+            resting = false;
+            covering = false;
+            if (orb != null)
+                orb.gameObject.SetActive(false);
+            if (cards != null)
+            {
+                for (int i = 0; i < cards.Length; i++)
+                {
+                    if (cards[i] != null)
+                        cards[i].gameObject.SetActive(false);
+                }
+            }
+
+            if (shadow != null)
+            {
+                Color shade = shadow.color;
+                shade.a = 0f;
+                shadow.color = shade;
+            }
+
+            recordingCode = true;
+            ShowConsent();
         }
 
         void Deal(float step)
@@ -618,6 +705,7 @@ namespace Capstone.Placement
             text.fontStyle = FontStyle.Bold;
             text.alignment = TextAnchor.MiddleCenter;
             text.color = new Color(1f, 1f, 1f, 0f);
+            text.raycastTarget = false;
             text.text = message;
             text.horizontalOverflow = HorizontalWrapMode.Overflow;
             text.verticalOverflow = VerticalWrapMode.Overflow;
