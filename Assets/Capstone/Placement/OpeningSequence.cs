@@ -11,8 +11,9 @@ namespace Capstone.Placement
 {
     /// <summary>
     /// The first screen is blue. A white ball bounces on each word and turns that word white.
-    /// The ball then comes toward the camera until the page is white.
-    /// That white page starts the session: the buyer records a consent code, then the works are shown.
+    /// The ball then comes toward the camera until the page is white. The blue body waits for a tap.
+    /// Each card is highlighted for five seconds, then the row slides up.
+    /// One of the 25 consent codes is chosen, then the works are shown.
     /// </summary>
     public sealed class OpeningSequence : MonoBehaviour
     {
@@ -48,8 +49,6 @@ namespace Capstone.Placement
         bool browsing;
         bool recordingCode;
         GameObject consentPanel;
-        InputField consentField;
-        Text consentHint;
         string consentCode = string.Empty;
         Font cardFont;
         Transform canvasRoot;
@@ -301,12 +300,11 @@ namespace Capstone.Placement
                 return;
 
             covering = false;
-            resting = false;
+            resting = true;
+            restTime = 0f;
             ball.gameObject.SetActive(false);
             field.color = new Color(1f, 1f, 1f, 0f);
             shadow.color = new Color(shade.r, shade.g, shade.b, 0f);
-            recordingCode = true;
-            ShowConsent();
         }
 
         void Rest(float step)
@@ -456,44 +454,41 @@ namespace Capstone.Placement
             ground.color = new Color(0.93f, 0.96f, 1f, 1f);
             ground.raycastTarget = true;
 
-            Text heading = CreateWord(consentPanel.transform, cardFont, "Enter the consent code", 48);
+            Text heading = CreateWord(consentPanel.transform, cardFont, "Choose your consent code", 44);
             heading.color = new Color(0.08f, 0.18f, 0.42f, 1f);
-            heading.rectTransform.anchoredPosition = new Vector2(0f, 220f);
-            heading.rectTransform.sizeDelta = new Vector2(900f, 90f);
+            heading.rectTransform.anchoredPosition = new Vector2(0f, 620f);
+            heading.rectTransform.sizeDelta = new Vector2(900f, 80f);
 
-            consentField = CreateConsentField(consentPanel.transform, cardFont);
-            consentHint = CreateWord(consentPanel.transform, cardFont, string.Empty, 30);
-            consentHint.color = new Color(0.55f, 0.16f, 0.16f, 1f);
-            consentHint.rectTransform.anchoredPosition = new Vector2(0f, -40f);
-            consentHint.rectTransform.sizeDelta = new Vector2(800f, 56f);
-
-            Image start = CreateImage(
-                consentPanel.transform,
-                "Start",
-                new Color(0.1f, 0.32f, 0.78f, 1f),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0f, -160f),
-                new Vector2(360f, 100f));
-            Button startButton = start.gameObject.AddComponent<Button>();
-            startButton.targetGraphic = start;
-            startButton.onClick.AddListener(RecordConsentCode);
-            Text startLabel = CreateWord(start.transform, cardFont, "Start", 36);
-            startLabel.color = Color.white;
-            startLabel.rectTransform.anchoredPosition = Vector2.zero;
-            startLabel.rectTransform.sizeDelta = new Vector2(320f, 80f);
+            string[] codes = ConsentCodes.All;
+            for (int i = 0; i < codes.Length; i++)
+            {
+                int column = i % 5;
+                int row = i / 5;
+                string code = codes[i];
+                Image chip = CreateImage(
+                    consentPanel.transform,
+                    code,
+                    new Color(0.1f, 0.32f, 0.78f, 1f),
+                    new Vector2(0.5f, 0.5f),
+                    new Vector2(0.5f, 0.5f),
+                    new Vector2((column - 2) * 196f, 360f - (row * 120f)),
+                    new Vector2(180f, 96f));
+                Button button = chip.gameObject.AddComponent<Button>();
+                button.targetGraphic = chip;
+                button.onClick.AddListener(() => RecordConsentCode(code));
+                Text label = CreateWord(chip.transform, cardFont, code, 26);
+                label.color = Color.white;
+                label.raycastTarget = false;
+                label.rectTransform.anchoredPosition = Vector2.zero;
+                label.rectTransform.sizeDelta = new Vector2(168f, 72f);
+            }
         }
 
-        void RecordConsentCode()
+        void RecordConsentCode(string code)
         {
-            string typed = consentField != null ? consentField.text : string.Empty;
             BuyerSession started;
-            if (!BuyerSession.TryStart(typed, out started))
-            {
-                if (consentHint != null)
-                    consentHint.text = "Enter a consent code.";
+            if (!BuyerSession.TryStart(code, out started))
                 return;
-            }
 
             consentCode = started.ParticipantCode;
             recordingCode = false;
@@ -501,37 +496,6 @@ namespace Capstone.Placement
             if (consentPanel != null)
                 consentPanel.SetActive(false);
             ShowWorks();
-        }
-
-        static InputField CreateConsentField(Transform parent, Font typeface)
-        {
-            Image image = CreateImage(
-                parent,
-                "Consent code",
-                Color.white,
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0f, 20f),
-                new Vector2(640f, 100f));
-            InputField field = image.gameObject.AddComponent<InputField>();
-            Text text = CreateWord(image.transform, typeface, string.Empty, 36);
-            text.color = new Color(0.08f, 0.12f, 0.22f, 1f);
-            text.alignment = TextAnchor.MiddleLeft;
-            text.rectTransform.anchorMin = Vector2.zero;
-            text.rectTransform.anchorMax = Vector2.one;
-            text.rectTransform.offsetMin = new Vector2(24f, 8f);
-            text.rectTransform.offsetMax = new Vector2(-24f, -8f);
-            Text placeholder = CreateWord(image.transform, typeface, "Consent code", 32);
-            placeholder.color = new Color(0.45f, 0.52f, 0.64f, 0.9f);
-            placeholder.fontStyle = FontStyle.Italic;
-            placeholder.alignment = TextAnchor.MiddleLeft;
-            placeholder.rectTransform.anchorMin = Vector2.zero;
-            placeholder.rectTransform.anchorMax = Vector2.one;
-            placeholder.rectTransform.offsetMin = new Vector2(24f, 8f);
-            placeholder.rectTransform.offsetMax = new Vector2(-24f, -8f);
-            field.textComponent = text;
-            field.placeholder = placeholder;
-            return field;
         }
 
         void ShowWorks()

@@ -225,10 +225,26 @@ namespace Capstone.Session.Tests
         {
             BuyerSession session;
 
-            Assert.IsTrue(BuyerSession.TryStart("  KGL-04  ", out session));
-            Assert.AreEqual("KGL-04", session.ParticipantCode);
+            Assert.IsTrue(BuyerSession.TryStart("  azure  ", out session));
+            Assert.AreEqual("AZURE", session.ParticipantCode);
             Assert.IsTrue(session.ConsentLogged);
             Assert.AreEqual(0, session.Count);
+        }
+
+        [Test]
+        public void ACodeOutsideTheTwentyFiveDoesNotStart()
+        {
+            BuyerSession session;
+
+            Assert.AreEqual(25, ConsentCodes.All.Length);
+            for (int i = 0; i < ConsentCodes.All.Length; i++)
+            {
+                for (int j = i + 1; j < ConsentCodes.All.Length; j++)
+                    Assert.AreNotEqual(ConsentCodes.All[i], ConsentCodes.All[j]);
+            }
+
+            Assert.IsFalse(BuyerSession.TryStart("KGL-04", out session));
+            Assert.IsNull(session);
         }
     }
 }

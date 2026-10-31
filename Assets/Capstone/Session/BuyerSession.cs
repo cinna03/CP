@@ -5,7 +5,7 @@ namespace Capstone.Session
 {
     /// <summary>
     /// The events of one buyer session, kept in memory on the device.
-    /// A blank consent code does not start a session. A real code starts one and marks consent.
+    /// A blank consent code does not start a session. Only one of the 25 study codes starts one and marks consent.
     /// Consent starts unmarked when a session is built directly. A keep, save, dismiss, matched question, or chosen rank is stored only after that.
     /// Marking consent does not invent earlier events. An unmatched question is not logged.
     /// A choice is rank 1, 2, or 3. A missing rank is not stored.
@@ -18,13 +18,14 @@ namespace Capstone.Session
 
         public static bool TryStart(string consentCode, out BuyerSession session)
         {
-            if (string.IsNullOrWhiteSpace(consentCode))
+            string matched = ConsentCodes.Canonical(consentCode);
+            if (matched == null)
             {
                 session = null;
                 return false;
             }
 
-            session = new BuyerSession(consentCode.Trim());
+            session = new BuyerSession(matched);
             session.MarkConsent();
             return true;
         }
