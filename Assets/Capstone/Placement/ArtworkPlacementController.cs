@@ -30,7 +30,7 @@ namespace Capstone.Placement
     /// No wall means a retry message and no invented size.
     /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
     /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
-    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The phone then opens on the camera. Move until a vertical wall is detected, then press Place.
+    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer then sets a style, a mood, and a colour, and picks a work from the catalogue. The camera opens when that work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can set new tags and place another work, or end. The five uncertainty questions stay on the paper form.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -58,6 +58,11 @@ namespace Capstone.Placement
         public const string WallFoundMessage = "Wall detected. You are ready to test the art piece. Press Place.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
+        public const string TagsMessage = "Set a style, a mood, and a colour.";
+        public const string TagsSetMessage = "Tags are set. Choose a work from the catalogue.";
+        public const string AskOrSkipMessage = "Ask one thing, or skip.";
+        public const string SkippedMessage = "Skipped. Keep, save, or dismiss this work.";
+        public const string EndedMessage = "Session ended. The five uncertainty questions stay on the paper form.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
 
@@ -97,6 +102,23 @@ namespace Capstone.Placement
         bool roomChosen;
         bool scanning;
         bool wallReady;
+        bool tagsChosen;
+        bool awaitingRoom;
+        bool ended;
+        string pathStep = BuyerPath.Start();
+        GameObject skipButton;
+        string pickedStyle = "sample";
+        string pickedMood = "calm";
+        string pickedColour = "blue";
+        GameObject tagsPanel;
+        Image styleSampleImage;
+        Image styleBoldImage;
+        Image moodCalmImage;
+        Image moodQuietImage;
+        Image moodBrightImage;
+        Image colourBlueImage;
+        Image colourOrangeImage;
+        Image colourRedImage;
         CanvasScaler screenFit;
         RectTransform screenColumn;
         static readonly Color AimSearching = Color.white;
@@ -251,7 +273,8 @@ namespace Capstone.Placement
                 : "";
             scanning = false;
             wallReady = false;
-            status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current) + roomLine;
+            pathStep = BuyerPath.Next(pathStep, BuyerPath.Placed);
+            status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current) + roomLine + " " + AskOrSkipMessage;
             ApplyStepVisibility();
         }
 
@@ -286,7 +309,8 @@ namespace Capstone.Placement
                 placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             }
 
-            OpenStep(PrototypeScreen.Wall);
+            awaitingRoom = false;
+            OpenWall();
         }
 
         public void ChangeRoom()
@@ -294,6 +318,8 @@ namespace Capstone.Placement
             if (!Application.isEditor || rooms == null)
                 return;
             roomChosen = false;
+            awaitingRoom = true;
+            scanning = false;
             ApplyStepVisibility();
             status.text = ChooseRoomMessage;
         }
@@ -327,8 +353,157 @@ namespace Capstone.Placement
                 feedback.Profile.NoteConcern(reply.Concern, current);
             if (reply.Matched && session != null && current != null)
                 session.LogRule(current.Id, reply.RuleId, reply.Concern, DateTime.UtcNow);
-            status.text = ReplyForCurrentWork(reply);
+            pathStep = BuyerPath.Next(pathStep, BuyerPath.Send);
+            KeepTranscript();
+            if (pathStep == BuyerPath.Rank)
+                OpenStep(PrototypeScreen.Recommend);
+            status.text = ReplyForCurrentWork(reply) + " Keep, save, or dismiss this work.";
             ApplyStepVisibility();
+        }
+
+        public void SkipQuestion()
+        {
+            if (Blocked(StudyCondition.Dialogue))
+                return;
+
+            scanning = false;
+            pathStep = BuyerPath.Next(pathStep, BuyerPath.Skip);
+            if (pathStep == BuyerPath.Rank)
+                OpenStep(PrototypeScreen.Recommend);
+            status.text = SkippedMessage;
+        }
+
+        public void ConfirmTags()
+        {
+            feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(pickedStyle, pickedMood, pickedColour));
+            tagsChosen = true;
+            ended = false;
+            pathStep = BuyerPath.Next(pathStep, BuyerPath.Continue);
+            UseFilter(null, null, null, 0f, 0f);
+            OpenStep(PrototypeScreen.Works);
+            status.text = TagsSetMessage + " " + pickedStyle + ", " + pickedMood + ", " + pickedColour + ".";
+        }
+
+        public void BeginPlacement()
+        {
+            if (current == null)
+            {
+                status.text = NoCatalogueMessage;
+                return;
+            }
+
+            if (Application.isEditor && !roomChosen)
+            {
+                awaitingRoom = true;
+                scanning = false;
+                ApplyStepVisibility();
+                status.text = ChooseRoomMessage;
+                return;
+            }
+
+            OpenWall();
+        }
+
+        public void ChangeTags()
+        {
+            tagsChosen = false;
+            ended = false;
+            scanning = false;
+            awaitingRoom = false;
+            pathStep = BuyerPath.Next(BuyerPath.Rank, BuyerPath.ChangeTags);
+            OpenStep(PrototypeScreen.Works);
+            status.text = TagsMessage;
+            if (stepLine != null)
+                stepLine.text = "These tags start the next work.";
+        }
+
+        public void EndSession()
+        {
+            ended = true;
+            scanning = false;
+            awaitingRoom = false;
+            pathStep = BuyerPath.Next(BuyerPath.Rank, BuyerPath.End);
+            ApplyStepVisibility();
+            status.text = EndedMessage;
+            if (stepLine != null)
+                stepLine.text = EndedMessage;
+        }
+
+        void OpenWall()
+        {
+            pathStep = BuyerPath.Next(BuyerPath.Catalogue, BuyerPath.Place);
+            awaitingRoom = false;
+            if (!Application.isEditor && BuyerPath.OpensCamera(pathStep))
+            {
+                scanning = true;
+                wallReady = false;
+            }
+
+            OpenStep(PrototypeScreen.Wall);
+        }
+
+        void KeepTranscript()
+        {
+            if (session == null)
+                return;
+
+            try
+            {
+                string path = System.IO.Path.Combine(Application.persistentDataPath, "capstone-session.txt");
+                System.IO.File.WriteAllText(path, SessionTranscript.Format(session));
+            }
+            catch (System.IO.IOException)
+            {
+                // The session object still holds the events.
+            }
+            catch (System.UnauthorizedAccessException)
+            {
+                // The session object still holds the events.
+            }
+        }
+
+        void PickStyle(string tag)
+        {
+            pickedStyle = tag;
+            PaintTag(styleSampleImage, tag == "sample");
+            PaintTag(styleBoldImage, tag == "bold");
+        }
+
+        void PickMood(string tag)
+        {
+            pickedMood = tag;
+            PaintTag(moodCalmImage, tag == "calm");
+            PaintTag(moodQuietImage, tag == "quiet");
+            PaintTag(moodBrightImage, tag == "bright");
+        }
+
+        void PickColour(string tag)
+        {
+            pickedColour = tag;
+            PaintTag(colourBlueImage, tag == "blue");
+            PaintTag(colourOrangeImage, tag == "orange");
+            PaintTag(colourRedImage, tag == "red");
+        }
+
+        static void PaintTag(Image image, bool chosen)
+        {
+            if (image != null)
+                image.color = chosen ? StepOn : StepOff;
+        }
+
+        void StartBuyerPath()
+        {
+            scanning = false;
+            wallReady = false;
+            tagsChosen = false;
+            ended = false;
+            awaitingRoom = false;
+            pathStep = BuyerPath.Start();
+            OpenStep(PrototypeScreen.Works);
+            if (status != null)
+                status.text = TagsMessage;
+            if (stepLine != null)
+                stepLine.text = "These tags start the session. The catalogue comes next.";
         }
 
         string ReplyForCurrentWork(DialogueReply reply)
@@ -382,6 +557,7 @@ namespace Capstone.Placement
                 recommendedIds);
             status.text = verb + " " + current.Title + ".\n" + DescribeRecommendations(offered)
                 + "\n" + (logged ? LoggedRanks(recommendedIds) : NotLoggedMessage);
+            KeepTranscript();
         }
 
         static string[] IdsInRankOrder(List<Recommendation> ranked)
@@ -466,6 +642,7 @@ namespace Capstone.Placement
             string concern = feedback != null && feedback.Profile != null ? feedback.Profile.LastConcern : string.Empty;
             bool logged = session != null && session.LogChoice(current.Id, oneBasedRank, concern, DateTime.UtcNow);
             string loggedLine = logged ? "Logged." : NotLoggedMessage;
+            KeepTranscript();
             if (placed == null)
             {
                 status.text = ChosenMessage + " " + current.Title + ". " + Describe(current) + "\n" + loggedLine;
@@ -597,27 +774,32 @@ namespace Capstone.Placement
 
         void ApplyStepVisibility()
         {
-            bool choosing = Application.isEditor && !roomChosen;
-            bool phoneScan = !Application.isEditor && scanning && step == PrototypeScreen.Wall;
+            bool choosing = Application.isEditor && tagsChosen && awaitingRoom && !roomChosen && !ended;
+            bool phoneScan = !Application.isEditor && tagsChosen && scanning && step == PrototypeScreen.Wall && !ended;
+            bool showTags = !tagsChosen && !ended;
+            if (tagsPanel != null)
+                tagsPanel.SetActive(showTags);
             if (choicePanel != null)
                 choicePanel.SetActive(choosing);
-            SetButtonActive(studyButtonWidget, !choosing && !phoneScan);
-            SetButtonActive(consentButtonWidget, !choosing && !phoneScan);
-            SetButtonActive(worksNavImage, !choosing && !phoneScan);
-            SetButtonActive(wallNavImage, !choosing && !phoneScan);
-            SetButtonActive(recommendNavImage, !choosing && !phoneScan);
+            SetButtonActive(studyButtonWidget, tagsChosen && !ended && !choosing && !phoneScan);
+            SetButtonActive(consentButtonWidget, tagsChosen && !ended && !choosing && !phoneScan);
+            SetButtonActive(worksNavImage, false);
+            SetButtonActive(wallNavImage, false);
+            SetButtonActive(recommendNavImage, false);
             if (worksPanel != null)
-                worksPanel.SetActive(!choosing && !phoneScan && PrototypeScreen.ShowsWorks(step));
+                worksPanel.SetActive(tagsChosen && !ended && !choosing && !phoneScan && PrototypeScreen.ShowsWorks(step));
             if (wallPanel != null)
-                wallPanel.SetActive(!choosing && PrototypeScreen.ShowsWall(step));
+                wallPanel.SetActive(tagsChosen && !ended && !choosing && PrototypeScreen.ShowsWall(step));
             if (recommendPanel != null)
-                recommendPanel.SetActive(!choosing && !phoneScan && PrototypeScreen.ShowsRecommend(step));
-            SetObjectActive(notesButton, !phoneScan);
-            SetObjectActive(sendButton, !phoneScan);
+                recommendPanel.SetActive(tagsChosen && !ended && !choosing && !phoneScan && PrototypeScreen.ShowsRecommend(step));
+            bool askNow = pathStep == BuyerPath.Question;
+            SetObjectActive(notesButton, askNow && !phoneScan);
+            SetObjectActive(sendButton, askNow && !phoneScan);
+            SetObjectActive(skipButton, askNow && !phoneScan);
             SetObjectActive(swapButton, !phoneScan);
             SetObjectActive(removeButton, !phoneScan);
             if (concernField != null)
-                concernField.gameObject.SetActive(!phoneScan);
+                concernField.gameObject.SetActive(askNow && !phoneScan);
             if (placeButton != null)
             {
                 placeButton.gameObject.SetActive(!phoneScan || wallReady);
@@ -670,6 +852,10 @@ namespace Capstone.Placement
 
         string StepInstruction()
         {
+            if (ended)
+                return EndedMessage;
+            if (!tagsChosen)
+                return "These tags start the session. The catalogue comes next.";
             if (step == PrototypeScreen.Wall)
                 return Application.isEditor ? WallStepMessage : ScanWallMessage;
             if (step == PrototypeScreen.Recommend)
@@ -1000,6 +1186,20 @@ namespace Capstone.Placement
             screenColumn.anchoredPosition = Vector2.zero;
 
             uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tagsPanel = CreatePanel(column.transform, "Tags");
+            Cover(tagsPanel, new Color(0.90f, 0.95f, 1f, 1f));
+            styleSampleImage = CreateButton(tagsPanel.transform, uiFont, "Style: sample", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 1060f), new Vector2(500f, 110f), () => PickStyle("sample"), 32).GetComponent<Image>();
+            styleBoldImage = CreateButton(tagsPanel.transform, uiFont, "Style: bold", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(556f, 1060f), new Vector2(500f, 110f), () => PickStyle("bold"), 32).GetComponent<Image>();
+            moodCalmImage = CreateButton(tagsPanel.transform, uiFont, "Mood: calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 900f), new Vector2(330f, 110f), () => PickMood("calm"), 30).GetComponent<Image>();
+            moodQuietImage = CreateButton(tagsPanel.transform, uiFont, "Mood: quiet", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 900f), new Vector2(330f, 110f), () => PickMood("quiet"), 30).GetComponent<Image>();
+            moodBrightImage = CreateButton(tagsPanel.transform, uiFont, "Mood: bright", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(716f, 900f), new Vector2(330f, 110f), () => PickMood("bright"), 30).GetComponent<Image>();
+            colourBlueImage = CreateButton(tagsPanel.transform, uiFont, "Colour: blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 740f), new Vector2(330f, 110f), () => PickColour("blue"), 28).GetComponent<Image>();
+            colourOrangeImage = CreateButton(tagsPanel.transform, uiFont, "Colour: orange", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(370f, 740f), new Vector2(330f, 110f), () => PickColour("orange"), 28).GetComponent<Image>();
+            colourRedImage = CreateButton(tagsPanel.transform, uiFont, "Colour: red", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(716f, 740f), new Vector2(330f, 110f), () => PickColour("red"), 28).GetComponent<Image>();
+            CreateButton(tagsPanel.transform, uiFont, "Continue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 480f), new Vector2(1032f, 130f), ConfirmTags, 40);
+            PickStyle(pickedStyle);
+            PickMood(pickedMood);
+            PickColour(pickedColour);
             statusShade = CreateShade(column.transform);
             aimMark = CreateAimMark(column.transform);
             status = CreateLabel(column.transform, uiFont, WorksStatus(), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -24f), 30);
@@ -1017,23 +1217,28 @@ namespace Capstone.Placement
             worksPanel = CreatePanel(column.transform, "Works panel");
             wallPanel = CreatePanel(column.transform, "Wall panel");
             recommendPanel = CreatePanel(column.transform, "Recommend panel");
+            Cover(worksPanel, new Color(0.94f, 0.96f, 1f, 1f));
+            Cover(recommendPanel, new Color(0.94f, 0.96f, 1f, 1f));
             workList = CreatePanel(worksPanel.transform, "Work list").GetComponent<RectTransform>();
 
             CreateButton(worksPanel.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 590f), new Vector2(250f, 70f), ShowAll, 28);
             CreateButton(worksPanel.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(282f, 590f), new Vector2(250f, 70f), ShowBlue, 28);
             CreateButton(worksPanel.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 590f), new Vector2(250f, 70f), ShowCalm, 28);
             CreateButton(worksPanel.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(814f, 590f), new Vector2(250f, 70f), ShowFitsFifty, 28);
+            CreateButton(worksPanel.transform, uiFont, "Place this work", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -360f), new Vector2(1000f, 100f), BeginPlacement, 36);
             RefreshWorkList();
 
             if (Application.isEditor)
             {
                 choicePanel = CreatePanel(column.transform, "Choose room");
+                Cover(choicePanel, new Color(0.90f, 0.95f, 1f, 1f));
                 CreateButton(choicePanel.transform, uiFont, "Room 1. Warm. Small ochre room, wall 2.4 m by 2.4 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 980f), new Vector2(1032f, 150f), ShowWarmRoom, 32);
                 CreateButton(choicePanel.transform, uiFont, "Room 2. Gallery. White room, wall 4.2 m by 3.2 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 800f), new Vector2(1032f, 150f), ShowGalleryRoom, 32);
                 CreateButton(choicePanel.transform, uiFont, "Room 3. Hall. Dark room, wall 7 m by 4 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 620f), new Vector2(1032f, 150f), ShowHallRoom, 32);
                 CreateButton(wallPanel.transform, uiFont, "Change room", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 500f), new Vector2(1032f, 80f), ChangeRoom, 28);
             }
-            notesButton = CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 340f), new Vector2(1032f, 100f), ShowNotes, 36).gameObject;
+            notesButton = CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 460f), new Vector2(500f, 100f), ShowNotes, 36).gameObject;
+            skipButton = CreateButton(wallPanel.transform, uiFont, "Skip", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 460f), new Vector2(500f, 100f), SkipQuestion, 36).gameObject;
             concernField = CreateInput(wallPanel.transform, uiFont);
             sendButton = CreateButton(wallPanel.transform, uiFont, "Send", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 200f), new Vector2(240f, 110f), Send).gameObject;
             placeButton = CreateButton(wallPanel.transform, uiFont, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
@@ -1046,16 +1251,17 @@ namespace Capstone.Placement
             CreateButton(recommendPanel.transform, uiFont, "Use 1", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 180f), new Vector2(320f, 120f), ChooseFirst);
             CreateButton(recommendPanel.transform, uiFont, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 180f), new Vector2(320f, 120f), ChooseSecond);
             CreateButton(recommendPanel.transform, uiFont, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 180f), new Vector2(320f, 120f), ChooseThird);
+            CreateButton(recommendPanel.transform, uiFont, "Change tags", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(500f, 120f), ChangeTags, 32);
+            CreateButton(recommendPanel.transform, uiFont, "End", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 40f), new Vector2(500f, 120f), EndSession, 32);
+            if (statusShade != null)
+                statusShade.SetAsLastSibling();
+            if (status != null)
+                status.rectTransform.SetAsLastSibling();
+            if (stepLine != null)
+                stepLine.rectTransform.SetAsLastSibling();
+            if (aimMark != null)
+                aimMark.rectTransform.SetAsLastSibling();
             ApplyStepVisibility();
-            if (Application.isEditor && !roomChosen)
-                status.text = ChooseRoomMessage;
-            else if (!Application.isEditor)
-            {
-                scanning = true;
-                wallReady = false;
-                OpenStep(PrototypeScreen.Wall);
-                status.text = ScanWallMessage;
-            }
 
             canvasObject.SetActive(false);
             OpeningSequence.Play(uiFont, (id, code) =>
@@ -1066,7 +1272,26 @@ namespace Capstone.Placement
                 ChooseOpeningWork(id);
                 if (canvasObject != null)
                     canvasObject.SetActive(true);
+                StartBuyerPath();
             });
+        }
+
+        static void Cover(GameObject panel, Color color)
+        {
+            if (panel == null)
+                return;
+
+            GameObject shade = new GameObject("Cover", typeof(RectTransform));
+            shade.transform.SetParent(panel.transform, false);
+            shade.transform.SetAsFirstSibling();
+            Image image = shade.AddComponent<Image>();
+            image.color = color;
+            image.raycastTarget = true;
+            RectTransform rect = shade.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
         }
 
         static RectTransform CreateShade(Transform parent)
