@@ -1,6 +1,6 @@
 # Capstone
 
-A portrait prototype that places one work on a detected wall at the centimetres stored on that work. The buyer starts with one of 25 consent codes. A buyer who already has a piece enters its painted size and frame. A buyer who is exploring answers three questions for style, mood, and colour, then picks a work. `I don't know` leaves that category open. The camera opens when that work is placed. One question is matched from a written English, French, and Kinyarwanda table. Keep, save, or dismiss ranks three other works and shows their story notes.
+A portrait prototype that places one work on a detected wall at the centimetres stored on that work. The buyer starts with one of 25 consent codes. A buyer who already has a piece uploads a clear picture and enters its painted size and frame. A buyer who is exploring answers three questions for style, mood, and colour, then picks a work. `I don't know` leaves that category open. The camera opens when that work is placed. One question is matched from a written English, French, and Kinyarwanda table. Keep, save, or dismiss ranks three other works and shows their story notes.
 
 The study build target is Android. The same placement code was also run in the Unity editor and on an iPhone 13.
 
@@ -30,7 +30,7 @@ Packages used by the prototype:
 
 Android minimum SDK is API 30, ARM64, IL2CPP. ARCore is required. The scene in the build is `Assets/Scenes/SampleScene.unity`.
 
-In the editor, Play asks for Room 1, Room 2, or Room 3 when the buyer is ready to place. Place then uses that room wall. On a phone, Place raycasts the centre of the screen onto a vertical plane.
+In the editor, a chosen work is placed on a plain wall. On a phone, the camera opens and Place raycasts the centre of the screen onto a vertical plane.
 
 ## Folder layout
 
@@ -49,7 +49,7 @@ In the editor, Play asks for Room 1, Room 2, or Room 3 when the buyer is ready t
 `BuyerPath` is the order. The placement screen follows it.
 
 1. Consent code. The opening plays through, then the blue circle stays until that circle is tapped. `ConsentCodes` holds the 25 codes. `BuyerSession.TryStart` accepts one of them, trims spaces, and marks consent. Any other text stays on the code page and says `Try again.`
-2. Already have a piece, or still exploring. `I have a piece` asks for the painted width, the painted height, and a frame. The wall uses the outer size: the painting plus the moulding on both sides. `I'm still exploring` stores a style, a mood, and a colour on `PreferenceQuiz`. `I don't know` leaves that category blank. `PreferenceProfile.FromInitialTags` keeps only the answers that were given. A blank tag adds no weight.
+2. Already have a piece, or still exploring. `I have a piece` asks for a clear picture of the painting, then the painted width, the painted height, and a frame. The wall uses the outer size: the painting plus the moulding on both sides. `I'm still exploring` stores a style, a mood, and a colour on `PreferenceQuiz`. `I don't know` leaves that category blank. `PreferenceProfile.FromInitialTags` keeps only the answers that were given. A blank tag adds no weight.
 3. Catalogue, for a buyer who is exploring. The works that meet those answers open as the top picks. `Browse for more` lists every piece. `Top picks` returns to the matches. The buyer picks a work, then presses `Place this work`. A piece they brought skips this list and goes to the wall.
 4. Wall. This is the only step that opens the camera. The quad uses `Artwork.WallSizeMetres`, which comes from the stored centimetres.
 5. One question, or Skip. `RuleEngine.Match` reads `StarterRules`. The reply language is the language of the matched words. No match returns one fixed prompt and logs nothing.
@@ -97,8 +97,8 @@ The fixtures sit under `Assets/Capstone/**/Tests`. They cover the empty code, a 
 
 On 31 Oct 2026 the 85 tests that do not need the Unity editor were compiled and run: catalogue, ranking, dialogue, and session. All 85 passed. The list is `TEST-RESULTS.txt`. The wall-pose and room tests use Unity types, so they run in the Test Runner with the rest.
 
-Two runtimes were used for the placement path. The editor runs the same session order in one of three rooms. An iPhone 13 on iOS 27.2 ran the same wall raycast and the same stored-size quad on a real wall: the phone asks for a slow scan, the centre ring turns green on a vertical plane, and Place uses that hit. Frame time was not instrumented, so this folder does not claim a performance number. The study package target remains Android API 30 with ARCore required.
+Two runtimes were used for the placement path. The editor runs the same session order on a plain wall. An iPhone 13 on iOS 27.2 ran the same wall raycast and the same stored-size quad on a real wall: the phone asks for a slow scan, the centre ring turns green on a vertical plane, and Place uses that hit. Frame time was not instrumented, so this folder does not claim a performance number. The study package target remains Android API 30 with ARCore required.
 
 ## Play
 
-Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Choose `I have a piece`, tap Height, and use the keys, or choose `I'm still exploring` and answer the three questions. The catalogue opens on the top picks. `Browse for more` lists every piece. Choose a work, then place it. Ask one thing or press Skip. Keep, save, or dismiss shows three works with their story notes.
+Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Choose `I have a piece`, upload a clear picture, tap Height, and use the keys, or choose `I'm still exploring` and answer the three questions. The catalogue opens on the top picks. `Browse for more` lists every piece. Choose a work, then place it. Ask one thing or press Skip. Keep, save, or dismiss shows three works with their story notes.

@@ -29,9 +29,8 @@ namespace Capstone.Placement
     /// Works, Wall, and Recommend are the three steps. The catalogue condition stays on Works.
     /// Consent must be marked before a keep, save, dismiss, matched question, or chosen rank is stored.
     /// No wall means a retry message and no invented size.
-    /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
-    /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
-    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
+    /// In the editor, a chosen work is placed on the plain wall. On a phone, the camera opens so that work can be placed on a real wall. The artwork keeps its stored centimetres.
+    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for a clear picture, the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -54,7 +53,6 @@ namespace Capstone.Placement
         public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
-        public const string ChooseRoomMessage = "Choose the room that fits. Then place a work, ask a question, and keep or dismiss.";
         public const string ScanWallMessage = "Move the phone slowly across the wall.";
         public const string WallFoundMessage = "Wall detected. You are ready to test the art piece. Press Place.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
@@ -62,6 +60,9 @@ namespace Capstone.Placement
         public const string BuyerPieceId = "buyer-piece";
         public const string TagsMessage = "What are you looking for?";
         public const string OwnPieceMessage = "Width and height are the painted surface, in centimetres.";
+        public const string PictureMessage = "Upload a clear picture of the painting.";
+        public const string PictureAddedMessage = "Picture added. Enter the painted width and height.";
+        public const string PictureReadMessage = "That picture could not be read. Use a clear JPG or PNG.";
         public const string OwnPieceSizeMessage = "Enter the painting width and height in centimetres.";
         public const string OwnPieceFrameMessage = "Enter the frame width in centimetres.";
         public const string MatchMessage = "Top picks for what you said.";
@@ -96,7 +97,6 @@ namespace Capstone.Placement
         Text stepLine;
         Text studyLabel;
         DemoRoomStage rooms;
-        GameObject choicePanel;
         Button studyButtonWidget;
         Button consentButtonWidget;
         Button placeButton;
@@ -110,7 +110,6 @@ namespace Capstone.Placement
         bool scanning;
         bool wallReady;
         bool tagsChosen;
-        bool awaitingRoom;
         bool ended;
         string pathStep = BuyerPath.Start();
         GameObject skipButton;
@@ -120,6 +119,8 @@ namespace Capstone.Placement
         bool enteringOwnPiece;
         bool framed;
         Texture2D buyerTexture;
+        Texture2D buyerPhoto;
+        Text pictureLabel;
         Color frameColor = new Color(0.12f, 0.10f, 0.08f, 1f);
         GameObject ownPiecePanel;
         GameObject frameDetails;
@@ -289,29 +290,11 @@ namespace Capstone.Placement
             WallPose pose = ArtworkWallPose.At(current, point, normal, cameraPosition);
             placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             ApplyArtwork(current);
-            string roomLine = Application.isEditor && rooms != null && rooms.Current != null
-                ? " " + rooms.Current.Describe()
-                : "";
             scanning = false;
             wallReady = false;
             pathStep = BuyerPath.Next(pathStep, BuyerPath.Placed);
-            status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current) + roomLine + " " + AskOrSkipMessage;
+            status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current) + " " + AskOrSkipMessage;
             ApplyStepVisibility();
-        }
-
-        public void ShowWarmRoom()
-        {
-            ShowDemoRoom(0);
-        }
-
-        public void ShowGalleryRoom()
-        {
-            ShowDemoRoom(1);
-        }
-
-        public void ShowHallRoom()
-        {
-            ShowDemoRoom(2);
         }
 
         void ShowDemoRoom(int index)
@@ -330,19 +313,7 @@ namespace Capstone.Placement
                 placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             }
 
-            awaitingRoom = false;
             OpenWall();
-        }
-
-        public void ChangeRoom()
-        {
-            if (!Application.isEditor || rooms == null)
-                return;
-            roomChosen = false;
-            awaitingRoom = true;
-            scanning = false;
-            ApplyStepVisibility();
-            status.text = ChooseRoomMessage;
         }
 
         public void Swap()
@@ -453,16 +424,13 @@ namespace Capstone.Placement
                 return;
             }
 
-            if (Application.isEditor && !roomChosen)
-            {
-                awaitingRoom = true;
-                scanning = false;
-                ApplyStepVisibility();
-                status.text = ChooseRoomMessage;
-                return;
-            }
+            if (Application.isEditor && rooms != null && !roomChosen)
+                ShowDemoRoom(0);
+            else
+                OpenWall();
 
-            OpenWall();
+            if (Application.isEditor && roomChosen)
+                Place();
         }
 
         public void ChangeTags()
@@ -473,7 +441,6 @@ namespace Capstone.Placement
             browsing = false;
             ended = false;
             scanning = false;
-            awaitingRoom = false;
             pathStep = BuyerPath.Next(BuyerPath.Rank, BuyerPath.ChangeTags);
             ShowQuestion();
             OpenStep(PrototypeScreen.Works);
@@ -484,7 +451,6 @@ namespace Capstone.Placement
         {
             ended = true;
             scanning = false;
-            awaitingRoom = false;
             pathStep = BuyerPath.Next(BuyerPath.Rank, BuyerPath.End);
             ApplyStepVisibility();
             status.text = EndedMessage;
@@ -495,7 +461,6 @@ namespace Capstone.Placement
         void OpenWall()
         {
             pathStep = BuyerPath.Next(BuyerPath.Catalogue, BuyerPath.Place);
-            awaitingRoom = false;
             if (!Application.isEditor && BuyerPath.OpensCamera(pathStep))
             {
                 scanning = true;
@@ -533,7 +498,6 @@ namespace Capstone.Placement
             narrowed = false;
             browsing = false;
             ended = false;
-            awaitingRoom = false;
             quiz.Restart();
             pathStep = BuyerPath.Start();
             ShowQuestion();
@@ -559,21 +523,29 @@ namespace Capstone.Placement
 
             if (quizPrompt != null)
             {
-                quizPrompt.text = "Your painting.";
-                quizPrompt.rectTransform.anchoredPosition = new Vector2(0f, -280f);
-                quizPrompt.rectTransform.sizeDelta = new Vector2(960f, 80f);
+                quizPrompt.text = PictureMessage;
+                quizPrompt.rectTransform.anchoredPosition = new Vector2(0f, -300f);
+                quizPrompt.rectTransform.sizeDelta = new Vector2(960f, 140f);
                 quizPrompt.transform.SetAsLastSibling();
             }
 
             SelectMeasure(heightValue, heightBox);
+            if (pictureLabel != null)
+                pictureLabel.text = buyerPhoto != null ? "Picture added" : "Upload a clear picture";
 
             if (status != null)
-                status.text = OwnPieceMessage;
+                status.text = buyerPhoto != null ? PictureAddedMessage : PictureMessage;
             ApplyStepVisibility();
         }
 
         public void TryOwnPiece()
         {
+            if (buyerPhoto == null)
+            {
+                status.text = PictureMessage;
+                return;
+            }
+
             float width;
             float height;
             if (!TryCentimetres(widthValue != null ? widthValue.text : string.Empty, out width)
@@ -592,7 +564,7 @@ namespace Capstone.Placement
 
             if (buyerTexture != null)
                 Destroy(buyerTexture);
-            buyerTexture = PaintBuyerPiece(width, height, framed ? moulding : 0f, frameColor);
+            buyerTexture = PaintBuyerPiece(width, height, framed ? moulding : 0f, frameColor, buyerPhoto);
             float outerWidth = width + (framed ? moulding * 2f : 0f);
             float outerHeight = height + (framed ? moulding * 2f : 0f);
             current = new Artwork(
@@ -676,7 +648,7 @@ namespace Capstone.Placement
                 && centimetres > 0f;
         }
 
-        static Texture2D PaintBuyerPiece(float paintingWidthCm, float paintingHeightCm, float mouldingCm, Color frame)
+        static Texture2D PaintBuyerPiece(float paintingWidthCm, float paintingHeightCm, float mouldingCm, Color frame, Texture2D photo)
         {
             float outerWidth = paintingWidthCm + mouldingCm * 2f;
             float outerHeight = paintingHeightCm + mouldingCm * 2f;
@@ -685,25 +657,133 @@ namespace Capstone.Placement
             Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
             int borderX = mouldingCm <= 0f ? 0 : Mathf.Clamp(Mathf.RoundToInt(width * mouldingCm / outerWidth), 1, (width / 2) - 1);
             int borderY = mouldingCm <= 0f ? 0 : Mathf.Clamp(Mathf.RoundToInt(height * mouldingCm / outerHeight), 1, (height / 2) - 1);
-            Color canvas = new Color(0.90f, 0.84f, 0.72f, 1f);
-            Color pigment = new Color(0.25f, 0.38f, 0.55f, 1f);
+            Color[] pixels = photo.GetPixels();
+            int photoWidth = photo.width;
+            int photoHeight = photo.height;
+            int innerWidth = Mathf.Max(1, width - (borderX * 2));
+            int innerHeight = Mathf.Max(1, height - (borderY * 2));
             for (int y = 0; y < height; y++)
             {
                 for (int x = 0; x < width; x++)
                 {
                     bool framePixel = x < borderX || y < borderY || x >= width - borderX || y >= height - borderY;
-                    bool mark = !framePixel
-                        && x > width * 0.30f
-                        && x < width * 0.70f
-                        && y > height * 0.35f
-                        && y < height * 0.75f;
-                    texture.SetPixel(x, y, framePixel ? frame : mark ? pigment : canvas);
+                    if (framePixel)
+                    {
+                        texture.SetPixel(x, y, frame);
+                        continue;
+                    }
+
+                    int sampleX = Mathf.Clamp((x - borderX) * photoWidth / innerWidth, 0, photoWidth - 1);
+                    int sampleY = Mathf.Clamp((y - borderY) * photoHeight / innerHeight, 0, photoHeight - 1);
+                    texture.SetPixel(x, y, pixels[(sampleY * photoWidth) + sampleX]);
                 }
             }
 
             texture.Apply();
             return texture;
         }
+
+        public void UploadPainting()
+        {
+#if UNITY_EDITOR
+            string path = UnityEditor.EditorUtility.OpenFilePanelWithFilters(
+                "Clear picture of the painting",
+                "",
+                new[] { "Image files", "png,jpg,jpeg" });
+            OnPaintingPicked(path);
+#elif UNITY_IOS
+            CapstonePickPainting(gameObject.name);
+#elif UNITY_ANDROID
+            OpenAndroidPicker();
+#else
+            if (status != null)
+                status.text = PictureMessage;
+#endif
+        }
+
+        public void OnPaintingPicked(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
+            {
+                if (status != null && buyerPhoto == null)
+                    status.text = PictureMessage;
+                return;
+            }
+
+            byte[] bytes;
+            try
+            {
+                bytes = System.IO.File.ReadAllBytes(path);
+            }
+            catch (System.IO.IOException)
+            {
+                if (status != null)
+                    status.text = PictureReadMessage;
+                return;
+            }
+
+            Texture2D loaded = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!loaded.LoadImage(bytes))
+            {
+                Destroy(loaded);
+                if (status != null)
+                    status.text = PictureReadMessage;
+                return;
+            }
+
+            Texture2D scaled = ScalePhoto(loaded);
+            if (scaled != loaded)
+                Destroy(loaded);
+            if (buyerPhoto != null)
+                Destroy(buyerPhoto);
+            buyerPhoto = scaled;
+            if (pictureLabel != null)
+                pictureLabel.text = "Picture added";
+            if (status != null)
+                status.text = PictureAddedMessage;
+        }
+
+        static Texture2D ScalePhoto(Texture2D source)
+        {
+            const int maxEdge = 1024;
+            int longEdge = Mathf.Max(source.width, source.height);
+            if (longEdge <= maxEdge)
+                return source;
+
+            float scale = maxEdge / (float)longEdge;
+            int width = Mathf.Max(1, Mathf.RoundToInt(source.width * scale));
+            int height = Mathf.Max(1, Mathf.RoundToInt(source.height * scale));
+            RenderTexture target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32);
+            Graphics.Blit(source, target);
+            RenderTexture previous = RenderTexture.active;
+            RenderTexture.active = target;
+            Texture2D copy = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            copy.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
+            copy.Apply();
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            return copy;
+        }
+
+#if UNITY_IOS && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        static extern void CapstonePickPainting(string gameObjectName);
+#endif
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        void OpenAndroidPicker()
+        {
+            using (AndroidJavaClass unity = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            using (AndroidJavaObject activity = unity.GetStatic<AndroidJavaObject>("currentActivity"))
+            using (AndroidJavaObject intent = new AndroidJavaObject("android.content.Intent"))
+            {
+                string packageName = activity.Call<string>("getPackageName");
+                intent.Call<AndroidJavaObject>("setClassName", packageName, "com.cinna03.capstone.picker.PaintingPickActivity");
+                intent.Call<AndroidJavaObject>("putExtra", "gameObject", gameObject.name);
+                activity.Call("startActivity", intent);
+            }
+        }
+#endif
 
         void ShowQuestion()
         {
@@ -1043,28 +1123,25 @@ namespace Capstone.Placement
 
         void ApplyStepVisibility()
         {
-            bool choosing = Application.isEditor && tagsChosen && awaitingRoom && !roomChosen && !ended;
             bool phoneScan = !Application.isEditor && tagsChosen && scanning && step == PrototypeScreen.Wall && !ended;
             bool showTags = !tagsChosen && !ended;
             if (tagsPanel != null)
                 tagsPanel.SetActive(showTags);
-            if (choicePanel != null)
-                choicePanel.SetActive(choosing);
-            SetButtonActive(studyButtonWidget, tagsChosen && !ended && !choosing && !phoneScan);
-            SetButtonActive(consentButtonWidget, tagsChosen && !ended && !choosing && !phoneScan);
+            SetButtonActive(studyButtonWidget, tagsChosen && !ended && !phoneScan);
+            SetButtonActive(consentButtonWidget, tagsChosen && !ended && !phoneScan);
             SetButtonActive(worksNavImage, false);
             SetButtonActive(wallNavImage, false);
             SetButtonActive(recommendNavImage, false);
-            bool onWorks = tagsChosen && !ended && !choosing && !phoneScan && PrototypeScreen.ShowsWorks(step);
+            bool onWorks = tagsChosen && !ended && !phoneScan && PrototypeScreen.ShowsWorks(step);
             if (worksPanel != null)
                 worksPanel.SetActive(onWorks);
             SetObjectActive(browseButton, onWorks && narrowed && !browsing);
             SetObjectActive(topPicksButton, onWorks && narrowed && browsing);
             SetObjectActive(browseFilters, onWorks && (browsing || !narrowed));
             if (wallPanel != null)
-                wallPanel.SetActive(tagsChosen && !ended && !choosing && PrototypeScreen.ShowsWall(step));
+                wallPanel.SetActive(tagsChosen && !ended && PrototypeScreen.ShowsWall(step));
             if (recommendPanel != null)
-                recommendPanel.SetActive(tagsChosen && !ended && !choosing && !phoneScan && PrototypeScreen.ShowsRecommend(step));
+                recommendPanel.SetActive(tagsChosen && !ended && !phoneScan && PrototypeScreen.ShowsRecommend(step));
             bool askNow = pathStep == BuyerPath.Question;
             SetObjectActive(notesButton, askNow && !phoneScan);
             SetObjectActive(sendButton, askNow && !phoneScan);
@@ -1104,7 +1181,7 @@ namespace Capstone.Placement
             if (stepLine != null)
             {
                 stepLine.gameObject.SetActive(!phoneScan);
-                stepLine.text = choosing ? "Pick Room 1, Room 2, or Room 3." : StepInstruction();
+                stepLine.text = StepInstruction();
             }
             PaintStep(worksNavImage, PrototypeScreen.ShowsWorks(step));
             PaintStep(wallNavImage, PrototypeScreen.ShowsWall(step));
@@ -1491,6 +1568,7 @@ namespace Capstone.Placement
 
             ownPiecePanel = CreatePanel(tagsPanel.transform, "Own piece");
             Cover(ownPiecePanel, new Color(0.86f, 0.93f, 1f, 1f));
+            pictureLabel = CreateButton(ownPiecePanel.transform, uiFont, "Upload a clear picture", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 1300f), new Vector2(1032f, 110f), UploadPainting, 32).GetComponentInChildren<Text>();
             widthValue = CreateMeasureBox(ownPiecePanel.transform, "Width cm", new Vector2(24f, 1140f), out widthBox);
             heightValue = CreateMeasureBox(ownPiecePanel.transform, "Height cm", new Vector2(24f, 990f), out heightBox);
             WireMeasure(widthValue, widthBox);
@@ -1554,15 +1632,6 @@ namespace Capstone.Placement
             CreateButton(worksPanel.transform, uiFont, "Place this work", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -360f), new Vector2(1000f, 100f), BeginPlacement, 36);
             RefreshWorkList();
 
-            if (Application.isEditor)
-            {
-                choicePanel = CreatePanel(column.transform, "Choose room");
-                Cover(choicePanel, new Color(0.90f, 0.95f, 1f, 1f));
-                CreateButton(choicePanel.transform, uiFont, "Room 1. Warm. Small ochre room, wall 2.4 m by 2.4 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 980f), new Vector2(1032f, 150f), ShowWarmRoom, 32);
-                CreateButton(choicePanel.transform, uiFont, "Room 2. Gallery. White room, wall 4.2 m by 3.2 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 800f), new Vector2(1032f, 150f), ShowGalleryRoom, 32);
-                CreateButton(choicePanel.transform, uiFont, "Room 3. Hall. Dark room, wall 7 m by 4 m.", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 620f), new Vector2(1032f, 150f), ShowHallRoom, 32);
-                CreateButton(wallPanel.transform, uiFont, "Change room", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 500f), new Vector2(1032f, 80f), ChangeRoom, 28);
-            }
             notesButton = CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 460f), new Vector2(500f, 100f), ShowNotes, 36).gameObject;
             skipButton = CreateButton(wallPanel.transform, uiFont, "Skip", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 460f), new Vector2(500f, 100f), SkipQuestion, 36).gameObject;
             concernField = CreateInput(wallPanel.transform, uiFont);
