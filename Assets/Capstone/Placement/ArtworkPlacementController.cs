@@ -30,7 +30,7 @@ namespace Capstone.Placement
     /// No wall means a retry message and no invented size.
     /// In the editor, Play asks for Room 1, Room 2, or Room 3 in any scene, including a plain 3D scene.
     /// After that choice, Place uses the chosen room wall. The artwork keeps its stored centimetres.
-    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer then answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
+    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -58,7 +58,11 @@ namespace Capstone.Placement
         public const string WallFoundMessage = "Wall detected. You are ready to test the art piece. Press Place.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
+        public const string BuyerPieceId = "buyer-piece";
         public const string TagsMessage = "What are you looking for?";
+        public const string OwnPieceMessage = "Width and height are the painted surface, in centimetres.";
+        public const string OwnPieceSizeMessage = "Enter the painting width and height in centimetres.";
+        public const string OwnPieceFrameMessage = "Enter the frame width in centimetres.";
         public const string MatchMessage = "Top picks for what you said.";
         public const string NoQuizMatchMessage = "Nothing matches every answer. Browse for more.";
         public const string BrowseMessage = "Every piece in the catalogue.";
@@ -112,6 +116,15 @@ namespace Capstone.Placement
         PreferenceQuiz quiz = new PreferenceQuiz();
         bool narrowed;
         bool browsing;
+        bool enteringOwnPiece;
+        bool framed;
+        Texture2D buyerTexture;
+        Color frameColor = new Color(0.12f, 0.10f, 0.08f, 1f);
+        GameObject ownPiecePanel;
+        GameObject frameDetails;
+        InputField widthField;
+        InputField heightField;
+        InputField mouldingField;
         GameObject tagsPanel;
         Text quizPrompt;
         Button[] quizButtons = new Button[4];
@@ -385,7 +398,10 @@ namespace Capstone.Placement
             quiz.Answer(tag);
             if (quiz.Finished)
             {
-                ShowMatches();
+                if (quiz.BringingOwnPiece)
+                    ShowOwnPieceForm();
+                else
+                    ShowMatches();
                 return;
             }
 
@@ -520,8 +536,167 @@ namespace Capstone.Placement
                 status.text = quiz.Prompt();
         }
 
+        void ShowOwnPieceForm()
+        {
+            enteringOwnPiece = true;
+            for (int i = 0; i < quizButtons.Length; i++)
+            {
+                if (quizButtons[i] != null)
+                    quizButtons[i].gameObject.SetActive(false);
+            }
+
+            if (ownPiecePanel != null)
+            {
+                ownPiecePanel.SetActive(true);
+                ownPiecePanel.transform.SetAsLastSibling();
+            }
+
+            if (quizPrompt != null)
+            {
+                quizPrompt.text = "Your painting.";
+                quizPrompt.transform.SetAsLastSibling();
+            }
+
+            if (status != null)
+                status.text = OwnPieceMessage;
+            ApplyStepVisibility();
+        }
+
+        public void TryOwnPiece()
+        {
+            float width;
+            float height;
+            if (!TryCentimetres(widthField != null ? widthField.text : string.Empty, out width)
+                || !TryCentimetres(heightField != null ? heightField.text : string.Empty, out height))
+            {
+                status.text = OwnPieceSizeMessage;
+                return;
+            }
+
+            float moulding = 0f;
+            if (framed && !TryCentimetres(mouldingField != null ? mouldingField.text : string.Empty, out moulding))
+            {
+                status.text = OwnPieceFrameMessage;
+                return;
+            }
+
+            if (buyerTexture != null)
+                Destroy(buyerTexture);
+            buyerTexture = PaintBuyerPiece(width, height, framed ? moulding : 0f, frameColor);
+            float outerWidth = width + (framed ? moulding * 2f : 0f);
+            float outerHeight = height + (framed ? moulding * 2f : 0f);
+            current = new Artwork(
+                BuyerPieceId,
+                "Your piece",
+                string.Empty,
+                0,
+                "Painting",
+                outerHeight,
+                outerWidth,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                "none",
+                string.Empty,
+                StoryNotes.Empty);
+            if (surface != null)
+            {
+                surface.SetTexture("_BaseMap", buyerTexture);
+                surface.SetTexture("_MainTex", buyerTexture);
+            }
+
+            enteringOwnPiece = false;
+            tagsChosen = true;
+            narrowed = false;
+            browsing = false;
+            feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(string.Empty, string.Empty, string.Empty));
+            pathStep = BuyerPath.Next(BuyerPath.Tags, BuyerPath.Continue);
+            BeginPlacement();
+        }
+
+        public void ChooseBarePiece()
+        {
+            framed = false;
+            if (frameDetails != null)
+                frameDetails.SetActive(false);
+        }
+
+        public void ChooseFramedPiece()
+        {
+            framed = true;
+            if (frameDetails != null)
+                frameDetails.SetActive(true);
+        }
+
+        public void ChooseBlackFrame()
+        {
+            frameColor = new Color(0.12f, 0.10f, 0.08f, 1f);
+        }
+
+        public void ChooseWhiteFrame()
+        {
+            frameColor = new Color(0.93f, 0.91f, 0.86f, 1f);
+        }
+
+        public void ChooseOakFrame()
+        {
+            frameColor = new Color(0.55f, 0.36f, 0.18f, 1f);
+        }
+
+        public void ChooseGoldFrame()
+        {
+            frameColor = new Color(0.72f, 0.58f, 0.28f, 1f);
+        }
+
+        static bool TryCentimetres(string text, out float centimetres)
+        {
+            centimetres = 0f;
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            string trimmed = text.Trim().Replace(',', '.');
+            return float.TryParse(
+                    trimmed,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out centimetres)
+                && centimetres > 0f;
+        }
+
+        static Texture2D PaintBuyerPiece(float paintingWidthCm, float paintingHeightCm, float mouldingCm, Color frame)
+        {
+            float outerWidth = paintingWidthCm + mouldingCm * 2f;
+            float outerHeight = paintingHeightCm + mouldingCm * 2f;
+            const int width = 256;
+            int height = Mathf.Clamp(Mathf.RoundToInt(width * outerHeight / outerWidth), 64, 512);
+            Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            int borderX = mouldingCm <= 0f ? 0 : Mathf.Clamp(Mathf.RoundToInt(width * mouldingCm / outerWidth), 1, (width / 2) - 1);
+            int borderY = mouldingCm <= 0f ? 0 : Mathf.Clamp(Mathf.RoundToInt(height * mouldingCm / outerHeight), 1, (height / 2) - 1);
+            Color canvas = new Color(0.90f, 0.84f, 0.72f, 1f);
+            Color pigment = new Color(0.25f, 0.38f, 0.55f, 1f);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    bool framePixel = x < borderX || y < borderY || x >= width - borderX || y >= height - borderY;
+                    bool mark = !framePixel
+                        && x > width * 0.30f
+                        && x < width * 0.70f
+                        && y > height * 0.35f
+                        && y < height * 0.75f;
+                    texture.SetPixel(x, y, framePixel ? frame : mark ? pigment : canvas);
+                }
+            }
+
+            texture.Apply();
+            return texture;
+        }
+
         void ShowQuestion()
         {
+            enteringOwnPiece = false;
+            if (ownPiecePanel != null)
+                ownPiecePanel.SetActive(false);
             if (quizPrompt != null)
                 quizPrompt.text = quiz.Prompt();
 
@@ -935,6 +1110,8 @@ namespace Capstone.Placement
         {
             if (ended)
                 return EndedMessage;
+            if (!tagsChosen && enteringOwnPiece)
+                return "The frame is added around that painted surface.";
             if (!tagsChosen)
                 return "I don't know leaves this category open.";
             if (narrowed && !browsing && step == PrototypeScreen.Works)
@@ -1213,8 +1390,10 @@ namespace Capstone.Placement
             return material;
         }
 
-        static Texture2D ImageFor(Artwork artwork)
+        Texture2D ImageFor(Artwork artwork)
         {
+            if (artwork != null && artwork.Id == BuyerPieceId && buyerTexture != null)
+                return buyerTexture;
             return SampleTexture(FillFor(artwork));
         }
 
@@ -1292,6 +1471,22 @@ namespace Capstone.Placement
                 quizImages[i] = button.GetComponent<Image>();
                 quizLabels[i] = button.GetComponentInChildren<Text>();
             }
+
+            ownPiecePanel = CreatePanel(tagsPanel.transform, "Own piece");
+            Cover(ownPiecePanel, new Color(0.86f, 0.93f, 1f, 1f));
+            widthField = CreateNumberField(ownPiecePanel.transform, "Width cm", new Vector2(24f, 1080f));
+            heightField = CreateNumberField(ownPiecePanel.transform, "Height cm", new Vector2(24f, 940f));
+            CreateButton(ownPiecePanel.transform, uiFont, "No frame", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 780f), new Vector2(500f, 110f), ChooseBarePiece, 32);
+            CreateButton(ownPiecePanel.transform, uiFont, "Add a frame", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(556f, 780f), new Vector2(500f, 110f), ChooseFramedPiece, 32);
+            frameDetails = CreatePanel(ownPiecePanel.transform, "Frame details");
+            mouldingField = CreateNumberField(frameDetails.transform, "Frame width cm", new Vector2(24f, 620f));
+            CreateButton(frameDetails.transform, uiFont, "Black", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 470f), new Vector2(240f, 100f), ChooseBlackFrame, 28);
+            CreateButton(frameDetails.transform, uiFont, "White", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(280f, 470f), new Vector2(240f, 100f), ChooseWhiteFrame, 28);
+            CreateButton(frameDetails.transform, uiFont, "Oak", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(536f, 470f), new Vector2(240f, 100f), ChooseOakFrame, 28);
+            CreateButton(frameDetails.transform, uiFont, "Gold", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(792f, 470f), new Vector2(240f, 100f), ChooseGoldFrame, 28);
+            frameDetails.SetActive(false);
+            CreateButton(ownPiecePanel.transform, uiFont, "Try this piece", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 180f), new Vector2(1032f, 130f), TryOwnPiece, 36);
+            ownPiecePanel.SetActive(false);
             ShowQuestion();
             statusShade = CreateShade(column.transform);
             aimMark = CreateAimMark(column.transform);
@@ -1512,6 +1707,28 @@ namespace Capstone.Placement
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
             return button;
+        }
+
+        InputField CreateNumberField(Transform parent, string placeholder, Vector2 position)
+        {
+            GameObject fieldObject = new GameObject(placeholder);
+            fieldObject.transform.SetParent(parent, false);
+            Image image = fieldObject.AddComponent<Image>();
+            image.color = new Color(1f, 1f, 1f, 0.96f);
+            InputField field = fieldObject.AddComponent<InputField>();
+            field.contentType = InputField.ContentType.DecimalNumber;
+            RectTransform rect = fieldObject.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(0f, 0f);
+            rect.pivot = new Vector2(0f, 0f);
+            rect.sizeDelta = new Vector2(1032f, 110f);
+            rect.anchoredPosition = position;
+
+            Text text = CreateFieldText(fieldObject.transform, uiFont, string.Empty, new Color(0.07f, 0.18f, 0.42f, 1f), FontStyle.Normal, 36);
+            Text hint = CreateFieldText(fieldObject.transform, uiFont, placeholder, new Color(0.35f, 0.42f, 0.52f, 0.9f), FontStyle.Italic, 32);
+            field.textComponent = text;
+            field.placeholder = hint;
+            return field;
         }
 
         static InputField CreateInput(Transform parent, Font font)
