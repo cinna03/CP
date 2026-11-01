@@ -101,4 +101,4 @@ Two runtimes were used for the placement path. The editor runs the same session 
 
 ## Play
 
-Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Choose `I have a piece` and enter the size, or choose `I'm still exploring` and answer the three questions. The catalogue opens on the top picks. `Browse for more` lists every piece. Choose a work, then place it. Ask one thing or press Skip. Keep, save, or dismiss shows three works with their story notes.
+Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Choose `I have a piece`, tap Height, and use the keys, or choose `I'm still exploring` and answer the three questions. The catalogue opens on the top picks. `Browse for more` lists every piece. Choose a work, then place it. Ask one thing or press Skip. Keep, save, or dismiss shows three works with their story notes.

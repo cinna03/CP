@@ -6,6 +6,7 @@ using Capstone.Ranking;
 using Capstone.Session;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
@@ -122,9 +123,13 @@ namespace Capstone.Placement
         Color frameColor = new Color(0.12f, 0.10f, 0.08f, 1f);
         GameObject ownPiecePanel;
         GameObject frameDetails;
-        InputField widthField;
-        InputField heightField;
-        InputField mouldingField;
+        Text widthValue;
+        Text heightValue;
+        Text mouldingValue;
+        Text selectedValue;
+        Image widthBox;
+        Image heightBox;
+        Image mouldingBox;
         GameObject tagsPanel;
         Text quizPrompt;
         Button[] quizButtons = new Button[4];
@@ -179,6 +184,7 @@ namespace Capstone.Placement
 
         void Update()
         {
+            TypeIntoSelectedMeasure();
             if (!scanning || status == null || step != PrototypeScreen.Wall)
                 return;
 
@@ -554,8 +560,12 @@ namespace Capstone.Placement
             if (quizPrompt != null)
             {
                 quizPrompt.text = "Your painting.";
+                quizPrompt.rectTransform.anchoredPosition = new Vector2(0f, -280f);
+                quizPrompt.rectTransform.sizeDelta = new Vector2(960f, 80f);
                 quizPrompt.transform.SetAsLastSibling();
             }
+
+            SelectMeasure(heightValue, heightBox);
 
             if (status != null)
                 status.text = OwnPieceMessage;
@@ -566,15 +576,15 @@ namespace Capstone.Placement
         {
             float width;
             float height;
-            if (!TryCentimetres(widthField != null ? widthField.text : string.Empty, out width)
-                || !TryCentimetres(heightField != null ? heightField.text : string.Empty, out height))
+            if (!TryCentimetres(widthValue != null ? widthValue.text : string.Empty, out width)
+                || !TryCentimetres(heightValue != null ? heightValue.text : string.Empty, out height))
             {
                 status.text = OwnPieceSizeMessage;
                 return;
             }
 
             float moulding = 0f;
-            if (framed && !TryCentimetres(mouldingField != null ? mouldingField.text : string.Empty, out moulding))
+            if (framed && !TryCentimetres(mouldingValue != null ? mouldingValue.text : string.Empty, out moulding))
             {
                 status.text = OwnPieceFrameMessage;
                 return;
@@ -619,6 +629,8 @@ namespace Capstone.Placement
             framed = false;
             if (frameDetails != null)
                 frameDetails.SetActive(false);
+            if (selectedValue == mouldingValue)
+                SelectMeasure(heightValue, heightBox);
         }
 
         public void ChooseFramedPiece()
@@ -626,6 +638,7 @@ namespace Capstone.Placement
             framed = true;
             if (frameDetails != null)
                 frameDetails.SetActive(true);
+            SelectMeasure(mouldingValue, mouldingBox);
         }
 
         public void ChooseBlackFrame()
@@ -698,7 +711,11 @@ namespace Capstone.Placement
             if (ownPiecePanel != null)
                 ownPiecePanel.SetActive(false);
             if (quizPrompt != null)
+            {
                 quizPrompt.text = quiz.Prompt();
+                quizPrompt.rectTransform.anchoredPosition = new Vector2(0f, -340f);
+                quizPrompt.rectTransform.sizeDelta = new Vector2(960f, 220f);
+            }
 
             PreferenceQuiz.Choice[] choices = quiz.CurrentChoices();
             for (int i = 0; i < quizButtons.Length; i++)
@@ -1111,7 +1128,7 @@ namespace Capstone.Placement
             if (ended)
                 return EndedMessage;
             if (!tagsChosen && enteringOwnPiece)
-                return "The frame is added around that painted surface.";
+                return "Tap a box. The keys type into the blue one.";
             if (!tagsChosen)
                 return "I don't know leaves this category open.";
             if (narrowed && !browsing && step == PrototypeScreen.Works)
@@ -1474,18 +1491,33 @@ namespace Capstone.Placement
 
             ownPiecePanel = CreatePanel(tagsPanel.transform, "Own piece");
             Cover(ownPiecePanel, new Color(0.86f, 0.93f, 1f, 1f));
-            widthField = CreateNumberField(ownPiecePanel.transform, "Width cm", new Vector2(24f, 1080f));
-            heightField = CreateNumberField(ownPiecePanel.transform, "Height cm", new Vector2(24f, 940f));
-            CreateButton(ownPiecePanel.transform, uiFont, "No frame", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 780f), new Vector2(500f, 110f), ChooseBarePiece, 32);
-            CreateButton(ownPiecePanel.transform, uiFont, "Add a frame", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(556f, 780f), new Vector2(500f, 110f), ChooseFramedPiece, 32);
+            widthValue = CreateMeasureBox(ownPiecePanel.transform, "Width cm", new Vector2(24f, 1140f), out widthBox);
+            heightValue = CreateMeasureBox(ownPiecePanel.transform, "Height cm", new Vector2(24f, 990f), out heightBox);
+            WireMeasure(widthValue, widthBox);
+            WireMeasure(heightValue, heightBox);
+            CreateButton(ownPiecePanel.transform, uiFont, "No frame", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 860f), new Vector2(500f, 100f), ChooseBarePiece, 32);
+            CreateButton(ownPiecePanel.transform, uiFont, "Add a frame", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(556f, 860f), new Vector2(500f, 100f), ChooseFramedPiece, 32);
             frameDetails = CreatePanel(ownPiecePanel.transform, "Frame details");
-            mouldingField = CreateNumberField(frameDetails.transform, "Frame width cm", new Vector2(24f, 620f));
-            CreateButton(frameDetails.transform, uiFont, "Black", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 470f), new Vector2(240f, 100f), ChooseBlackFrame, 28);
-            CreateButton(frameDetails.transform, uiFont, "White", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(280f, 470f), new Vector2(240f, 100f), ChooseWhiteFrame, 28);
-            CreateButton(frameDetails.transform, uiFont, "Oak", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(536f, 470f), new Vector2(240f, 100f), ChooseOakFrame, 28);
-            CreateButton(frameDetails.transform, uiFont, "Gold", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(792f, 470f), new Vector2(240f, 100f), ChooseGoldFrame, 28);
+            mouldingValue = CreateMeasureBox(frameDetails.transform, "Frame width cm", new Vector2(24f, 720f), out mouldingBox);
+            WireMeasure(mouldingValue, mouldingBox);
+            CreateButton(frameDetails.transform, uiFont, "Black", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 610f), new Vector2(240f, 90f), ChooseBlackFrame, 28);
+            CreateButton(frameDetails.transform, uiFont, "White", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(280f, 610f), new Vector2(240f, 90f), ChooseWhiteFrame, 28);
+            CreateButton(frameDetails.transform, uiFont, "Oak", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(536f, 610f), new Vector2(240f, 90f), ChooseOakFrame, 28);
+            CreateButton(frameDetails.transform, uiFont, "Gold", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(792f, 610f), new Vector2(240f, 90f), ChooseGoldFrame, 28);
             frameDetails.SetActive(false);
-            CreateButton(ownPiecePanel.transform, uiFont, "Try this piece", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 180f), new Vector2(1032f, 130f), TryOwnPiece, 36);
+            CreateButton(ownPiecePanel.transform, uiFont, "Try this piece", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 480f), new Vector2(1032f, 110f), TryOwnPiece, 36);
+            AddMeasureKey("1", 0, 3, () => AppendMeasure("1"));
+            AddMeasureKey("2", 1, 3, () => AppendMeasure("2"));
+            AddMeasureKey("3", 2, 3, () => AppendMeasure("3"));
+            AddMeasureKey("4", 0, 2, () => AppendMeasure("4"));
+            AddMeasureKey("5", 1, 2, () => AppendMeasure("5"));
+            AddMeasureKey("6", 2, 2, () => AppendMeasure("6"));
+            AddMeasureKey("7", 0, 1, () => AppendMeasure("7"));
+            AddMeasureKey("8", 1, 1, () => AppendMeasure("8"));
+            AddMeasureKey("9", 2, 1, () => AppendMeasure("9"));
+            AddMeasureKey(".", 0, 0, () => AppendMeasure("."));
+            AddMeasureKey("0", 1, 0, () => AppendMeasure("0"));
+            AddMeasureKey("Delete", 2, 0, BackspaceMeasure);
             ownPiecePanel.SetActive(false);
             ShowQuestion();
             statusShade = CreateShade(column.transform);
@@ -1709,26 +1741,131 @@ namespace Capstone.Placement
             return button;
         }
 
-        InputField CreateNumberField(Transform parent, string placeholder, Vector2 position)
+        Text CreateMeasureBox(Transform parent, string placeholder, Vector2 position, out Image box)
         {
             GameObject fieldObject = new GameObject(placeholder);
             fieldObject.transform.SetParent(parent, false);
             Image image = fieldObject.AddComponent<Image>();
             image.color = new Color(1f, 1f, 1f, 0.96f);
-            InputField field = fieldObject.AddComponent<InputField>();
-            field.contentType = InputField.ContentType.DecimalNumber;
+            Button button = fieldObject.AddComponent<Button>();
+            button.targetGraphic = image;
             RectTransform rect = fieldObject.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0f, 0f);
             rect.anchorMax = new Vector2(0f, 0f);
             rect.pivot = new Vector2(0f, 0f);
-            rect.sizeDelta = new Vector2(1032f, 110f);
+            rect.sizeDelta = new Vector2(1032f, 120f);
             rect.anchoredPosition = position;
 
-            Text text = CreateFieldText(fieldObject.transform, uiFont, string.Empty, new Color(0.07f, 0.18f, 0.42f, 1f), FontStyle.Normal, 36);
-            Text hint = CreateFieldText(fieldObject.transform, uiFont, placeholder, new Color(0.35f, 0.42f, 0.52f, 0.9f), FontStyle.Italic, 32);
-            field.textComponent = text;
-            field.placeholder = hint;
-            return field;
+            Text value = CreateFieldText(fieldObject.transform, uiFont, string.Empty, new Color(0.07f, 0.18f, 0.42f, 1f), FontStyle.Bold, 48);
+            value.alignment = TextAnchor.MiddleLeft;
+            value.raycastTarget = false;
+            Text hint = CreateFieldText(fieldObject.transform, uiFont, placeholder, new Color(0.35f, 0.42f, 0.52f, 0.9f), FontStyle.Italic, 36);
+            hint.alignment = TextAnchor.MiddleLeft;
+            hint.raycastTarget = false;
+            box = image;
+            return value;
+        }
+
+        void WireMeasure(Text value, Image box)
+        {
+            Button button = value.transform.parent.GetComponent<Button>();
+            button.onClick.AddListener(() => SelectMeasure(value, box));
+        }
+
+        void AddMeasureKey(string label, int column, int rowFromBottom, UnityEngine.Events.UnityAction action)
+        {
+            CreateButton(
+                ownPiecePanel.transform,
+                uiFont,
+                label,
+                new Vector2(0f, 0f),
+                new Vector2(0f, 0f),
+                new Vector2(24f + (column * 344f), 24f + (rowFromBottom * 112f)),
+                new Vector2(328f, 100f),
+                action,
+                36);
+        }
+
+        void SelectMeasure(Text value, Image box)
+        {
+            selectedValue = value;
+            PaintMeasure(widthBox, box);
+            PaintMeasure(heightBox, box);
+            PaintMeasure(mouldingBox, box);
+        }
+
+        static void PaintMeasure(Image box, Image selected)
+        {
+            if (box == null)
+                return;
+
+            box.color = box == selected
+                ? new Color(0.75f, 0.86f, 1f, 1f)
+                : new Color(1f, 1f, 1f, 0.96f);
+        }
+
+        void AppendMeasure(string digit)
+        {
+            if (selectedValue == null)
+                SelectMeasure(heightValue, heightBox);
+            if (selectedValue == null)
+                return;
+
+            string current = selectedValue.text;
+            if (digit == "." && current.IndexOf('.') >= 0)
+                return;
+            if (current.Length >= 6)
+                return;
+
+            selectedValue.text = current + digit;
+            ShowMeasureHint(selectedValue, false);
+        }
+
+        void BackspaceMeasure()
+        {
+            if (selectedValue == null || selectedValue.text.Length == 0)
+                return;
+
+            selectedValue.text = selectedValue.text.Substring(0, selectedValue.text.Length - 1);
+            ShowMeasureHint(selectedValue, selectedValue.text.Length == 0);
+        }
+
+        static void ShowMeasureHint(Text value, bool showHint)
+        {
+            Transform hint = value.transform.parent.Find("Placeholder");
+            if (hint != null)
+                hint.gameObject.SetActive(showHint);
+        }
+
+        void TypeIntoSelectedMeasure()
+        {
+            if (!enteringOwnPiece)
+                return;
+
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null)
+                return;
+
+            if (keyboard.backspaceKey.wasPressedThisFrame)
+                BackspaceMeasure();
+            if (keyboard.periodKey.wasPressedThisFrame || keyboard.numpadPeriodKey.wasPressedThisFrame || keyboard.commaKey.wasPressedThisFrame)
+                AppendMeasure(".");
+
+            Key[] numberKeys =
+            {
+                Key.Digit0, Key.Digit1, Key.Digit2, Key.Digit3, Key.Digit4,
+                Key.Digit5, Key.Digit6, Key.Digit7, Key.Digit8, Key.Digit9
+            };
+            Key[] padKeys =
+            {
+                Key.Numpad0, Key.Numpad1, Key.Numpad2, Key.Numpad3, Key.Numpad4,
+                Key.Numpad5, Key.Numpad6, Key.Numpad7, Key.Numpad8, Key.Numpad9
+            };
+            for (int digit = 0; digit < numberKeys.Length; digit++)
+            {
+                if (keyboard[numberKeys[digit]].wasPressedThisFrame || keyboard[padKeys[digit]].wasPressedThisFrame)
+                    AppendMeasure(digit.ToString());
+            }
         }
 
         static InputField CreateInput(Transform parent, Font font)
