@@ -5,16 +5,30 @@ namespace Capstone.Session.Tests
     public class PreferenceQuizTests
     {
         [Test]
-        public void AStyleAnswerStoresOnlyThatTag()
+        public void ABuyerWithAPieceFinishesBeforeAnyTagIsStored()
         {
             PreferenceQuiz quiz = new PreferenceQuiz();
 
+            quiz.Answer(PreferenceQuiz.OwnPiece);
+
+            Assert.IsTrue(quiz.BringingOwnPiece);
+            Assert.IsTrue(quiz.Finished);
+            Assert.IsFalse(quiz.AnyAnswered());
+        }
+
+        [Test]
+        public void ExploringThenAStyleAnswerStoresOnlyThatTag()
+        {
+            PreferenceQuiz quiz = new PreferenceQuiz();
+
+            quiz.Answer(PreferenceQuiz.Exploring);
             quiz.Answer("bold");
 
+            Assert.IsFalse(quiz.BringingOwnPiece);
             Assert.AreEqual("bold", quiz.Style);
             Assert.AreEqual(PreferenceQuiz.Unknown, quiz.Mood);
             Assert.AreEqual(PreferenceQuiz.Unknown, quiz.Colour);
-            Assert.AreEqual(1, quiz.Index);
+            Assert.AreEqual(2, quiz.Index);
             Assert.IsFalse(quiz.Finished);
         }
 
@@ -23,6 +37,7 @@ namespace Capstone.Session.Tests
         {
             PreferenceQuiz quiz = new PreferenceQuiz();
 
+            quiz.Answer(PreferenceQuiz.Exploring);
             quiz.Answer(PreferenceQuiz.Unknown);
             quiz.Answer("calm");
             quiz.Answer(PreferenceQuiz.Unknown);
@@ -39,6 +54,7 @@ namespace Capstone.Session.Tests
         {
             PreferenceQuiz quiz = new PreferenceQuiz();
 
+            quiz.Answer(PreferenceQuiz.Exploring);
             quiz.Answer(PreferenceQuiz.Unknown);
             quiz.Answer("  ");
             quiz.Answer(null);
@@ -51,6 +67,7 @@ namespace Capstone.Session.Tests
         public void ALaterAnswerDoesNotOverwriteAFinishedQuiz()
         {
             PreferenceQuiz quiz = new PreferenceQuiz();
+            quiz.Answer(PreferenceQuiz.Exploring);
             quiz.Answer("sample");
             quiz.Answer("quiet");
             quiz.Answer("red");
@@ -63,25 +80,42 @@ namespace Capstone.Session.Tests
         }
 
         [Test]
+        public void AnOwnPieceAnswerIgnoresALaterTag()
+        {
+            PreferenceQuiz quiz = new PreferenceQuiz();
+
+            quiz.Answer(PreferenceQuiz.OwnPiece);
+            quiz.Answer("bold");
+
+            Assert.IsTrue(quiz.BringingOwnPiece);
+            Assert.IsFalse(quiz.AnyAnswered());
+        }
+
+        [Test]
         public void RestartClearsTheAnswersAndReturnsToTheFirstQuestion()
         {
             PreferenceQuiz quiz = new PreferenceQuiz();
+            quiz.Answer(PreferenceQuiz.Exploring);
             quiz.Answer("bold");
-            quiz.Answer("bright");
 
             quiz.Restart();
 
             Assert.AreEqual(0, quiz.Index);
+            Assert.IsFalse(quiz.BringingOwnPiece);
             Assert.IsFalse(quiz.AnyAnswered());
-            Assert.AreEqual("What kind of piece are you after?", quiz.Prompt());
+            Assert.AreEqual("Do you already have a piece to try?", quiz.Prompt());
         }
 
         [Test]
         public void EachQuestionOffersABlankTagLast()
         {
+            PreferenceQuiz.Choice[] intent = PreferenceQuiz.IntentChoices();
             PreferenceQuiz.Choice[] style = PreferenceQuiz.StyleChoices();
             PreferenceQuiz.Choice[] mood = PreferenceQuiz.MoodChoices();
             PreferenceQuiz.Choice[] colour = PreferenceQuiz.ColourChoices();
+
+            Assert.AreEqual(PreferenceQuiz.OwnPiece, intent[0].Tag);
+            Assert.AreEqual(PreferenceQuiz.Exploring, intent[1].Tag);
 
             Assert.AreEqual("sample", style[0].Tag);
             Assert.AreEqual("bold", style[1].Tag);

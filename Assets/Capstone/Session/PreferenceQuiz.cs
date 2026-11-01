@@ -1,16 +1,20 @@
 namespace Capstone.Session
 {
     /// <summary>
-    /// Three questions that store the starting tags.
-    /// An answer writes one style, one mood, or one colour.
-    /// The blank tag leaves that category open, so the catalogue filter drops nothing on it.
+    /// The first question asks whether the buyer already has a piece.
+    /// Exploring then stores a style, a mood, and a colour.
+    /// A blank tag leaves that category open, so the catalogue filter drops nothing on it.
+    /// A buyer who already has a piece does not store those tags.
     /// </summary>
     public sealed class PreferenceQuiz
     {
-        public const int QuestionCount = 3;
         public const string Unknown = "";
+        public const string OwnPiece = "own";
+        public const string Exploring = "explore";
 
         public int Index { get; private set; }
+
+        public bool BringingOwnPiece { get; private set; }
 
         public string Style { get; private set; } = Unknown;
 
@@ -20,7 +24,7 @@ namespace Capstone.Session
 
         public bool Finished
         {
-            get { return Index >= QuestionCount; }
+            get { return BringingOwnPiece || Index >= 4; }
         }
 
         public bool AnyAnswered()
@@ -31,10 +35,12 @@ namespace Capstone.Session
         public string Prompt()
         {
             if (Index <= 0)
-                return "What kind of piece are you after?";
+                return "Do you already have a piece to try?";
             if (Index == 1)
-                return "What feeling should it have?";
+                return "What kind of piece are you after?";
             if (Index == 2)
+                return "What feeling should it have?";
+            if (Index == 3)
                 return "Any colour in mind?";
             return string.Empty;
         }
@@ -42,10 +48,12 @@ namespace Capstone.Session
         public Choice[] CurrentChoices()
         {
             if (Index <= 0)
-                return StyleChoices();
+                return IntentChoices();
             if (Index == 1)
-                return MoodChoices();
+                return StyleChoices();
             if (Index == 2)
+                return MoodChoices();
+            if (Index == 3)
                 return ColourChoices();
             return new Choice[0];
         }
@@ -57,8 +65,15 @@ namespace Capstone.Session
 
             string stored = Normalize(tag);
             if (Index <= 0)
+            {
+                BringingOwnPiece = stored == OwnPiece;
+                Index = 1;
+                return;
+            }
+
+            if (Index == 1)
                 Style = stored;
-            else if (Index == 1)
+            else if (Index == 2)
                 Mood = stored;
             else
                 Colour = stored;
@@ -69,9 +84,19 @@ namespace Capstone.Session
         public void Restart()
         {
             Index = 0;
+            BringingOwnPiece = false;
             Style = Unknown;
             Mood = Unknown;
             Colour = Unknown;
+        }
+
+        public static Choice[] IntentChoices()
+        {
+            return new Choice[]
+            {
+                new Choice("I have a piece", OwnPiece),
+                new Choice("I'm still exploring", Exploring),
+            };
         }
 
         public static Choice[] StyleChoices()
