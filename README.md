@@ -1,6 +1,6 @@
 # Capstone
 
-A portrait prototype that places one work on a detected wall at the centimetres stored on that work. The buyer starts with one of 25 consent codes. A buyer who already has a piece uploads a clear picture and enters its painted size and frame. A buyer who is exploring answers three questions for style, mood, and colour, then picks a work. `I don't know` leaves that category open. The camera opens when that work is placed. One question is matched from a written English, French, and Kinyarwanda table. Keep, save, or dismiss ranks three other works and shows their story notes.
+A portrait prototype that places one work on a detected wall at the centimetres stored on that work. The buyer starts with one of 25 consent codes. A buyer who already has a piece uploads a clear picture and enters its painted size and frame. A buyer who is exploring answers three questions for style, mood, and colour, then picks a work. `I don't know` leaves that category open. The camera opens when that work is placed. One question is matched from a written English, French, and Kinyarwanda table. Keep, save, dismiss, or ask for alternatives ranks three other works and shows their story notes.
 
 The study build target is Android. The same placement code was also run in the Unity editor and on an iPhone 13.
 
@@ -53,7 +53,7 @@ In the editor, a chosen work is placed on a plain wall. On a phone, the camera o
 3. Catalogue, for a buyer who is exploring. The works that meet those answers open as the top picks. `Browse for more` lists every piece. `Top picks` returns to the matches. The buyer picks a work, then presses `Place this work`. A piece they brought skips this list and goes to the wall.
 4. Wall. This is the only step that opens the camera. The quad uses `Artwork.WallSizeMetres`, which comes from the stored centimetres.
 5. One question, or Skip. `RuleEngine.Match` reads `StarterRules`. The reply language is the language of the matched words. No match returns one fixed prompt and logs nothing.
-6. Keep, save, or dismiss. `Recommender.RankThree` returns three other works. The status line includes each story note.
+6. Keep, save, dismiss, or ask for alternatives. `Recommender.RankThree` returns three other works. Alternatives weakens the same tags as dismiss. The status line includes each story note.
 7. `Change tags` starts again at step 2. `End` stops. The five uncertainty questions are not in the app.
 
 A keep, save, dismiss, matched question, or chosen rank is stored only after consent. `SessionTranscript.Format` prints that record. The same text is written to `capstone-session.txt` under `Application.persistentDataPath` when the device allows the write. The rules and the catalogue do not call a network.
@@ -73,7 +73,7 @@ A keep, save, dismiss, matched question, or chosen rank is stored only after con
 | Session text | `SessionTranscript` | `SessionTranscriptTests` |
 | Catalogue-only study condition | `StudyCondition`, `PrototypeScreen` | `StudyConditionTests`, `PrototypeScreenTests` |
 
-The fifteen catalogue records are stand-ins. Each one already has an id, stored centimetres, style, mood, colour, and a story note. A consented work replaces the image and the notes. The ranker and the wall keep reading the same fields. Keep, save, or dismiss ranks three other works from the whole catalogue, so the next three can change after the feedback. That is the catalogue this build can run. It is not a set of pictures pulled from the internet.
+The fifteen catalogue records are stand-ins. Each one already has an id, stored centimetres, style, mood, colour, and a story note. A consented work replaces the image and the notes. The ranker and the wall keep reading the same fields. Keep, save, dismiss, or ask for alternatives ranks three other works from the whole catalogue, so the next three can change after the feedback. That is the catalogue this build can run. It is not a set of pictures pulled from the internet.
 
 ## Algorithms
 
@@ -101,4 +101,4 @@ Two runtimes were used for the placement path. The editor runs the same session 
 
 ## Play
 
-Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Choose `I have a piece`, upload a clear picture, tap Height, and use the keys, or choose `I'm still exploring` and answer the three questions. The catalogue opens on the top picks. `Browse for more` lists every piece. Choose a work, then place it. Ask one thing or press Skip. Keep, save, or dismiss shows three works with their story notes.
+Stop Play and wait for the compile spinner before a new Play. Let the ball finish, tap the blue circle, type `AZURE`, and press Return. Choose `I have a piece`, upload a clear picture, tap Height, and use the keys, or choose `I'm still exploring` and answer the three questions. The catalogue opens on the top picks. `Browse for more` lists every piece. Choose a work, then place it. Ask one thing or press Skip. Keep, save, dismiss, or Alternatives shows three works with their story notes.

@@ -30,7 +30,7 @@ namespace Capstone.Placement
     /// Consent must be marked before a keep, save, dismiss, matched question, or chosen rank is stored.
     /// No wall means a retry message and no invented size.
     /// In the editor, a chosen work is placed on the plain wall. On a phone, the camera opens so that work can be placed on a real wall. The artwork keeps its stored centimetres.
-    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for a clear picture, the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, or dismiss ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
+    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for a clear picture, the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, dismiss, or ask for alternatives ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -42,7 +42,7 @@ namespace Capstone.Placement
         public const string RemovedMessage = "Removed. You can place it again.";
         public const string SwapNeedsPlacementMessage = "Place a work before swapping.";
         public const string SwappedMessage = "Swapped the work. The size follows the new piece.";
-        public const string ChooseNeedsRankMessage = "Keep, save, or dismiss before choosing a work.";
+        public const string ChooseNeedsRankMessage = "Keep, save, dismiss, or ask for alternatives before choosing a work.";
         public const string ChooseMissingMessage = "That rank is not in the list.";
         public const string ChosenMessage = "Next Place uses this work.";
         public const string ChosenOnWallMessage = "Replaced the wall preview with the chosen work.";
@@ -56,7 +56,7 @@ namespace Capstone.Placement
         public const string ScanWallMessage = "Move the phone slowly across the wall.";
         public const string WallFoundMessage = "Wall detected. You are ready to test the art piece. Press Place.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
-        public const string RecommendStepMessage = "Keep, save, or dismiss, then choose a recommended work.";
+        public const string RecommendStepMessage = "Keep, save, dismiss, or ask for alternatives, then choose a recommended work.";
         public const string BuyerPieceId = "buyer-piece";
         public const string TagsMessage = "What are you looking for?";
         public const string OwnPieceMessage = "Width and height are the painted surface, in centimetres.";
@@ -69,7 +69,7 @@ namespace Capstone.Placement
         public const string NoQuizMatchMessage = "Nothing matches every answer. Browse for more.";
         public const string BrowseMessage = "Every piece in the catalogue.";
         public const string AskOrSkipMessage = "Ask one thing, or skip.";
-        public const string SkippedMessage = "Skipped. Keep, save, or dismiss this work.";
+        public const string SkippedMessage = "Skipped. Keep, save, dismiss, or ask for alternatives.";
         public const string EndedMessage = "Session ended. The five uncertainty questions stay on the paper form.";
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
@@ -350,7 +350,7 @@ namespace Capstone.Placement
             KeepTranscript();
             if (pathStep == BuyerPath.Rank)
                 OpenStep(PrototypeScreen.Recommend);
-            status.text = ReplyForCurrentWork(reply) + " Keep, save, or dismiss this work.";
+            status.text = ReplyForCurrentWork(reply) + " Keep, save, dismiss, or ask for alternatives.";
             ApplyStepVisibility();
         }
 
@@ -861,6 +861,11 @@ namespace Capstone.Placement
         public void Dismiss()
         {
             RecordFeedback("Dismissed", "Dismiss", loop => loop.Dismiss(current));
+        }
+
+        public void AskForAlternatives()
+        {
+            RecordFeedback("Alternatives for", "Alternatives", loop => loop.RequestAlternatives(current));
         }
 
         void RecordFeedback(string verb, string action, System.Action<FeedbackLoop> apply)
@@ -1672,6 +1677,7 @@ namespace Capstone.Placement
             CreateButton(recommendPanel.transform, uiFont, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 320f), new Vector2(320f, 120f), Keep);
             CreateButton(recommendPanel.transform, uiFont, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 320f), new Vector2(320f, 120f), Save);
             CreateButton(recommendPanel.transform, uiFont, "Dismiss", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 320f), new Vector2(320f, 120f), Dismiss);
+            CreateButton(recommendPanel.transform, uiFont, "Alternatives", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 460f), new Vector2(1032f, 100f), AskForAlternatives, 32);
             CreateButton(recommendPanel.transform, uiFont, "Use 1", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 180f), new Vector2(320f, 120f), ChooseFirst);
             CreateButton(recommendPanel.transform, uiFont, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 180f), new Vector2(320f, 120f), ChooseSecond);
             CreateButton(recommendPanel.transform, uiFont, "Use 3", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 180f), new Vector2(320f, 120f), ChooseThird);
