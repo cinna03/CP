@@ -19,7 +19,7 @@ namespace Capstone.Placement
     /// A second Place moves that same quad. Swap replaces it with the other sample, in place.
     /// Send matches typed text against the written keyword table.
     /// Keep, save, and dismiss update the tag weights and show the top three other works.
-    /// Use 1, Use 2, or Use 3 makes that recommended work the one Place puts on the wall.
+    /// Use 1, Use 2, or Use 3 starts placement of that recommended work.
     /// Notes reads the story stored on the current work and does not invent one.
     /// Keep, save, dismiss, a matched question, and a chosen rank are stored on this session after consent.
     /// A keep, save, or dismiss also stores the recommended artwork ids in rank order.
@@ -44,8 +44,7 @@ namespace Capstone.Placement
         public const string SwappedMessage = "Swapped the work. The size follows the new piece.";
         public const string ChooseNeedsRankMessage = "Keep, save, dismiss, or ask for alternatives before choosing a work.";
         public const string ChooseMissingMessage = "That rank is not in the list.";
-        public const string ChosenMessage = "Next Place uses this work.";
-        public const string ChosenOnWallMessage = "Replaced the wall preview with the chosen work.";
+        public const string ChosenMessage = "Placing the recommended work.";
         public const string NextMessage = "Next work.";
         public const string NextOnWallMessage = "Replaced the wall preview with the next work.";
         public const string NoCatalogueMessage = "No work is in the catalogue.";
@@ -969,19 +968,21 @@ namespace Capstone.Placement
             current = chosen;
             string concern = feedback != null && feedback.Profile != null ? feedback.Profile.LastConcern : string.Empty;
             bool logged = session != null && session.LogChoice(current.Id, oneBasedRank, concern, DateTime.UtcNow);
-            string loggedLine = logged ? "Logged." : NotLoggedMessage;
             KeepTranscript();
-            if (placed == null)
+            if (shown == null || shown.Count == 0)
             {
-                status.text = ChosenMessage + " " + current.Title + ". " + Describe(current) + "\n" + loggedLine;
+                status.text = (logged ? "Logged. " : NotLoggedMessage + " ") + ChosenMessage;
                 return;
             }
 
-            Vector3 position = placed.transform.position;
-            Quaternion rotation = placed.transform.rotation;
-            ApplyArtwork(current);
-            placed.transform.SetPositionAndRotation(position, rotation);
-            status.text = ChosenOnWallMessage + " " + Describe(current) + "\n" + loggedLine;
+            if (placed != null)
+            {
+                Destroy(placed);
+                placed = null;
+            }
+
+            pathStep = BuyerPath.Next(BuyerPath.Rank, BuyerPath.Place);
+            BeginPlacement();
         }
 
         public void Advance()
