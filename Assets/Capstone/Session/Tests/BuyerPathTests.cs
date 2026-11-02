@@ -45,6 +45,15 @@ namespace Capstone.Session.Tests
         }
 
         [Test]
+        public void ARecommendationReturnsToTheWall()
+        {
+            string step = BuyerPath.Next(BuyerPath.Rank, BuyerPath.Place);
+
+            Assert.AreEqual(BuyerPath.Wall, step);
+            Assert.IsTrue(BuyerPath.OpensCamera(step));
+        }
+
+        [Test]
         public void AfterTheRankTheBuyerSetsTagsAgainOrEnds()
         {
             Assert.AreEqual(BuyerPath.Tags, BuyerPath.Next(BuyerPath.Rank, BuyerPath.ChangeTags));
