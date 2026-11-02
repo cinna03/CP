@@ -91,6 +91,7 @@ namespace Capstone.Placement
         GameObject wallPanel;
         GameObject recommendPanel;
         RectTransform workList;
+        ScrollRect workScroll;
         Image worksNavImage;
         Image wallNavImage;
         Image recommendNavImage;
@@ -869,7 +870,7 @@ namespace Capstone.Placement
             if (feedback == null || current == null)
                 return;
             apply(feedback);
-            offered = Recommender.RankThree(shown, feedback.Profile, current.Id);
+            offered = Recommender.RankThree(SampleCatalogue.All, feedback.Profile, current.Id);
             string[] recommendedIds = IdsInRankOrder(offered);
             bool logged = session != null && session.LogAction(
                 current.Id,
@@ -1293,6 +1294,14 @@ namespace Capstone.Placement
             if (shown == null)
                 return;
 
+            const float row = 92f;
+            float height = Mathf.Max(520f, (shown.Count * row) + 16f);
+            workList.anchorMin = new Vector2(0f, 1f);
+            workList.anchorMax = new Vector2(1f, 1f);
+            workList.pivot = new Vector2(0.5f, 1f);
+            workList.sizeDelta = new Vector2(0f, height);
+            workList.anchoredPosition = Vector2.zero;
+
             for (int i = 0; i < shown.Count; i++)
             {
                 Artwork work = shown[i];
@@ -1307,13 +1316,16 @@ namespace Capstone.Placement
                     label,
                     new Vector2(0f, 0f),
                     new Vector2(0f, 0f),
-                    new Vector2(24f, 490f - (i * 92f)),
+                    new Vector2(24f, height - ((i + 1) * row)),
                     new Vector2(1032f, 84f),
                     () => SelectShown(captured),
                     30);
                 if (current != null && work.Id == current.Id)
                     button.GetComponent<Image>().color = StepOn;
             }
+
+            if (workScroll != null)
+                workScroll.verticalNormalizedPosition = 1f;
         }
 
         public void ShowNotes()
@@ -1617,7 +1629,24 @@ namespace Capstone.Placement
             recommendPanel = CreatePanel(column.transform, "Recommend panel");
             Cover(worksPanel, new Color(0.94f, 0.96f, 1f, 1f));
             Cover(recommendPanel, new Color(0.94f, 0.96f, 1f, 1f));
-            workList = CreatePanel(worksPanel.transform, "Work list").GetComponent<RectTransform>();
+            GameObject workViewport = CreatePanel(worksPanel.transform, "Work scroll");
+            RectTransform viewRect = workViewport.GetComponent<RectTransform>();
+            viewRect.anchorMin = new Vector2(0f, 0f);
+            viewRect.anchorMax = new Vector2(0f, 0f);
+            viewRect.pivot = new Vector2(0f, 0f);
+            viewRect.sizeDelta = new Vector2(1080f, 520f);
+            viewRect.anchoredPosition = new Vector2(0f, 16f);
+            Image viewImage = workViewport.AddComponent<Image>();
+            viewImage.color = new Color(1f, 1f, 1f, 0.01f);
+            workViewport.AddComponent<RectMask2D>();
+            workScroll = workViewport.AddComponent<ScrollRect>();
+            workScroll.horizontal = false;
+            workScroll.vertical = true;
+            workScroll.movementType = ScrollRect.MovementType.Clamped;
+            workScroll.scrollSensitivity = 40f;
+            workScroll.viewport = viewRect;
+            workList = CreatePanel(workViewport.transform, "Work list").GetComponent<RectTransform>();
+            workScroll.content = workList;
             catalogueHeading = CreateLabel(worksPanel.transform, uiFont, "Top picks", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -480f), 42);
             catalogueHeading.color = new Color(0.07f, 0.18f, 0.42f, 1f);
             catalogueHeading.rectTransform.sizeDelta = new Vector2(1000f, 80f);

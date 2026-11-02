@@ -11,7 +11,7 @@ namespace Capstone.Ranking.Tests
         {
             PreferenceProfile profile = PreferenceProfile.FromInitialTags("sample", "calm", "blue");
 
-            List<Recommendation> ranked = Recommender.RankThree(SampleCatalogue.All, profile, "sample-wall");
+            List<Recommendation> ranked = Recommender.RankThree(OriginalFive(), profile, "sample-wall");
 
             Assert.AreEqual(3, ranked.Count);
             Assert.AreEqual("sample-calm-blue", ranked[0].Artwork.Id);
@@ -38,9 +38,9 @@ namespace Capstone.Ranking.Tests
         public void AnEqualScoreUsesTheArtworkId()
         {
             PreferenceProfile profile = PreferenceProfile.FromInitialTags("sample", "calm", "blue");
-            profile.UpdateFromFeedback(SampleCatalogue.All[0], FeedbackAction.Dismiss);
+            profile.UpdateFromFeedback(SampleCatalogue.Find("sample-wall"), FeedbackAction.Dismiss);
 
-            List<Recommendation> ranked = Recommender.RankThree(SampleCatalogue.All, profile, "sample-wall");
+            List<Recommendation> ranked = Recommender.RankThree(OriginalFive(), profile, "sample-wall");
 
             Assert.AreEqual(0, ranked[0].Score);
             Assert.AreEqual("sample-bold", ranked[0].Artwork.Id);
@@ -54,7 +54,7 @@ namespace Capstone.Ranking.Tests
             FeedbackLoop loop = new FeedbackLoop(PreferenceProfile.FromInitialTags("sample", "calm", "blue"));
             loop.Accept(SampleCatalogue.All[0]);
 
-            List<Recommendation> ranked = Recommender.RankThree(SampleCatalogue.All, loop.Profile, "sample-wall");
+            List<Recommendation> ranked = Recommender.RankThree(OriginalFive(), loop.Profile, "sample-wall");
 
             Assert.AreEqual("Keep", loop.Profile.LastAction);
             Assert.AreEqual(2, loop.Profile.StyleWeight("sample"));
@@ -82,7 +82,7 @@ namespace Capstone.Ranking.Tests
             loop.Dismiss(SampleCatalogue.All[0]);
             loop.Dismiss(SampleCatalogue.All[0]);
 
-            List<Recommendation> ranked = Recommender.RankThree(SampleCatalogue.All, loop.Profile, "sample-wall");
+            List<Recommendation> ranked = Recommender.RankThree(OriginalFive(), loop.Profile, "sample-wall");
 
             Assert.AreEqual("sample-bold", ranked[0].Artwork.Id);
             Assert.AreEqual(0, ranked[0].Score);
@@ -112,7 +112,7 @@ namespace Capstone.Ranking.Tests
             PreferenceProfile profile = PreferenceProfile.FromInitialTags("sample", "calm", "blue");
             profile.NoteConcern("colour", SampleCatalogue.All[0]);
 
-            List<Recommendation> ranked = Recommender.RankThree(SampleCatalogue.All, profile, "sample-wall");
+            List<Recommendation> ranked = Recommender.RankThree(OriginalFive(), profile, "sample-wall");
 
             Assert.AreEqual("colour", profile.LastConcern);
             Assert.AreEqual(2, profile.ColourWeight("blue"));
@@ -162,7 +162,7 @@ namespace Capstone.Ranking.Tests
         public void TheBuyerCanChooseOneOfTheThree()
         {
             List<Recommendation> ranked = Recommender.RankThree(
-                SampleCatalogue.All,
+                OriginalFive(),
                 PreferenceProfile.FromInitialTags("sample", "calm", "blue"),
                 "sample-wall");
 
@@ -182,6 +182,52 @@ namespace Capstone.Ranking.Tests
             Assert.IsNull(Recommender.Choose(ranked, 0));
             Assert.IsNull(Recommender.Choose(ranked, 4));
             Assert.IsNull(Recommender.Choose(null, 1));
+        }
+
+        [Test]
+        public void TheStandInCatalogueHasFifteenWorks()
+        {
+            Assert.AreEqual(15, SampleCatalogue.All.Count);
+            for (int i = 0; i < SampleCatalogue.All.Count; i++)
+            {
+                Assert.IsNotNull(SampleCatalogue.All[i]);
+                for (int j = i + 1; j < SampleCatalogue.All.Count; j++)
+                    Assert.AreNotEqual(SampleCatalogue.All[i].Id, SampleCatalogue.All[j].Id);
+            }
+
+            Assert.GreaterOrEqual(CountTag("sample"), 2);
+            Assert.GreaterOrEqual(CountTag("bold"), 2);
+            Assert.GreaterOrEqual(CountTag("calm"), 2);
+            Assert.GreaterOrEqual(CountTag("quiet"), 2);
+            Assert.GreaterOrEqual(CountTag("bright"), 2);
+            Assert.GreaterOrEqual(CountTag("blue"), 2);
+            Assert.GreaterOrEqual(CountTag("orange"), 2);
+            Assert.GreaterOrEqual(CountTag("red"), 2);
+        }
+
+        static int CountTag(string tag)
+        {
+            int count = 0;
+            for (int i = 0; i < SampleCatalogue.All.Count; i++)
+            {
+                Artwork work = SampleCatalogue.All[i];
+                if (work.Style == tag || work.Mood == tag || work.Colour == tag)
+                    count++;
+            }
+
+            return count;
+        }
+
+        static IReadOnlyList<Artwork> OriginalFive()
+        {
+            return new[]
+            {
+                SampleCatalogue.Find("sample-wall"),
+                SampleCatalogue.Find("sample-wide"),
+                SampleCatalogue.Find("sample-calm-blue"),
+                SampleCatalogue.Find("sample-quiet"),
+                SampleCatalogue.Find("sample-bold"),
+            };
         }
     }
 }

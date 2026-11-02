@@ -73,7 +73,7 @@ A keep, save, dismiss, matched question, or chosen rank is stored only after con
 | Session text | `SessionTranscript` | `SessionTranscriptTests` |
 | Catalogue-only study condition | `StudyCondition`, `PrototypeScreen` | `StudyConditionTests`, `PrototypeScreenTests` |
 
-The five catalogue records are stand-ins. Each one already has an id, stored centimetres, style, mood, colour, and a story note. A consented work replaces the image and the notes. The ranker and the wall keep reading the same fields. That is the catalogue this build can run. It is not a set of pictures pulled from the internet.
+The fifteen catalogue records are stand-ins. Each one already has an id, stored centimetres, style, mood, colour, and a story note. A consented work replaces the image and the notes. The ranker and the wall keep reading the same fields. Keep, save, or dismiss ranks three other works from the whole catalogue, so the next three can change after the feedback. That is the catalogue this build can run. It is not a set of pictures pulled from the internet.
 
 ## Algorithms
 
