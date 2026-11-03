@@ -140,11 +140,14 @@ namespace Capstone.Placement
         GameObject topPicksButton;
         GameObject browseFilters;
         Text catalogueHeading;
+        Text catalogueSubtitle;
+        RectTransform workViewRect;
         CanvasScaler screenFit;
         RectTransform screenColumn;
         static readonly Color AimSearching = Color.white;
         static readonly Color AimReady = new Color(0.25f, 0.9f, 0.4f, 1f);
 
+        static readonly Color PageInk = new Color(0.07f, 0.18f, 0.42f, 1f);
         static readonly Color StepOn = new Color(0.15f, 0.35f, 0.75f, 0.95f);
         static readonly Color StepOff = new Color(0.1f, 0.1f, 0.1f, 0.85f);
 
@@ -948,6 +951,39 @@ namespace Capstone.Placement
             ChooseRank(3);
         }
 
+        public void ShowFirstNotes()
+        {
+            ShowRankNotes(1);
+        }
+
+        public void ShowSecondNotes()
+        {
+            ShowRankNotes(2);
+        }
+
+        public void ShowThirdNotes()
+        {
+            ShowRankNotes(3);
+        }
+
+        public void ShowRankNotes(int oneBasedRank)
+        {
+            if (offered == null || offered.Count == 0)
+            {
+                status.text = ChooseNeedsRankMessage;
+                return;
+            }
+
+            Artwork chosen = Recommender.Choose(offered, oneBasedRank);
+            if (chosen == null)
+            {
+                status.text = ChooseMissingMessage;
+                return;
+            }
+
+            status.text = ArtworkDetail.Describe(chosen);
+        }
+
         public void ChooseRank(int oneBasedRank)
         {
             if (Blocked(StudyCondition.Ranking))
@@ -1085,12 +1121,24 @@ namespace Capstone.Placement
             status.text = WorksStatus();
         }
 
+        string CatalogueLine()
+        {
+            int count = shown != null ? shown.Count : 0;
+            if (count == 0)
+                return NoQuizMatchMessage;
+            if (!narrowed || browsing)
+                return count + " pieces.";
+            return count == 1 ? "1 piece matches what you said." : count + " pieces match what you said.";
+        }
+
         void PaintCatalogueHeading()
         {
             if (catalogueHeading == null)
                 return;
 
             catalogueHeading.text = narrowed && !browsing ? "Top picks" : "All pieces";
+            if (catalogueSubtitle != null)
+                catalogueSubtitle.text = CatalogueLine();
         }
 
         public void ShowWorks()
@@ -1134,17 +1182,28 @@ namespace Capstone.Placement
             bool showTags = !tagsChosen && !ended;
             if (tagsPanel != null)
                 tagsPanel.SetActive(showTags);
-            SetButtonActive(studyButtonWidget, tagsChosen && !ended && !phoneScan);
-            SetButtonActive(consentButtonWidget, tagsChosen && !ended && !phoneScan);
             SetButtonActive(worksNavImage, false);
             SetButtonActive(wallNavImage, false);
             SetButtonActive(recommendNavImage, false);
             bool onWorks = tagsChosen && !ended && !phoneScan && PrototypeScreen.ShowsWorks(step);
             if (worksPanel != null)
                 worksPanel.SetActive(onWorks);
+            bool showChrome = tagsChosen && !ended && !phoneScan && !onWorks;
+            SetButtonActive(studyButtonWidget, showChrome);
+            SetButtonActive(consentButtonWidget, showChrome);
+            if (statusShade != null)
+                statusShade.gameObject.SetActive(!onWorks);
+            if (status != null)
+                status.gameObject.SetActive(!onWorks);
+            bool filtersOpen = browsing || !narrowed;
             SetObjectActive(browseButton, onWorks && narrowed && !browsing);
             SetObjectActive(topPicksButton, onWorks && narrowed && browsing);
-            SetObjectActive(browseFilters, onWorks && (browsing || !narrowed));
+            SetObjectActive(browseFilters, onWorks && filtersOpen);
+            if (workViewRect != null)
+            {
+                workViewRect.offsetMin = new Vector2(28f, filtersOpen ? 356f : 260f);
+                workViewRect.offsetMax = new Vector2(-28f, -160f);
+            }
             if (wallPanel != null)
                 wallPanel.SetActive(tagsChosen && !ended && PrototypeScreen.ShowsWall(step));
             if (recommendPanel != null)
@@ -1187,7 +1246,7 @@ namespace Capstone.Placement
                 statusShade.sizeDelta = new Vector2(0f, phoneScan ? 200f : 280f);
             if (stepLine != null)
             {
-                stepLine.gameObject.SetActive(!phoneScan);
+                stepLine.gameObject.SetActive(!onWorks && !phoneScan);
                 stepLine.text = StepInstruction();
             }
             PaintStep(worksNavImage, PrototypeScreen.ShowsWorks(step));
@@ -1285,11 +1344,11 @@ namespace Capstone.Placement
                 placed.transform.SetPositionAndRotation(position, rotation);
             }
 
-            RefreshWorkList();
+            RefreshWorkList(false);
             status.text = WorksStatus();
         }
 
-        void RefreshWorkList()
+        void RefreshWorkList(bool resetScroll = true)
         {
             if (workList == null || uiFont == null)
                 return;
@@ -1300,8 +1359,9 @@ namespace Capstone.Placement
             if (shown == null)
                 return;
 
-            const float row = 92f;
-            float height = Mathf.Max(520f, (shown.Count * row) + 16f);
+            const float row = 176f;
+            const float card = 160f;
+            float height = Mathf.Max(400f, (shown.Count * row) + 12f);
             workList.anchorMin = new Vector2(0f, 1f);
             workList.anchorMax = new Vector2(1f, 1f);
             workList.pivot = new Vector2(0.5f, 1f);
@@ -1314,24 +1374,95 @@ namespace Capstone.Placement
                 if (work == null)
                     continue;
 
-                int captured = i;
-                string label = work.Title + "   " + work.WidthCm.ToString("0") + " x " + work.HeightCm.ToString("0") + " cm";
-                Button button = CreateButton(
-                    workList,
-                    uiFont,
-                    label,
-                    new Vector2(0f, 0f),
-                    new Vector2(0f, 0f),
-                    new Vector2(24f, height - ((i + 1) * row)),
-                    new Vector2(1032f, 84f),
-                    () => SelectShown(captured),
-                    30);
-                if (current != null && work.Id == current.Id)
-                    button.GetComponent<Image>().color = StepOn;
+                bool selected = current != null && work.Id == current.Id;
+                CreateCatalogueCard(work, i, 8f + (i * row), card, selected);
             }
 
-            if (workScroll != null)
+            if (resetScroll && workScroll != null)
                 workScroll.verticalNormalizedPosition = 1f;
+        }
+
+        void CreateCatalogueCard(Artwork work, int index, float top, float height, bool selected)
+        {
+            GameObject cardObject = new GameObject(work.Title, typeof(RectTransform));
+            cardObject.transform.SetParent(workList, false);
+            Image image = cardObject.AddComponent<Image>();
+            image.color = selected ? PageInk : Color.white;
+            Button button = cardObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            int captured = index;
+            button.onClick.AddListener(() => SelectShown(captured));
+            RectTransform rect = cardObject.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.sizeDelta = new Vector2(0f, height);
+            rect.anchoredPosition = new Vector2(0f, -top);
+
+            GameObject chip = new GameObject("Colour", typeof(RectTransform));
+            chip.transform.SetParent(cardObject.transform, false);
+            Image chipImage = chip.AddComponent<Image>();
+            chipImage.color = FillFor(work);
+            chipImage.raycastTarget = false;
+            RectTransform chipRect = chip.GetComponent<RectTransform>();
+            chipRect.anchorMin = new Vector2(0f, 0.5f);
+            chipRect.anchorMax = new Vector2(0f, 0.5f);
+            chipRect.pivot = new Vector2(0f, 0.5f);
+            chipRect.sizeDelta = new Vector2(96f, 96f);
+            chipRect.anchoredPosition = new Vector2(24f, 0f);
+
+            Color ink = selected ? Color.white : PageInk;
+            Color meta = selected ? new Color(0.82f, 0.9f, 1f, 1f) : new Color(0.35f, 0.48f, 0.64f, 1f);
+            Text title = CreateCardLine(cardObject.transform, work.Title, 32, ink, new Vector2(140f, 18f), new Vector2(-24f, -16f), new Vector2(0f, 0.42f), Vector2.one);
+            title.alignment = TextAnchor.LowerLeft;
+            string detail = work.Artist + ", " + work.Year + "   " + work.WidthCm.ToString("0") + " x " + work.HeightCm.ToString("0") + " cm";
+            Text line = CreateCardLine(cardObject.transform, detail, 24, meta, new Vector2(140f, 16f), new Vector2(-24f, -8f), Vector2.zero, new Vector2(1f, 0.42f));
+            line.alignment = TextAnchor.UpperLeft;
+        }
+
+        Text CreateCardLine(Transform parent, string message, int fontSize, Color color, Vector2 offsetMin, Vector2 offsetMax, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            GameObject label = new GameObject(message);
+            label.transform.SetParent(parent, false);
+            Text text = label.AddComponent<Text>();
+            text.font = uiFont;
+            text.fontSize = fontSize;
+            text.color = color;
+            text.text = message;
+            text.alignment = TextAnchor.MiddleLeft;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
+            text.raycastTarget = false;
+            RectTransform textRect = text.rectTransform;
+            textRect.anchorMin = anchorMin;
+            textRect.anchorMax = anchorMax;
+            textRect.offsetMin = offsetMin;
+            textRect.offsetMax = offsetMax;
+            return text;
+        }
+
+        static void PaintPrimary(GameObject widget)
+        {
+            if (widget == null)
+                return;
+            Image image = widget.GetComponent<Image>();
+            if (image != null)
+                image.color = PageInk;
+            Text text = widget.GetComponentInChildren<Text>();
+            if (text != null)
+                text.color = Color.white;
+        }
+
+        static void PaintQuiet(GameObject widget)
+        {
+            if (widget == null)
+                return;
+            Image image = widget.GetComponent<Image>();
+            if (image != null)
+                image.color = Color.white;
+            Text text = widget.GetComponentInChildren<Text>();
+            if (text != null)
+                text.color = PageInk;
         }
 
         public void ShowNotes()
@@ -1633,15 +1764,16 @@ namespace Capstone.Placement
             worksPanel = CreatePanel(column.transform, "Works panel");
             wallPanel = CreatePanel(column.transform, "Wall panel");
             recommendPanel = CreatePanel(column.transform, "Recommend panel");
-            Cover(worksPanel, new Color(0.94f, 0.96f, 1f, 1f));
+            Cover(worksPanel, new Color(0.86f, 0.93f, 1f, 1f));
             Cover(recommendPanel, new Color(0.94f, 0.96f, 1f, 1f));
             GameObject workViewport = CreatePanel(worksPanel.transform, "Work scroll");
             RectTransform viewRect = workViewport.GetComponent<RectTransform>();
-            viewRect.anchorMin = new Vector2(0f, 0f);
-            viewRect.anchorMax = new Vector2(0f, 0f);
-            viewRect.pivot = new Vector2(0f, 0f);
-            viewRect.sizeDelta = new Vector2(1080f, 520f);
-            viewRect.anchoredPosition = new Vector2(0f, 16f);
+            viewRect.anchorMin = Vector2.zero;
+            viewRect.anchorMax = Vector2.one;
+            viewRect.pivot = new Vector2(0.5f, 0.5f);
+            viewRect.offsetMin = new Vector2(28f, 260f);
+            viewRect.offsetMax = new Vector2(-28f, -160f);
+            workViewRect = viewRect;
             Image viewImage = workViewport.AddComponent<Image>();
             viewImage.color = new Color(1f, 1f, 1f, 0.01f);
             workViewport.AddComponent<RectMask2D>();
@@ -1653,18 +1785,23 @@ namespace Capstone.Placement
             workScroll.viewport = viewRect;
             workList = CreatePanel(workViewport.transform, "Work list").GetComponent<RectTransform>();
             workScroll.content = workList;
-            catalogueHeading = CreateLabel(worksPanel.transform, uiFont, "Top picks", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -480f), 42);
-            catalogueHeading.color = new Color(0.07f, 0.18f, 0.42f, 1f);
-            catalogueHeading.rectTransform.sizeDelta = new Vector2(1000f, 80f);
+            catalogueHeading = CreateLabel(worksPanel.transform, uiFont, "Top picks", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -16f), 48);
+            catalogueHeading.color = PageInk;
+            catalogueHeading.rectTransform.sizeDelta = new Vector2(980f, 64f);
+            catalogueSubtitle = CreateLabel(worksPanel.transform, uiFont, string.Empty, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -82f), 26);
+            catalogueSubtitle.color = new Color(0.35f, 0.48f, 0.64f, 1f);
+            catalogueSubtitle.rectTransform.sizeDelta = new Vector2(980f, 44f);
 
-            browseButton = CreateButton(worksPanel.transform, uiFont, "Browse for more", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 700f), new Vector2(1032f, 100f), ShowAll, 32).gameObject;
-            topPicksButton = CreateButton(worksPanel.transform, uiFont, "Top picks", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 700f), new Vector2(1032f, 100f), ShowTopPicks, 32).gameObject;
+            browseButton = CreateButton(worksPanel.transform, uiFont, "Browse for more", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 148f), new Vector2(1032f, 84f), ShowAll, 28).gameObject;
+            topPicksButton = CreateButton(worksPanel.transform, uiFont, "Top picks", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 148f), new Vector2(1032f, 84f), ShowTopPicks, 28).gameObject;
+            PaintQuiet(browseButton);
+            PaintQuiet(topPicksButton);
             browseFilters = CreatePanel(worksPanel.transform, "Browse filters");
-            CreateButton(browseFilters.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 590f), new Vector2(250f, 70f), ShowAll, 28);
-            CreateButton(browseFilters.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(282f, 590f), new Vector2(250f, 70f), ShowBlue, 28);
-            CreateButton(browseFilters.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 590f), new Vector2(250f, 70f), ShowCalm, 28);
-            CreateButton(browseFilters.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(814f, 590f), new Vector2(250f, 70f), ShowFitsFifty, 28);
-            CreateButton(worksPanel.transform, uiFont, "Place this work", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -360f), new Vector2(1000f, 100f), BeginPlacement, 36);
+            PaintQuiet(CreateButton(browseFilters.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 248f), new Vector2(246f, 80f), ShowAll, 26).gameObject);
+            PaintQuiet(CreateButton(browseFilters.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(286f, 248f), new Vector2(246f, 80f), ShowBlue, 26).gameObject);
+            PaintQuiet(CreateButton(browseFilters.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 248f), new Vector2(246f, 80f), ShowCalm, 26).gameObject);
+            PaintQuiet(CreateButton(browseFilters.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(810f, 248f), new Vector2(246f, 80f), ShowFitsFifty, 26).gameObject);
+            PaintPrimary(CreateButton(worksPanel.transform, uiFont, "Place this work", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 24f), new Vector2(1032f, 108f), BeginPlacement, 34).gameObject);
             RefreshWorkList();
 
             notesButton = CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 460f), new Vector2(500f, 100f), ShowNotes, 36).gameObject;
@@ -1678,6 +1815,9 @@ namespace Capstone.Placement
             CreateButton(recommendPanel.transform, uiFont, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 320f), new Vector2(320f, 120f), Keep);
             CreateButton(recommendPanel.transform, uiFont, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 320f), new Vector2(320f, 120f), Save);
             CreateButton(recommendPanel.transform, uiFont, "Dismiss", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 320f), new Vector2(320f, 120f), Dismiss);
+            CreateButton(recommendPanel.transform, uiFont, "Notes 1", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 580f), new Vector2(328f, 80f), ShowFirstNotes, 28);
+            CreateButton(recommendPanel.transform, uiFont, "Notes 2", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(376f, 580f), new Vector2(328f, 80f), ShowSecondNotes, 28);
+            CreateButton(recommendPanel.transform, uiFont, "Notes 3", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(728f, 580f), new Vector2(328f, 80f), ShowThirdNotes, 28);
             CreateButton(recommendPanel.transform, uiFont, "Alternatives", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 460f), new Vector2(1032f, 100f), AskForAlternatives, 32);
             CreateButton(recommendPanel.transform, uiFont, "Use 1", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 180f), new Vector2(320f, 120f), ChooseFirst);
             CreateButton(recommendPanel.transform, uiFont, "Use 2", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 180f), new Vector2(320f, 120f), ChooseSecond);
