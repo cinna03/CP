@@ -205,6 +205,18 @@ namespace Capstone.Ranking.Tests
             Assert.GreaterOrEqual(CountTag("red"), 2);
         }
 
+        [Test]
+        public void EachStandInStoresBackgroundInspirationAndMeaning()
+        {
+            for (int i = 0; i < SampleCatalogue.All.Count; i++)
+            {
+                StoryNotes notes = SampleCatalogue.All[i].StoryNotes;
+                Assert.IsFalse(string.IsNullOrWhiteSpace(notes.ArtistBackground));
+                Assert.IsFalse(string.IsNullOrWhiteSpace(notes.Inspiration));
+                Assert.IsFalse(string.IsNullOrWhiteSpace(notes.Meaning));
+            }
+        }
+
         static int CountTag(string tag)
         {
             int count = 0;
