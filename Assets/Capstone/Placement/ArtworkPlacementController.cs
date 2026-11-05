@@ -337,8 +337,36 @@ namespace Capstone.Placement
             scanning = false;
             wallReady = false;
             pathStep = BuyerPath.Next(pathStep, BuyerPath.Placed);
-            status.text = (alreadyPlaced ? MovedMessage : PlacedMessage) + " " + Describe(current) + " " + AskOrSkipMessage;
+            status.text = "On the wall. " + Describe(current) + " Ask one thing, or skip.";
             ApplyStepVisibility();
+        }
+
+        void PlaceAskBar()
+        {
+            if (concernField != null)
+            {
+                RectTransform field = concernField.GetComponent<RectTransform>();
+                field.anchoredPosition = new Vector2(24f, 160f);
+                field.sizeDelta = new Vector2(1032f, 110f);
+            }
+
+            PlaceBottom(skipButton, 24f, "Skip");
+            PlaceBottom(sendButton, 556f, "Send");
+        }
+
+        static void PlaceBottom(GameObject widget, float x, string label)
+        {
+            if (widget == null)
+                return;
+            RectTransform rect = widget.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(0f, 0f);
+            rect.pivot = new Vector2(0f, 0f);
+            rect.anchoredPosition = new Vector2(x, 28f);
+            rect.sizeDelta = new Vector2(500f, 110f);
+            Text text = widget.GetComponentInChildren<Text>();
+            if (text != null)
+                text.text = label;
         }
 
         void ShowDemoRoom(int index)
@@ -1264,12 +1292,12 @@ namespace Capstone.Placement
             SetButtonActive(worksNavImage, false);
             SetButtonActive(wallNavImage, false);
             SetButtonActive(recommendNavImage, false);
+            SetButtonActive(studyButtonWidget, false);
+            SetButtonActive(consentButtonWidget, false);
             bool onWorks = tagsChosen && !ended && !phoneScan && PrototypeScreen.ShowsWorks(step);
             if (worksPanel != null)
                 worksPanel.SetActive(onWorks);
-            bool showChrome = tagsChosen && !ended && !phoneScan && !onWorks;
-            SetButtonActive(studyButtonWidget, showChrome);
-            SetButtonActive(consentButtonWidget, showChrome);
+            bool asking = pathStep == BuyerPath.Question && step == PrototypeScreen.Wall && !phoneScan && !ended;
             if (statusShade != null)
                 statusShade.gameObject.SetActive(!onWorks);
             if (status != null)
@@ -1287,17 +1315,18 @@ namespace Capstone.Placement
                 wallPanel.SetActive(tagsChosen && !ended && PrototypeScreen.ShowsWall(step));
             if (recommendPanel != null)
                 recommendPanel.SetActive(tagsChosen && !ended && !phoneScan && PrototypeScreen.ShowsRecommend(step));
-            bool askNow = pathStep == BuyerPath.Question;
-            SetObjectActive(notesButton, askNow && !phoneScan);
-            SetObjectActive(sendButton, askNow && !phoneScan);
-            SetObjectActive(skipButton, askNow && !phoneScan);
-            SetObjectActive(swapButton, !phoneScan);
-            SetObjectActive(removeButton, !phoneScan);
+            SetObjectActive(notesButton, false);
+            SetObjectActive(sendButton, asking);
+            SetObjectActive(skipButton, asking);
+            SetObjectActive(swapButton, false);
+            SetObjectActive(removeButton, false);
             if (concernField != null)
-                concernField.gameObject.SetActive(askNow && !phoneScan);
+                concernField.gameObject.SetActive(asking);
+            if (asking)
+                PlaceAskBar();
             if (placeButton != null)
             {
-                placeButton.gameObject.SetActive(!phoneScan || wallReady);
+                placeButton.gameObject.SetActive(phoneScan && wallReady && !wallHeld);
                 RectTransform placeRect = placeButton.GetComponent<RectTransform>();
                 if (phoneScan)
                 {
@@ -1322,10 +1351,10 @@ namespace Capstone.Placement
                 aimMark.color = wallReady ? AimReady : AimSearching;
             }
             if (statusShade != null)
-                statusShade.sizeDelta = new Vector2(0f, phoneScan ? 200f : 280f);
+                statusShade.sizeDelta = new Vector2(0f, phoneScan ? 160f : (asking ? 120f : 200f));
             if (stepLine != null)
             {
-                stepLine.gameObject.SetActive(!onWorks && !phoneScan);
+                stepLine.gameObject.SetActive(false);
                 stepLine.text = StepInstruction();
             }
             PaintStep(worksNavImage, PrototypeScreen.ShowsWorks(step));
@@ -1357,6 +1386,8 @@ namespace Capstone.Placement
                 return "These are the top picks. Browse for more shows every piece.";
             if (browsing && narrowed && step == PrototypeScreen.Works)
                 return "Top picks returns to the matches.";
+            if (step == PrototypeScreen.Wall && pathStep == BuyerPath.Question)
+                return "On the wall. Ask one thing, or skip.";
             if (step == PrototypeScreen.Wall)
                 return Application.isEditor ? WallStepMessage : ScanWallMessage;
             if (step == PrototypeScreen.Recommend)
@@ -2168,17 +2199,22 @@ namespace Capstone.Placement
             PaintQuiet(CreateButton(browseFilters.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(286f, 248f), new Vector2(246f, 80f), ShowBlue, 26).gameObject);
             PaintQuiet(CreateButton(browseFilters.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 248f), new Vector2(246f, 80f), ShowCalm, 26).gameObject);
             PaintQuiet(CreateButton(browseFilters.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(810f, 248f), new Vector2(246f, 80f), ShowFitsFifty, 26).gameObject);
-            PaintPrimary(CreateButton(worksPanel.transform, uiFont, "Place this work", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 24f), new Vector2(1032f, 108f), BeginPlacement, 34).gameObject);
+            PaintPrimary(CreateButton(worksPanel.transform, uiFont, "Try this piece", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 24f), new Vector2(1032f, 108f), BeginPlacement, 34).gameObject);
             RefreshWorkList();
 
             notesButton = CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 460f), new Vector2(500f, 100f), ShowNotes, 36).gameObject;
-            skipButton = CreateButton(wallPanel.transform, uiFont, "Skip", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 460f), new Vector2(500f, 100f), SkipQuestion, 36).gameObject;
+            skipButton = CreateButton(wallPanel.transform, uiFont, "Skip", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 28f), new Vector2(500f, 110f), SkipQuestion, 32).gameObject;
             concernField = CreateInput(wallPanel.transform, uiFont);
-            sendButton = CreateButton(wallPanel.transform, uiFont, "Send", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 200f), new Vector2(240f, 110f), Send).gameObject;
+            sendButton = CreateButton(wallPanel.transform, uiFont, "Send", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(556f, 28f), new Vector2(500f, 110f), Send, 32).gameObject;
+            PaintQuiet(skipButton);
+            PaintPrimary(sendButton);
             placeButton = CreateButton(wallPanel.transform, uiFont, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
             swapButton = CreateButton(wallPanel.transform, uiFont, "Swap", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(320f, 140f), Swap).gameObject;
             removeButton = CreateButton(wallPanel.transform, uiFont, "Remove", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 40f), new Vector2(320f, 140f), Remove).gameObject;
 
+            Text recommendTitle = CreateLabel(recommendPanel.transform, uiFont, "What do you want to do?", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -36f), 42);
+            recommendTitle.color = PageInk;
+            recommendTitle.rectTransform.sizeDelta = new Vector2(980f, 80f);
             CreateButton(recommendPanel.transform, uiFont, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 320f), new Vector2(320f, 120f), Keep);
             CreateButton(recommendPanel.transform, uiFont, "Save", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 320f), new Vector2(320f, 120f), Save);
             CreateButton(recommendPanel.transform, uiFont, "Dismiss", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 320f), new Vector2(320f, 120f), Dismiss);
