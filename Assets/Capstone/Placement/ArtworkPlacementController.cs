@@ -53,11 +53,11 @@ namespace Capstone.Placement
         public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
-        public const string ScanWallMessage = "Sweep slowly. A corner or a frame helps, then hold the circle on the open wall.";
+        public const string ScanWallMessage = "Sweep the wall. The piece appears on the open part, not on the sofa.";
         public const string FloorMessage = "That is the floor. Lift the phone and put the circle on the wall.";
         public const string FurnitureMessage = "That is furniture. Hold the circle on the open wall.";
         public const string HoldWallMessage = "Hold the circle still on the open wall.";
-        public const string WallFoundMessage = "Wall detected. You are ready to test the art piece. Press Place.";
+        public const string WallFoundMessage = "Move the phone. The piece follows the wall. Press Place when it looks right.";
         public const string HoldingWallMessage = "Wall detected. Saving this view.";
         public const string WallHeldMessage = "This view is saved. You can lower the phone.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
@@ -99,7 +99,9 @@ namespace Capstone.Placement
             | PlaneClassifications.Ceiling;
         const float MinWallDistance = 0.45f;
         const float MaxWallDistance = 5.5f;
-        const float WallSettleSeconds = 0.25f;
+        const float DepthNear = 0.7f;
+        const float DepthStep = 0.12f;
+        static readonly int[] DepthBuckets = new int[40];
         static readonly Vector2[] AimSpots =
         {
             new Vector2(0.50f, 0.55f),
@@ -113,6 +115,7 @@ namespace Capstone.Placement
 
         ARRaycastManager raycastManager;
         ARPlaneManager planeManager;
+        ARPointCloudManager pointCloudManager;
         Camera arCamera;
         GameObject placed;
         Text status;
@@ -154,8 +157,8 @@ namespace Capstone.Placement
         bool aimingAtFloor;
         bool aimingAtFurniture;
         bool wallSettling;
-        TrackableId pendingPlane;
-        float pendingSince;
+        float stableDepth;
+        float stableSince;
         Vector3 heldPoint;
         Vector3 heldNormal;
         Vector3 heldCameraPosition;
@@ -251,31 +254,31 @@ namespace Capstone.Placement
             if (savingView || wallHeld)
                 return;
 
-            ARRaycastHit hit;
-            ARPlane plane;
-            bool found = TryHitVerticalWall(out hit, out plane);
-            if (found && !triedSave)
+            EnsureFeaturePoints();
+            bool found = TryHitVerticalWall(out Vector3 point, out Vector3 normal);
+            if (found)
             {
-                triedSave = true;
-                savingView = true;
+                ShowLivePiece(point, normal);
+                if (wallReady && status.text == WallFoundMessage)
+                    return;
+
                 wallReady = true;
-                status.text = HoldingWallMessage;
+                status.text = WallFoundMessage;
                 if (aimMark != null)
                     aimMark.color = AimReady;
                 ApplyStepVisibility();
-                StartCoroutine(SaveWallView());
                 return;
             }
-            string next = found
-                ? WallFoundMessage
-                : wallSettling
-                    ? HoldWallMessage
-                    : aimingAtFurniture
-                        ? FurnitureMessage
-                        : aimingAtFloor
-                            ? FloorMessage
-                            : ScanWallMessage;
-            HideTrackingDots();
+
+            if (placed != null)
+                placed.SetActive(false);
+            string next = wallSettling
+                ? HoldWallMessage
+                : aimingAtFurniture
+                    ? FurnitureMessage
+                    : aimingAtFloor
+                        ? FloorMessage
+                        : ScanWallMessage;
             if (found == wallReady && status.text == next)
                 return;
 
@@ -361,13 +364,26 @@ namespace Capstone.Placement
                 return;
             }
 
-            if (!TryHitVerticalWall(out ARRaycastHit hit, out ARPlane plane))
+            if (!TryHitVerticalWall(out Vector3 point, out Vector3 normal))
             {
                 status.text = NoWallMessage;
                 return;
             }
 
-            PlaceOn(hit.pose.position, plane.normal);
+            PlaceOn(point, normal);
+        }
+
+        void ShowLivePiece(Vector3 point, Vector3 normal)
+        {
+            bool fresh = placed == null || !placed.activeSelf;
+            if (placed == null)
+                placed = CreateQuad();
+            placed.SetActive(true);
+            Vector3 cameraPosition = arCamera != null ? arCamera.transform.position : point + normal;
+            WallPose pose = ArtworkWallPose.At(current, point, normal, cameraPosition);
+            placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
+            if (fresh)
+                ApplyArtwork(current);
         }
 
         void PlaceOn(Vector3 point, Vector3 normal)
@@ -378,6 +394,7 @@ namespace Capstone.Placement
 
             Vector3 cameraPosition = arCamera != null ? arCamera.transform.position : point + normal;
             WallPose pose = ArtworkWallPose.At(current, point, normal, cameraPosition);
+            placed.SetActive(true);
             placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             ApplyArtwork(current);
             scanning = false;
@@ -598,7 +615,7 @@ namespace Capstone.Placement
 
                 scanning = true;
                 wallReady = false;
-                pendingPlane = TrackableId.invalidId;
+                stableSince = 0f;
                 wallSettling = false;
             }
 
@@ -1737,11 +1754,41 @@ namespace Capstone.Placement
             HideTrackingDots();
         }
 
+        void EnsureFeaturePoints()
+        {
+            if (pointCloudManager == null)
+                pointCloudManager = FindAnyObjectByType<ARPointCloudManager>();
+            if (pointCloudManager == null)
+            {
+                GameObject host = raycastManager != null ? raycastManager.gameObject : gameObject;
+                pointCloudManager = host.AddComponent<ARPointCloudManager>();
+            }
+
+            pointCloudManager.enabled = true;
+            pointCloudManager.pointCloudPrefab = null;
+            HideTrackingDots();
+        }
+
         static void HideTrackingDots()
         {
             ARPointCloudManager clouds = FindAnyObjectByType<ARPointCloudManager>();
-            if (clouds != null && clouds.enabled)
-                clouds.enabled = false;
+            if (clouds == null)
+                return;
+
+            clouds.pointCloudPrefab = null;
+            foreach (ARPointCloud cloud in clouds.trackables)
+            {
+                MonoBehaviour[] behaviours = cloud.GetComponentsInChildren<MonoBehaviour>(true);
+                for (int i = 0; i < behaviours.Length; i++)
+                {
+                    if (behaviours[i] != null && behaviours[i].GetType().Name == "ARPointCloudParticleVisualizer")
+                        behaviours[i].enabled = false;
+                }
+
+                Renderer[] renderers = cloud.GetComponentsInChildren<Renderer>(true);
+                for (int i = 0; i < renderers.Length; i++)
+                    renderers[i].enabled = false;
+            }
         }
 
         static void SilenceTemplateSpawner()
@@ -1763,15 +1810,12 @@ namespace Capstone.Placement
 
         IEnumerator SaveWallView()
         {
-            if (!TryHitVerticalWall(out ARRaycastHit hit, out ARPlane plane) || arCamera == null)
+            if (!TryHitVerticalWall(out Vector3 point, out Vector3 normal) || arCamera == null)
             {
                 savingView = false;
                 triedSave = false;
                 yield break;
             }
-
-            Vector3 point = hit.pose.position;
-            Vector3 normal = plane.normal;
             Vector3 cameraPosition = arCamera.transform.position;
             Quaternion cameraRotation = arCamera.transform.rotation;
             SetScanChrome(false);
@@ -2013,42 +2057,131 @@ namespace Capstone.Placement
             }
         }
 
-        bool TryHitVerticalWall(out ARRaycastHit hit, out ARPlane plane)
+        bool TryHitVerticalWall(out Vector3 point, out Vector3 normal)
         {
-            hit = default;
-            plane = null;
+            point = default;
+            normal = Vector3.forward;
             aimingAtFloor = false;
             aimingAtFurniture = false;
             wallSettling = false;
-            if (raycastManager == null)
+            if (raycastManager == null || arCamera == null)
                 return false;
 
             CollectPlanes();
-            ARPlane wall = ChooseOpenWall(out Vector3 point, out float distance, out bool sawFloor, out bool sawFurniture);
-            if (wall == null)
+            bool hasDepth = MeasureWallDepth(out float wallDepth);
+            ARPlane wall = ChooseOpenWall(hasDepth, wallDepth, out point, out normal, out float distance, out bool sawFloor, out bool sawFurniture);
+            if (wall != null)
             {
-                pendingPlane = TrackableId.invalidId;
+                stableDepth = distance;
+                stableSince = Time.time;
+                return true;
+            }
+
+            if (!hasDepth || !DepthReady(wallDepth))
+            {
+                if (hasDepth)
+                    wallSettling = true;
+                else
+                    stableSince = 0f;
                 aimingAtFurniture = sawFurniture;
                 aimingAtFloor = sawFloor && !sawFurniture;
                 return false;
             }
 
-            if (pendingPlane != wall.trackableId)
+            return PlaceAtDepth(stableDepth, out point, out normal);
+        }
+
+        bool MeasureWallDepth(out float depth)
+        {
+            depth = 0f;
+            for (int i = 0; i < DepthBuckets.Length; i++)
+                DepthBuckets[i] = 0;
+
+            Vector3 eye = arCamera.transform.position;
+            int samples = 0;
+            for (int row = 0; row < 4; row++)
             {
-                pendingPlane = wall.trackableId;
-                pendingSince = Time.time;
-                wallSettling = true;
+                for (int col = 0; col < 5; col++)
+                {
+                    Vector2 spot = new Vector2(
+                        Screen.width * (0.16f + col * 0.17f),
+                        Screen.height * (0.38f + row * 0.12f));
+                    if (!raycastManager.Raycast(spot, Hits, TrackableType.FeaturePoint))
+                        continue;
+
+                    foreach (ARRaycastHit candidate in Hits)
+                    {
+                        float enter = candidate.distance;
+                        if (enter < DepthNear || enter > MaxWallDistance)
+                            continue;
+                        float height = candidate.pose.position.y;
+                        if (height < eye.y - 0.85f || height > eye.y + 1.05f)
+                            continue;
+
+                        int bucket = (int)((enter - DepthNear) / DepthStep);
+                        if (bucket < 0 || bucket >= DepthBuckets.Length)
+                            continue;
+                        DepthBuckets[bucket]++;
+                        samples++;
+                    }
+                }
+            }
+
+            if (samples < 8)
+                return false;
+
+            int first = -1;
+            int last = -1;
+            for (int i = 0; i < DepthBuckets.Length; i++)
+            {
+                if (DepthBuckets[i] < 6)
+                    continue;
+                if (first < 0)
+                    first = i;
+                last = i;
+            }
+
+            if (first < 0)
+                return false;
+
+            int wallIndex = last - first >= 3 ? last : first;
+
+            depth = DepthNear + (wallIndex + 0.5f) * DepthStep;
+            return true;
+        }
+
+        bool DepthReady(float depth)
+        {
+            if (stableSince <= 0f || Mathf.Abs(depth - stableDepth) > 0.18f)
+            {
+                stableDepth = depth;
+                stableSince = Time.time;
                 return false;
             }
 
-            if (Time.time - pendingSince < WallSettleSeconds)
+            stableDepth = depth;
+            return Time.time - stableSince >= 0.15f;
+        }
+
+        bool PlaceAtDepth(float depth, out Vector3 point, out Vector3 normal)
+        {
+            point = default;
+            Vector3 forward = arCamera.transform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.01f)
             {
-                wallSettling = true;
+                normal = Vector3.forward;
                 return false;
             }
 
-            hit = HitOnPlane(wall, point, distance);
-            plane = wall;
+            forward.Normalize();
+            normal = -forward;
+            Plane surface = new Plane(normal, arCamera.transform.position + forward * depth);
+            Ray ray = arCamera.ScreenPointToRay(new Vector2(Screen.width * 0.5f, Screen.height * 0.55f));
+            if (!surface.Raycast(ray, out float enter) || enter < MinWallDistance || enter > MaxWallDistance)
+                return false;
+
+            point = ray.GetPoint(enter);
             return true;
         }
 
@@ -2096,9 +2229,10 @@ namespace Capstone.Placement
             PlaneChoices.Add(candidate);
         }
 
-        ARPlane ChooseOpenWall(out Vector3 point, out float distance, out bool sawFloor, out bool sawFurniture)
+        ARPlane ChooseOpenWall(bool hasDepth, float wallDepth, out Vector3 point, out Vector3 normal, out float distance, out bool sawFloor, out bool sawFurniture)
         {
             point = default;
+            normal = Vector3.forward;
             distance = 0f;
             sawFloor = false;
             sawFurniture = false;
@@ -2138,7 +2272,9 @@ namespace Capstone.Placement
                     continue;
                 }
 
-                if (labelledWall && !IsWall(candidate))
+                if (hasDepth && enter < wallDepth - 0.35f)
+                    continue;
+                if (!hasDepth && labelledWall && !IsWall(candidate))
                     continue;
                 if (Mathf.Abs(Vector3.Dot(arCamera.transform.forward, candidate.normal)) < 0.2f)
                     continue;
@@ -2155,13 +2291,19 @@ namespace Capstone.Placement
                     score += 3f;
                 else if (offset > 3f)
                     score -= 2f;
-                score -= enter * 0.35f;
+                if (hasDepth)
+                    score -= Mathf.Abs(enter - wallDepth) * 4f;
+                else if (IsWall(candidate))
+                    score -= enter * 0.2f;
+                else
+                    score += enter * 0.45f;
                 if (score <= bestScore)
                     continue;
 
                 bestScore = score;
                 best = candidate;
                 point = onPlane;
+                normal = candidate.normal;
                 distance = enter;
             }
 
@@ -2178,17 +2320,6 @@ namespace Capstone.Placement
             if (IsWall(candidate))
                 return false;
             return (candidate.classifications & FurnitureKinds) != 0;
-        }
-
-        static ARRaycastHit HitOnPlane(ARPlane wall, Vector3 worldPoint, float distance)
-        {
-            Transform space = wall.transform.parent != null ? wall.transform.parent : wall.transform;
-            XRRaycastHit nativeHit = new XRRaycastHit(
-                wall.trackableId,
-                new Pose(space.InverseTransformPoint(worldPoint), Quaternion.Inverse(space.rotation) * wall.transform.rotation),
-                distance,
-                TrackableType.PlaneWithinInfinity);
-            return new ARRaycastHit(nativeHit, distance, space, wall);
         }
 
         GameObject CreateQuad()
