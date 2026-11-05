@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using Capstone.Catalogue;
 using Capstone.Dialogue;
@@ -54,6 +55,8 @@ namespace Capstone.Placement
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
         public const string ScanWallMessage = "Move the phone slowly across the wall.";
         public const string WallFoundMessage = "Wall detected. You are ready to test the art piece. Press Place.";
+        public const string HoldingWallMessage = "Wall detected. Saving this view.";
+        public const string WallHeldMessage = "This view is saved. You can lower the phone.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
         public const string RecommendStepMessage = "Keep, save, dismiss, or ask for alternatives, then choose a recommended work.";
         public const string BuyerPieceId = "buyer-piece";
@@ -109,6 +112,18 @@ namespace Capstone.Placement
         bool roomChosen;
         bool scanning;
         bool wallReady;
+        bool wallHeld;
+        bool savingView;
+        bool triedSave;
+        Vector3 heldPoint;
+        Vector3 heldNormal;
+        Vector3 heldCameraPosition;
+        Quaternion heldCameraRotation;
+        GameObject frozenCanvas;
+        RawImage frozenPhoto;
+        RawImage frozenPiece;
+        Texture2D savedPhoto;
+        readonly List<MonoBehaviour> pausedTracking = new List<MonoBehaviour>();
         bool tagsChosen;
         bool ended;
         string pathStep = BuyerPath.Start();
@@ -191,10 +206,24 @@ namespace Capstone.Placement
             TypeIntoSelectedMeasure();
             if (!scanning || status == null || step != PrototypeScreen.Wall)
                 return;
+            if (savingView || wallHeld)
+                return;
 
             ARRaycastHit hit;
             ARPlane plane;
             bool found = TryHitVerticalWall(out hit, out plane);
+            if (found && !triedSave)
+            {
+                triedSave = true;
+                savingView = true;
+                wallReady = true;
+                status.text = HoldingWallMessage;
+                if (aimMark != null)
+                    aimMark.color = AimReady;
+                ApplyStepVisibility();
+                StartCoroutine(SaveWallView());
+                return;
+            }
             string next = found ? WallFoundMessage : ScanWallMessage;
             if (found == wallReady && status.text == next)
                 return;
@@ -271,6 +300,13 @@ namespace Capstone.Placement
                     normal = Vector3.forward;
                 }
                 PlaceOn(point, normal);
+                return;
+            }
+
+            if (wallHeld)
+            {
+                PlaceOn(heldPoint, heldNormal);
+                status.text = WallHeldMessage + " " + Describe(current) + " " + AskOrSkipMessage;
                 return;
             }
 
@@ -466,6 +502,15 @@ namespace Capstone.Placement
             pathStep = BuyerPath.Next(BuyerPath.Catalogue, BuyerPath.Place);
             if (!Application.isEditor && BuyerPath.OpensCamera(pathStep))
             {
+                if (wallHeld)
+                {
+                    scanning = false;
+                    OpenStep(PrototypeScreen.Wall);
+                    PlaceOn(heldPoint, heldNormal);
+                    status.text = WallHeldMessage + " " + Describe(current) + " " + AskOrSkipMessage;
+                    return;
+                }
+
                 scanning = true;
                 wallReady = false;
             }
@@ -495,6 +540,7 @@ namespace Capstone.Placement
 
         void StartBuyerPath()
         {
+            ReleaseSavedWall();
             scanning = false;
             wallReady = false;
             tagsChosen = false;
@@ -1525,7 +1571,9 @@ namespace Capstone.Placement
 
             Destroy(placed);
             placed = null;
-            scanning = !Application.isEditor;
+            if (frozenPiece != null)
+                frozenPiece.enabled = false;
+            scanning = wallHeld ? false : !Application.isEditor;
             wallReady = false;
             status.text = RemovedMessage;
             ApplyStepVisibility();
@@ -1564,6 +1612,258 @@ namespace Capstone.Placement
             {
                 if (behaviour != null && behaviour.GetType().Name == "ARInteractorSpawnTrigger")
                     behaviour.enabled = false;
+            }
+        }
+
+        IEnumerator SaveWallView()
+        {
+            if (!TryHitVerticalWall(out ARRaycastHit hit, out ARPlane plane) || arCamera == null)
+            {
+                savingView = false;
+                triedSave = false;
+                yield break;
+            }
+
+            Vector3 point = hit.pose.position;
+            Vector3 normal = plane.normal;
+            Vector3 cameraPosition = arCamera.transform.position;
+            Quaternion cameraRotation = arCamera.transform.rotation;
+            SetScanChrome(false);
+            yield return new WaitForEndOfFrame();
+            Texture2D photo = CapturePhotograph();
+            SetScanChrome(true);
+            if (photo == null || LooksBlank(photo))
+            {
+                if (photo != null)
+                    Destroy(photo);
+                savingView = false;
+                if (status != null)
+                    status.text = WallFoundMessage;
+                ApplyStepVisibility();
+                yield break;
+            }
+
+            heldPoint = point;
+            heldNormal = normal;
+            heldCameraPosition = cameraPosition;
+            heldCameraRotation = cameraRotation;
+            ShowFrozenPhotograph(photo);
+            FreezeTracking();
+            wallHeld = true;
+            savingView = false;
+            PlaceOn(point, normal);
+            status.text = WallHeldMessage + " " + Describe(current) + " " + AskOrSkipMessage;
+        }
+
+        void SetScanChrome(bool visible)
+        {
+            if (aimMark != null)
+                aimMark.enabled = visible;
+            if (status != null)
+                status.enabled = visible;
+            if (statusShade != null)
+                statusShade.gameObject.SetActive(visible);
+            if (stepLine != null)
+                stepLine.enabled = visible;
+        }
+
+        Texture2D CapturePhotograph()
+        {
+            Texture2D fromCamera = CaptureCameraFeed();
+            if (fromCamera != null && !LooksBlank(fromCamera))
+                return fromCamera;
+            if (fromCamera != null)
+                Destroy(fromCamera);
+            return CaptureScreen();
+        }
+
+        Texture2D CaptureCameraFeed()
+        {
+            if (arCamera == null)
+                return null;
+
+            ARCameraBackground background = arCamera.GetComponent<ARCameraBackground>();
+            if (background == null || background.material == null)
+                return null;
+
+            int width = Screen.width;
+            int height = Screen.height;
+            if (width < 2 || height < 2)
+                return null;
+
+            RenderTexture buffer = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32);
+            RenderTexture previous = RenderTexture.active;
+            Texture source = background.material.HasProperty("_MainTex") ? background.material.GetTexture("_MainTex") : null;
+            try
+            {
+                Graphics.Blit(source, buffer, background.material);
+                RenderTexture.active = buffer;
+                Texture2D photo = new Texture2D(width, height, TextureFormat.RGB24, false);
+                photo.ReadPixels(new Rect(0f, 0f, width, height), 0, 0, false);
+                photo.Apply();
+                return photo;
+            }
+            catch (System.Exception)
+            {
+                return null;
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+                RenderTexture.ReleaseTemporary(buffer);
+            }
+        }
+
+        static Texture2D CaptureScreen()
+        {
+            int width = Screen.width;
+            int height = Screen.height;
+            if (width < 2 || height < 2)
+                return null;
+
+            Texture2D photo = new Texture2D(width, height, TextureFormat.RGB24, false);
+            photo.ReadPixels(new Rect(0f, 0f, width, height), 0, 0, false);
+            photo.Apply();
+            return photo;
+        }
+
+        static bool LooksBlank(Texture2D photo)
+        {
+            if (photo == null || photo.width < 2 || photo.height < 2)
+                return true;
+
+            int[] xs = { photo.width / 4, photo.width / 2, (photo.width * 3) / 4 };
+            int[] ys = { photo.height / 4, photo.height / 2, (photo.height * 3) / 4 };
+            for (int x = 0; x < xs.Length; x++)
+            {
+                for (int y = 0; y < ys.Length; y++)
+                {
+                    Color pixel = photo.GetPixel(xs[x], ys[y]);
+                    if (pixel.r + pixel.g + pixel.b > 0.05f)
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        void ShowFrozenPhotograph(Texture2D photo)
+        {
+            if (savedPhoto != null)
+                Destroy(savedPhoto);
+            savedPhoto = photo;
+            if (frozenCanvas == null)
+            {
+                frozenCanvas = new GameObject("Saved wall");
+                Canvas canvas = frozenCanvas.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.sortingOrder = 100;
+                CanvasScaler scaler = frozenCanvas.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+                scaler.scaleFactor = 1f;
+
+                GameObject photoObject = new GameObject("Photograph", typeof(RectTransform));
+                photoObject.transform.SetParent(frozenCanvas.transform, false);
+                frozenPhoto = photoObject.AddComponent<RawImage>();
+                frozenPhoto.raycastTarget = false;
+                RectTransform photoRect = photoObject.GetComponent<RectTransform>();
+                photoRect.anchorMin = Vector2.zero;
+                photoRect.anchorMax = Vector2.one;
+                photoRect.offsetMin = Vector2.zero;
+                photoRect.offsetMax = Vector2.zero;
+
+                GameObject pieceObject = new GameObject("Piece on wall", typeof(RectTransform));
+                pieceObject.transform.SetParent(frozenCanvas.transform, false);
+                frozenPiece = pieceObject.AddComponent<RawImage>();
+                frozenPiece.raycastTarget = false;
+                frozenPiece.enabled = false;
+            }
+
+            frozenCanvas.SetActive(true);
+            frozenPhoto.texture = photo;
+            frozenPhoto.enabled = true;
+        }
+
+        void ShowPieceOnPhoto(Artwork artwork)
+        {
+            if (!wallHeld || artwork == null || arCamera == null || frozenPiece == null)
+                return;
+
+            arCamera.transform.SetPositionAndRotation(heldCameraPosition, heldCameraRotation);
+            WallPose pose = ArtworkWallPose.At(artwork, heldPoint, heldNormal, heldCameraPosition);
+            FrozenWall.Corners(pose, out Vector3 bottomLeft, out Vector3 bottomRight, out Vector3 topLeft, out Vector3 topRight);
+            Vector3 first = arCamera.WorldToScreenPoint(bottomLeft);
+            Vector3 second = arCamera.WorldToScreenPoint(bottomRight);
+            Vector3 third = arCamera.WorldToScreenPoint(topLeft);
+            Vector3 fourth = arCamera.WorldToScreenPoint(topRight);
+            if (first.z <= 0f || second.z <= 0f || third.z <= 0f || fourth.z <= 0f)
+                return;
+
+            ScreenSpan span = FrozenWall.Span(first, second, third, fourth);
+            frozenPiece.texture = ImageFor(artwork);
+            frozenPiece.enabled = true;
+            RectTransform rect = frozenPiece.rectTransform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.zero;
+            rect.pivot = Vector2.zero;
+            rect.anchoredPosition = new Vector2(span.XMin, span.YMin);
+            rect.sizeDelta = new Vector2(span.Width, span.Height);
+            if (placed != null)
+            {
+                MeshRenderer renderer = placed.GetComponent<MeshRenderer>();
+                if (renderer != null)
+                    renderer.enabled = false;
+            }
+        }
+
+        void FreezeTracking()
+        {
+            if (arCamera == null)
+                return;
+
+            ARCameraBackground background = arCamera.GetComponent<ARCameraBackground>();
+            if (background != null && background.enabled)
+            {
+                background.enabled = false;
+                pausedTracking.Add(background);
+            }
+
+            MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>();
+            for (int i = 0; i < behaviours.Length; i++)
+            {
+                MonoBehaviour behaviour = behaviours[i];
+                if (behaviour == null || !behaviour.enabled)
+                    continue;
+                if (behaviour.GetType().Name.IndexOf("PoseDriver", System.StringComparison.Ordinal) >= 0)
+                {
+                    behaviour.enabled = false;
+                    pausedTracking.Add(behaviour);
+                }
+            }
+
+            arCamera.transform.SetPositionAndRotation(heldCameraPosition, heldCameraRotation);
+        }
+
+        void ReleaseSavedWall()
+        {
+            wallHeld = false;
+            savingView = false;
+            triedSave = false;
+            for (int i = 0; i < pausedTracking.Count; i++)
+            {
+                if (pausedTracking[i] != null)
+                    pausedTracking[i].enabled = true;
+            }
+
+            pausedTracking.Clear();
+            if (frozenPiece != null)
+                frozenPiece.enabled = false;
+            if (frozenCanvas != null)
+                frozenCanvas.SetActive(false);
+            if (savedPhoto != null)
+            {
+                Destroy(savedPhoto);
+                savedPhoto = null;
             }
         }
 
@@ -1613,6 +1913,8 @@ namespace Capstone.Placement
             Texture2D image = ImageFor(artwork);
             surface.SetTexture("_BaseMap", image);
             surface.SetTexture("_MainTex", image);
+            if (wallHeld)
+                ShowPieceOnPhoto(artwork);
         }
 
         static string Describe(Artwork artwork)

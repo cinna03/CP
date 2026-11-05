@@ -30,7 +30,7 @@ Packages used by the prototype:
 
 Android minimum SDK is API 30, ARM64, IL2CPP. ARCore is required. The scene in the build is `Assets/Scenes/SampleScene.unity`.
 
-In the editor, a chosen work is placed on a plain wall. On a phone, the camera opens and Place raycasts the centre of the screen onto a vertical plane.
+In the editor, a chosen work is placed on a plain wall. On a phone, the camera opens. When a vertical plane is found, the app saves that picture and places the work on it, so the phone can be lowered. Later pieces use the same picture.
 
 ## Folder layout
 
@@ -51,9 +51,9 @@ In the editor, a chosen work is placed on a plain wall. On a phone, the camera o
 1. Consent code. The opening plays through, then the blue circle stays until that circle is tapped. `ConsentCodes` holds the 25 codes. `BuyerSession.TryStart` accepts one of them, trims spaces, and marks consent. Any other text stays on the code page and says `Try again.`
 2. Already have a piece, or still exploring. `I have a piece` asks for a clear picture of the painting, then the painted width, the painted height, and a frame. The wall uses the outer size: the painting plus the moulding on both sides. `I'm still exploring` stores a style, a mood, and a colour on `PreferenceQuiz`. `I don't know` leaves that category blank. `PreferenceProfile.FromInitialTags` keeps only the answers that were given. A blank tag adds no weight.
 3. Catalogue, for a buyer who is exploring. The works that meet those answers open as the top picks. `Browse for more` lists every piece. `Top picks` returns to the matches. The buyer picks a work, then presses `Place this work`. A piece they brought skips this list and goes to the wall.
-4. Wall. This is the only step that opens the camera. The quad uses `Artwork.WallSizeMetres`, which comes from the stored centimetres.
+4. Wall. This is the only step that opens the camera. On a phone, a detected wall is saved as a picture and the work is drawn on that picture at `Artwork.WallSizeMetres`. The phone can then be lowered. If the picture cannot be saved, Place still raycasts the centre of the screen onto a vertical plane.
 5. One question, or Skip. `RuleEngine.Match` reads `StarterRules`. The reply language is the language of the matched words. No match returns one fixed prompt and logs nothing.
-6. Keep, save, dismiss, or ask for alternatives. `Recommender.RankThree` returns three other works. Alternatives weakens the same tags as dismiss. The status line includes each story note. `Notes 1`, `Notes 2`, and `Notes 3` open that work's artist background, inspiration, and meaning. `Use 1`, `Use 2`, or `Use 3` starts placement of that work. On a phone the camera opens again.
+6. Keep, save, dismiss, or ask for alternatives. `Recommender.RankThree` returns three other works. Alternatives weakens the same tags as dismiss. The status line includes each story note. `Notes 1`, `Notes 2`, and `Notes 3` open that work's artist background, inspiration, and meaning. `Use 1`, `Use 2`, or `Use 3` places that work on the saved wall picture.
 7. `Change tags` starts again at step 2. `End` stops. The five uncertainty questions are not in the app.
 
 A keep, save, dismiss, matched question, or chosen rank is stored only after consent. `SessionTranscript.Format` prints that record. The same text is written to `capstone-session.txt` under `Application.persistentDataPath` when the device allows the write. The rules and the catalogue do not call a network.
