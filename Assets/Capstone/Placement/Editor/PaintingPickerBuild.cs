@@ -24,7 +24,10 @@ namespace Capstone.Placement
             string projectPath = PBXProject.GetPBXProjectPath(path);
             PBXProject project = new PBXProject();
             project.ReadFromFile(projectPath);
-            project.AddFrameworkToProject(project.GetUnityFrameworkTargetGuid(), "PhotosUI.framework", false);
+            string framework = project.GetUnityFrameworkTargetGuid();
+            project.AddFrameworkToProject(framework, "PhotosUI.framework", false);
+            project.SetTeamId(project.GetUnityMainTargetGuid(), "XYPYJ35Y2B");
+            project.SetTeamId(framework, "XYPYJ35Y2B");
             project.WriteToFile(projectPath);
         }
     }

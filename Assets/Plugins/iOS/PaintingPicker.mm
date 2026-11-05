@@ -47,7 +47,7 @@ extern void UnitySendMessage(const char *objectName, const char *methodName, con
 
 static CapstonePaintingPicker *capstonePicker;
 
-void CapstonePickPainting(const char *gameObjectName)
+extern "C" void CapstonePickPainting(const char *gameObjectName)
 {
     if (capstonePicker == nil)
         capstonePicker = [CapstonePaintingPicker new];
