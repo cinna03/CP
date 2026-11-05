@@ -74,6 +74,11 @@ namespace Capstone.Placement
         public const string SkippedMessage = "Skipped. Keep, save, dismiss, or ask for alternatives.";
         public const string EndedMessage = "Session ended. The five uncertainty questions stay on the paper form.";
 
+        /// <summary>
+        /// Opens the four trial pictures straight away. Set this to false to play the opening, the consent code, and the questions.
+        /// </summary>
+        public const bool SkipOpeningForPreview = true;
+
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
 
         ARRaycastManager raycastManager;
@@ -187,7 +192,7 @@ namespace Capstone.Placement
             EnsureVerticalPlanes();
             SilenceTemplateSpawner();
             current = SampleArtwork.Create();
-            shown = CatalogueFilter.Matching(SampleCatalogue.All, null, null, null, 0f, 0f);
+            shown = CatalogueFilter.Matching(CatalogueSource(), null, null, null, 0f, 0f);
             feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(current.Style, current.Mood, current.Colour));
             session = new BuyerSession("local-preview");
             surface = CreateSurface(current);
@@ -536,6 +541,32 @@ namespace Capstone.Placement
             {
                 // The session object still holds the events.
             }
+        }
+
+        static System.Collections.Generic.IReadOnlyList<Artwork> CatalogueSource()
+        {
+            return SkipOpeningForPreview ? TrialPieces.All : SampleCatalogue.All;
+        }
+
+        void StartPreview()
+        {
+            BuyerSession started;
+            if (BuyerSession.TryStart("AZURE", out started))
+                session = started;
+            tagsChosen = true;
+            narrowed = false;
+            browsing = true;
+            ended = false;
+            enteringOwnPiece = false;
+            quiz.Restart();
+            pathStep = BuyerPath.Catalogue;
+            shown = new System.Collections.Generic.List<Artwork>(TrialPieces.All);
+            if (shown.Count > 0)
+                current = shown[0];
+            feedback = new FeedbackLoop(PreferenceProfile.FromInitialTags(null, null, null));
+            OpenStep(PrototypeScreen.Works);
+            PaintCatalogueHeading();
+            RefreshWorkList();
         }
 
         void StartBuyerPath()
@@ -923,7 +954,7 @@ namespace Capstone.Placement
             if (feedback == null || current == null)
                 return;
             apply(feedback);
-            offered = Recommender.RankThree(SampleCatalogue.All, feedback.Profile, current.Id);
+            offered = Recommender.RankThree(CatalogueSource(), feedback.Profile, current.Id);
             string[] recommendedIds = IdsInRankOrder(offered);
             bool logged = session != null && session.LogAction(
                 current.Id,
@@ -1130,7 +1161,7 @@ namespace Capstone.Placement
 
         void UseFilter(string style, string mood, string colour, float maxWidthCm, float maxHeightCm)
         {
-            shown = CatalogueFilter.Matching(SampleCatalogue.All, style, mood, colour, maxWidthCm, maxHeightCm);
+            shown = CatalogueFilter.Matching(CatalogueSource(), style, mood, colour, maxWidthCm, maxHeightCm);
             offered = null;
             if (shown.Count == 0)
             {
@@ -1182,7 +1213,9 @@ namespace Capstone.Placement
             if (catalogueHeading == null)
                 return;
 
-            catalogueHeading.text = narrowed && !browsing ? "Top picks" : "All pieces";
+            catalogueHeading.text = SkipOpeningForPreview
+                ? "Pieces to try"
+                : (narrowed && !browsing ? "Top picks" : "All pieces");
             if (catalogueSubtitle != null)
                 catalogueSubtitle.text = CatalogueLine();
         }
@@ -1241,7 +1274,7 @@ namespace Capstone.Placement
                 statusShade.gameObject.SetActive(!onWorks);
             if (status != null)
                 status.gameObject.SetActive(!onWorks);
-            bool filtersOpen = browsing || !narrowed;
+            bool filtersOpen = (browsing || !narrowed) && !SkipOpeningForPreview;
             SetObjectActive(browseButton, onWorks && narrowed && !browsing);
             SetObjectActive(topPicksButton, onWorks && narrowed && browsing);
             SetObjectActive(browseFilters, onWorks && filtersOpen);
@@ -1447,22 +1480,44 @@ namespace Capstone.Placement
 
             GameObject chip = new GameObject("Colour", typeof(RectTransform));
             chip.transform.SetParent(cardObject.transform, false);
-            Image chipImage = chip.AddComponent<Image>();
-            chipImage.color = FillFor(work);
-            chipImage.raycastTarget = false;
-            RectTransform chipRect = chip.GetComponent<RectTransform>();
-            chipRect.anchorMin = new Vector2(0f, 0.5f);
-            chipRect.anchorMax = new Vector2(0f, 0.5f);
-            chipRect.pivot = new Vector2(0f, 0.5f);
-            chipRect.sizeDelta = new Vector2(96f, 96f);
-            chipRect.anchoredPosition = new Vector2(24f, 0f);
+            Texture2D picture = PictureFor(work);
+            float inset = 140f;
+            if (picture != null)
+            {
+                RawImage raw = chip.AddComponent<RawImage>();
+                raw.texture = picture;
+                raw.raycastTarget = false;
+                float aspect = picture.width / (float)Mathf.Max(1, picture.height);
+                float chipHeight = 120f;
+                float chipWidth = Mathf.Min(200f, chipHeight * aspect);
+                chipHeight = chipWidth / aspect;
+                RectTransform chipRect = chip.GetComponent<RectTransform>();
+                chipRect.anchorMin = new Vector2(0f, 0.5f);
+                chipRect.anchorMax = new Vector2(0f, 0.5f);
+                chipRect.pivot = new Vector2(0f, 0.5f);
+                chipRect.sizeDelta = new Vector2(chipWidth, chipHeight);
+                chipRect.anchoredPosition = new Vector2(24f, 0f);
+                inset = 44f + chipWidth;
+            }
+            else
+            {
+                Image chipImage = chip.AddComponent<Image>();
+                chipImage.color = FillFor(work);
+                chipImage.raycastTarget = false;
+                RectTransform chipRect = chip.GetComponent<RectTransform>();
+                chipRect.anchorMin = new Vector2(0f, 0.5f);
+                chipRect.anchorMax = new Vector2(0f, 0.5f);
+                chipRect.pivot = new Vector2(0f, 0.5f);
+                chipRect.sizeDelta = new Vector2(96f, 96f);
+                chipRect.anchoredPosition = new Vector2(24f, 0f);
+            }
 
             Color ink = selected ? Color.white : PageInk;
             Color meta = selected ? new Color(0.82f, 0.9f, 1f, 1f) : new Color(0.35f, 0.48f, 0.64f, 1f);
-            Text title = CreateCardLine(cardObject.transform, work.Title, 32, ink, new Vector2(140f, 18f), new Vector2(-24f, -16f), new Vector2(0f, 0.42f), Vector2.one);
+            Text title = CreateCardLine(cardObject.transform, work.Title, 32, ink, new Vector2(inset, 18f), new Vector2(-24f, -16f), new Vector2(0f, 0.42f), Vector2.one);
             title.alignment = TextAnchor.LowerLeft;
             string detail = work.Artist + ", " + work.Year + "   " + work.WidthCm.ToString("0") + " x " + work.HeightCm.ToString("0") + " cm";
-            Text line = CreateCardLine(cardObject.transform, detail, 24, meta, new Vector2(140f, 16f), new Vector2(-24f, -8f), Vector2.zero, new Vector2(1f, 0.42f));
+            Text line = CreateCardLine(cardObject.transform, detail, 24, meta, new Vector2(inset, 16f), new Vector2(-24f, -8f), Vector2.zero, new Vector2(1f, 0.42f));
             line.alignment = TextAnchor.UpperLeft;
         }
 
@@ -1939,7 +1994,17 @@ namespace Capstone.Placement
         {
             if (artwork != null && artwork.Id == BuyerPieceId && buyerTexture != null)
                 return buyerTexture;
+            Texture2D picture = PictureFor(artwork);
+            if (picture != null)
+                return picture;
             return SampleTexture(FillFor(artwork));
+        }
+
+        static Texture2D PictureFor(Artwork artwork)
+        {
+            if (artwork == null || string.IsNullOrEmpty(artwork.ImageResource))
+                return null;
+            return Resources.Load<Texture2D>(artwork.ImageResource);
         }
 
         static Color FillFor(Artwork artwork)
@@ -2136,17 +2201,25 @@ namespace Capstone.Placement
                 aimMark.rectTransform.SetAsLastSibling();
             ApplyStepVisibility();
 
-            canvasObject.SetActive(false);
-            OpeningSequence.Play(uiFont, (id, code) =>
+            if (SkipOpeningForPreview)
             {
-                BuyerSession started;
-                if (BuyerSession.TryStart(code, out started))
-                    session = started;
-                ChooseOpeningWork(id);
-                if (canvasObject != null)
-                    canvasObject.SetActive(true);
-                StartBuyerPath();
-            });
+                StartPreview();
+                canvasObject.SetActive(true);
+            }
+            else
+            {
+                canvasObject.SetActive(false);
+                OpeningSequence.Play(uiFont, (id, code) =>
+                {
+                    BuyerSession started;
+                    if (BuyerSession.TryStart(code, out started))
+                        session = started;
+                    ChooseOpeningWork(id);
+                    if (canvasObject != null)
+                        canvasObject.SetActive(true);
+                    StartBuyerPath();
+                });
+            }
         }
 
         static void Cover(GameObject panel, Color color)
