@@ -53,7 +53,7 @@ namespace Capstone.Placement
         public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
-        public const string ScanWallMessage = "Sweep the wall. The piece appears on the open part, not on the sofa.";
+        public const string ScanWallMessage = "Point the circle at the wall.";
         public const string FloorMessage = "That is the floor. Lift the phone and put the circle on the wall.";
         public const string FurnitureMessage = "That is furniture. Hold the circle on the open wall.";
         public const string HoldWallMessage = "Hold the circle still on the open wall.";
@@ -2067,6 +2067,14 @@ namespace Capstone.Placement
             if (raycastManager == null || arCamera == null)
                 return false;
 
+            if (planeManager == null)
+                planeManager = FindAnyObjectByType<ARPlaneManager>();
+            if (planeManager != null)
+                planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
+
+            if (TryFacingWall(out point, out normal))
+                return true;
+
             CollectPlanes();
             bool hasDepth = MeasureWallDepth(out float wallDepth);
             ARPlane wall = ChooseOpenWall(hasDepth, wallDepth, out point, out normal, out float distance, out bool sawFloor, out bool sawFurniture);
@@ -2089,6 +2097,80 @@ namespace Capstone.Placement
             }
 
             return PlaceAtDepth(stableDepth, out point, out normal);
+        }
+
+        bool TryFacingWall(out Vector3 point, out Vector3 normal)
+        {
+            if (TryVerticalSurface(new Vector2(0.5f, 0.55f), true, out point, out normal))
+                return true;
+
+            for (int i = 0; i < AimSpots.Length; i++)
+            {
+                if (!TryVerticalSurface(AimSpots[i], false, out Vector3 edgePoint, out Vector3 edgeNormal))
+                    continue;
+
+                Ray center = arCamera.ScreenPointToRay(new Vector2(Screen.width * 0.5f, Screen.height * 0.55f));
+                Plane surface = new Plane(edgeNormal, edgePoint);
+                if (!surface.Raycast(center, out float enter))
+                    continue;
+                if (enter < MinWallDistance || enter > MaxWallDistance)
+                    continue;
+
+                point = center.GetPoint(enter);
+                normal = edgeNormal;
+                return true;
+            }
+
+            point = default;
+            normal = Vector3.forward;
+            return false;
+        }
+
+        bool TryVerticalSurface(Vector2 viewport, bool fromCircle, out Vector3 point, out Vector3 normal)
+        {
+            point = default;
+            normal = Vector3.forward;
+            Vector2 spot = new Vector2(Screen.width * viewport.x, Screen.height * viewport.y);
+            TrackableType surfaces = TrackableType.PlaneWithinPolygon
+                | TrackableType.PlaneWithinBounds
+                | TrackableType.PlaneEstimated
+                | TrackableType.PlaneWithinInfinity;
+            if (!raycastManager.Raycast(spot, Hits, surfaces))
+                return false;
+
+            foreach (ARRaycastHit hit in Hits)
+            {
+                Vector3 up = hit.pose.up;
+                if (up.sqrMagnitude < 0.01f)
+                    continue;
+                if (Mathf.Abs(up.y) > 0.4f)
+                {
+                    if (fromCircle && up.y > 0.7f)
+                        aimingAtFloor = true;
+                    continue;
+                }
+
+                if (hit.distance < MinWallDistance || hit.distance > MaxWallDistance)
+                    continue;
+
+                ARPlane plane = hit.trackable as ARPlane;
+                if (plane != null && IsFurniture(plane))
+                {
+                    if (fromCircle)
+                        aimingAtFurniture = true;
+                    continue;
+                }
+
+                bool onTheSurface = (hit.hitType & (TrackableType.PlaneEstimated | TrackableType.PlaneWithinPolygon | TrackableType.PlaneWithinBounds)) != 0;
+                if (!onTheSurface && (plane == null || !IsWall(plane)))
+                    continue;
+
+                point = hit.pose.position;
+                normal = up;
+                return true;
+            }
+
+            return false;
         }
 
         bool MeasureWallDepth(out float depth)
