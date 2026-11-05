@@ -53,7 +53,8 @@ namespace Capstone.Placement
         public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
-        public const string ScanWallMessage = "Move the phone slowly across the wall.";
+        public const string ScanWallMessage = "Point the circle at a wall and move the phone slowly.";
+        public const string FloorMessage = "That is the floor. Lift the phone and put the circle on the wall.";
         public const string WallFoundMessage = "Wall detected. You are ready to test the art piece. Press Place.";
         public const string HoldingWallMessage = "Wall detected. Saving this view.";
         public const string WallHeldMessage = "This view is saved. You can lower the phone.";
@@ -80,6 +81,14 @@ namespace Capstone.Placement
         public const bool SkipOpeningForPreview = true;
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
+        static readonly Vector2[] AimSpots =
+        {
+            new Vector2(0.50f, 0.62f),
+            new Vector2(0.35f, 0.58f),
+            new Vector2(0.65f, 0.58f),
+            new Vector2(0.50f, 0.50f),
+            new Vector2(0.50f, 0.42f),
+        };
 
         ARRaycastManager raycastManager;
         Camera arCamera;
@@ -120,6 +129,7 @@ namespace Capstone.Placement
         bool wallHeld;
         bool savingView;
         bool triedSave;
+        bool aimingAtFloor;
         Vector3 heldPoint;
         Vector3 heldNormal;
         Vector3 heldCameraPosition;
@@ -189,7 +199,7 @@ namespace Capstone.Placement
             raycastManager = FindAnyObjectByType<ARRaycastManager>();
             arCamera = Camera.main != null ? Camera.main : FindAnyObjectByType<Camera>();
             EnsurePointer();
-            EnsureVerticalPlanes();
+            PrepareTracking();
             SilenceTemplateSpawner();
             current = SampleArtwork.Create();
             shown = CatalogueFilter.Matching(CatalogueSource(), null, null, null, 0f, 0f);
@@ -229,7 +239,8 @@ namespace Capstone.Placement
                 StartCoroutine(SaveWallView());
                 return;
             }
-            string next = found ? WallFoundMessage : ScanWallMessage;
+            string next = found ? WallFoundMessage : (aimingAtFloor ? FloorMessage : ScanWallMessage);
+            HideTrackingDots();
             if (found == wallReady && status.text == next)
                 return;
 
@@ -532,6 +543,12 @@ namespace Capstone.Placement
 
         void OpenWall()
         {
+            if (SkipOpeningForPreview && (shown == null || shown.Count == 0 || current == null || current.Id == SampleArtwork.FirstId))
+            {
+                StartPreview();
+                return;
+            }
+
             pathStep = BuyerPath.Next(BuyerPath.Catalogue, BuyerPath.Place);
             if (!Application.isEditor && BuyerPath.OpensCamera(pathStep))
             {
@@ -1675,13 +1692,19 @@ namespace Capstone.Placement
             events.AddComponent<InputSystemUIInputModule>();
         }
 
-        static void EnsureVerticalPlanes()
+        static void PrepareTracking()
         {
             ARPlaneManager planes = FindAnyObjectByType<ARPlaneManager>();
-            if (planes == null)
-                return;
+            if (planes != null)
+                planes.requestedDetectionMode = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
+            HideTrackingDots();
+        }
 
-            planes.requestedDetectionMode |= PlaneDetectionMode.Vertical;
+        static void HideTrackingDots()
+        {
+            ARPointCloudManager clouds = FindAnyObjectByType<ARPointCloudManager>();
+            if (clouds != null && clouds.enabled)
+                clouds.enabled = false;
         }
 
         static void SilenceTemplateSpawner()
@@ -1957,24 +1980,36 @@ namespace Capstone.Placement
         {
             hit = default;
             plane = null;
+            aimingAtFloor = false;
             if (raycastManager == null)
                 return false;
 
-            Vector2 centre = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
-            if (!raycastManager.Raycast(centre, Hits, TrackableType.PlaneWithinPolygon))
-                return false;
-
-            foreach (ARRaycastHit candidate in Hits)
+            TrackableType surfaces = TrackableType.PlaneWithinPolygon | TrackableType.PlaneWithinBounds | TrackableType.PlaneEstimated;
+            bool sawFloor = false;
+            for (int i = 0; i < AimSpots.Length; i++)
             {
-                if (candidate.trackable is ARPlane candidatePlane
-                    && candidatePlane.alignment == PlaneAlignment.Vertical)
+                Vector2 spot = new Vector2(Screen.width * AimSpots[i].x, Screen.height * AimSpots[i].y);
+                if (!raycastManager.Raycast(spot, Hits, surfaces))
+                    continue;
+
+                foreach (ARRaycastHit candidate in Hits)
                 {
-                    hit = candidate;
-                    plane = candidatePlane;
-                    return true;
+                    ARPlane candidatePlane = candidate.trackable as ARPlane;
+                    if (candidatePlane == null)
+                        continue;
+                    if (candidatePlane.alignment == PlaneAlignment.Vertical)
+                    {
+                        hit = candidate;
+                        plane = candidatePlane;
+                        return true;
+                    }
+
+                    if (candidatePlane.alignment == PlaneAlignment.HorizontalUp)
+                        sawFloor = true;
                 }
             }
 
+            aimingAtFloor = sawFloor;
             return false;
         }
 

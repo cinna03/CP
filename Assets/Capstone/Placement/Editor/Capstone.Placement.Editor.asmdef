@@ -1,0 +1,18 @@
+{
+    "name": "Capstone.Placement.Editor",
+    "rootNamespace": "Capstone.Placement",
+    "references": [
+        "UnityEditor.iOS.Extensions.Xcode"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
