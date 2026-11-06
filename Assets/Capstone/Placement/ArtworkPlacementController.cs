@@ -346,14 +346,14 @@ namespace Capstone.Placement
 
             if (Application.isEditor && rooms != null && roomChosen)
             {
-                Vector3 point;
-                Vector3 normal;
-                if (!rooms.TryHit(arCamera, out point, out normal))
+                Vector3 editorPoint;
+                Vector3 editorNormal;
+                if (!rooms.TryHit(arCamera, out editorPoint, out editorNormal))
                 {
-                    point = rooms.WallFace();
-                    normal = Vector3.forward;
+                    editorPoint = rooms.WallFace();
+                    editorNormal = Vector3.forward;
                 }
-                PlaceOn(point, normal);
+                PlaceOn(editorPoint, editorNormal);
                 return;
             }
 
