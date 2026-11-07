@@ -161,7 +161,6 @@ namespace Capstone.Placement
         bool wallSettling;
         float stableDepth;
         float stableSince;
-        float placeArmedAt;
         bool distanceGuessed;
         bool hasGuessAnchor;
         Vector3 guessedAnchor;
@@ -265,26 +264,9 @@ namespace Capstone.Placement
             bool found = TryHitVerticalWall(out Vector3 point, out Vector3 normal);
             if (found)
             {
-                ShowLivePiece(point, normal);
-                if (placeArmedAt <= 0f)
-                    placeArmedAt = Time.time;
-                if (Time.time - placeArmedAt < 0.35f)
-                {
-                    if (status.text == HoldWallMessage)
-                        return;
-                    wallReady = true;
-                    status.text = HoldWallMessage;
-                    if (aimMark != null)
-                        aimMark.color = AimReady;
-                    ApplyStepVisibility();
-                    return;
-                }
-
                 PlaceOn(point, normal);
                 return;
             }
-
-            placeArmedAt = 0f;
 
             if (placed != null)
                 placed.SetActive(false);
@@ -409,6 +391,8 @@ namespace Capstone.Placement
             Vector3 cameraPosition = arCamera != null ? arCamera.transform.position : point + normal;
             WallPose pose = ArtworkWallPose.At(current, point, normal, cameraPosition);
             placed.SetActive(true);
+            if (raycastManager != null)
+                placed.transform.SetParent(raycastManager.transform, true);
             placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             ApplyArtwork(current);
             scanning = false;
@@ -630,7 +614,6 @@ namespace Capstone.Placement
                 scanning = true;
                 wallReady = false;
                 stableSince = 0f;
-                placeArmedAt = 0f;
                 hasGuessAnchor = false;
                 wallSettling = false;
             }
