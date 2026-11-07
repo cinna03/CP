@@ -5,6 +5,7 @@ using Capstone.Catalogue;
 using Capstone.Dialogue;
 using Capstone.Ranking;
 using Capstone.Session;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -53,11 +54,12 @@ namespace Capstone.Placement
         public const string ConsentMessage = "Consent is marked. Later actions can be stored.";
         public const string NotLoggedMessage = "Not logged. Consent is not marked.";
         public const string WorksStepMessage = "Choose a work. The size and story are stored on it.";
-        public const string ScanWallMessage = "Point the circle at the wall.";
+        public const string ScanWallMessage = "Hold the phone up and point the circle at the wall.";
+        public const string PlainWallMessage = "Plain wall. Step until the piece meets it, then press Place.";
         public const string FloorMessage = "That is the floor. Lift the phone and put the circle on the wall.";
         public const string FurnitureMessage = "That is furniture. Hold the circle on the open wall.";
         public const string HoldWallMessage = "Hold the circle still on the open wall.";
-        public const string WallFoundMessage = "Move the phone. The piece follows the wall. Press Place when it looks right.";
+        public const string WallFoundMessage = "The piece is on the vertical wall. Move the phone, then press Place.";
         public const string HoldingWallMessage = "Wall detected. Saving this view.";
         public const string WallHeldMessage = "This view is saved. You can lower the phone.";
         public const string WallStepMessage = "Press Place. The work keeps its stored centimetres.";
@@ -159,6 +161,10 @@ namespace Capstone.Placement
         bool wallSettling;
         float stableDepth;
         float stableSince;
+        bool distanceGuessed;
+        bool hasGuessAnchor;
+        Vector3 guessedAnchor;
+        static readonly List<float> FacingDepths = new List<float>(160);
         Vector3 heldPoint;
         Vector3 heldNormal;
         Vector3 heldCameraPosition;
@@ -259,11 +265,12 @@ namespace Capstone.Placement
             if (found)
             {
                 ShowLivePiece(point, normal);
-                if (wallReady && status.text == WallFoundMessage)
+                string live = distanceGuessed ? PlainWallMessage : WallFoundMessage;
+                if (wallReady && status.text == live)
                     return;
 
                 wallReady = true;
-                status.text = WallFoundMessage;
+                status.text = live;
                 if (aimMark != null)
                     aimMark.color = AimReady;
                 ApplyStepVisibility();
@@ -616,6 +623,7 @@ namespace Capstone.Placement
                 scanning = true;
                 wallReady = false;
                 stableSince = 0f;
+                hasGuessAnchor = false;
                 wallSettling = false;
             }
 
@@ -2072,31 +2080,128 @@ namespace Capstone.Placement
             if (planeManager != null)
                 planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
 
-            if (TryFacingWall(out point, out normal))
-                return true;
+            return TryGravityWall(out point, out normal);
+        }
 
-            CollectPlanes();
-            bool hasDepth = MeasureWallDepth(out float wallDepth);
-            ARPlane wall = ChooseOpenWall(hasDepth, wallDepth, out point, out normal, out float distance, out bool sawFloor, out bool sawFurniture);
-            if (wall != null)
+        bool TryGravityWall(out Vector3 point, out Vector3 normal)
+        {
+            point = default;
+            normal = Vector3.forward;
+            EnsureFeaturePoints();
+            Vector3 look = arCamera.transform.forward;
+            if (look.y < -0.55f)
             {
-                stableDepth = distance;
-                stableSince = Time.time;
-                return true;
-            }
-
-            if (!hasDepth || !DepthReady(wallDepth))
-            {
-                if (hasDepth)
-                    wallSettling = true;
-                else
-                    stableSince = 0f;
-                aimingAtFurniture = sawFurniture;
-                aimingAtFloor = sawFloor && !sawFurniture;
+                aimingAtFloor = true;
                 return false;
             }
 
-            return PlaceAtDepth(stableDepth, out point, out normal);
+            Vector3 flat = look;
+            flat.y = 0f;
+            if (flat.sqrMagnitude < 0.04f)
+            {
+                aimingAtFloor = look.y < 0f;
+                return false;
+            }
+
+            flat.Normalize();
+            normal = -flat;
+            bool measured = MeasureFacingDepth(flat, out float depth);
+            Vector3 anchor;
+            if (measured)
+            {
+                stableDepth = stableSince <= 0f ? depth : Mathf.Lerp(stableDepth, depth, 0.25f);
+                stableSince = Time.time;
+                distanceGuessed = false;
+                hasGuessAnchor = false;
+                anchor = arCamera.transform.position + flat * stableDepth;
+            }
+            else
+            {
+                if (hasGuessAnchor)
+                {
+                    Vector3 toward = guessedAnchor - arCamera.transform.position;
+                    toward.y = 0f;
+                    if (toward.sqrMagnitude < 0.01f || Vector3.Dot(toward.normalized, flat) < 0.5f)
+                        hasGuessAnchor = false;
+                }
+
+                if (!hasGuessAnchor)
+                {
+                    guessedAnchor = arCamera.transform.position + flat * 2f;
+                    hasGuessAnchor = true;
+                }
+
+                distanceGuessed = true;
+                anchor = guessedAnchor;
+            }
+            Plane surface = new Plane(normal, anchor);
+            Ray ray = arCamera.ScreenPointToRay(new Vector2(Screen.width * 0.5f, Screen.height * 0.55f));
+            if (!surface.Raycast(ray, out float enter) || enter < MinWallDistance || enter > MaxWallDistance)
+            {
+                point = anchor;
+                return true;
+            }
+
+            point = ray.GetPoint(enter);
+            return true;
+        }
+
+        bool MeasureFacingDepth(Vector3 flatForward, out float depth)
+        {
+            depth = 0f;
+            FacingDepths.Clear();
+            Vector3 eye = arCamera.transform.position;
+            if (pointCloudManager != null)
+            {
+                foreach (ARPointCloud cloud in pointCloudManager.trackables)
+                {
+                    if (!cloud.positions.HasValue)
+                        continue;
+                    NativeSlice<Vector3> positions = cloud.positions.Value;
+                    for (int i = 0; i < positions.Length; i++)
+                        NoteDepth(cloud.transform.TransformPoint(positions[i]), eye, flatForward);
+                }
+            }
+
+            for (int row = 0; row < 4; row++)
+            {
+                for (int col = 0; col < 5; col++)
+                {
+                    Vector2 spot = new Vector2(
+                        Screen.width * (0.12f + col * 0.19f),
+                        Screen.height * (0.34f + row * 0.14f));
+                    if (!raycastManager.Raycast(spot, Hits, TrackableType.FeaturePoint | TrackableType.PlaneEstimated | TrackableType.PlaneWithinPolygon))
+                        continue;
+                    foreach (ARRaycastHit candidate in Hits)
+                    {
+                        if (Mathf.Abs(candidate.pose.up.y) > 0.75f)
+                            continue;
+                        NoteDepth(candidate.pose.position, eye, flatForward);
+                    }
+                }
+            }
+
+            if (FacingDepths.Count == 0)
+                return false;
+
+            FacingDepths.Sort();
+            int index = FacingDepths.Count == 1 ? 0 : (FacingDepths.Count * 4) / 5;
+            depth = FacingDepths[Mathf.Clamp(index, 0, FacingDepths.Count - 1)];
+            return true;
+        }
+
+        static void NoteDepth(Vector3 world, Vector3 eye, Vector3 flatForward)
+        {
+            Vector3 offset = world - eye;
+            float along = Vector3.Dot(offset, flatForward);
+            if (along < 0.6f || along > MaxWallDistance)
+                return;
+            if (world.y < eye.y - 1.15f || world.y > eye.y + 1.4f)
+                return;
+            Vector3 lateral = offset - flatForward * along;
+            if (lateral.magnitude > along * 1.15f)
+                return;
+            FacingDepths.Add(along);
         }
 
         bool TryFacingWall(out Vector3 point, out Vector3 normal)
