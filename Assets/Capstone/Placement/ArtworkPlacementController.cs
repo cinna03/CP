@@ -117,6 +117,7 @@ namespace Capstone.Placement
 
         ARRaycastManager raycastManager;
         ARPlaneManager planeManager;
+        ARPlane anchorPlane;
         ARPointCloudManager pointCloudManager;
         Camera arCamera;
         GameObject placed;
@@ -391,8 +392,8 @@ namespace Capstone.Placement
             Vector3 cameraPosition = arCamera != null ? arCamera.transform.position : point + normal;
             WallPose pose = ArtworkWallPose.At(current, point, normal, cameraPosition);
             placed.SetActive(true);
-            if (raycastManager != null)
-                placed.transform.SetParent(raycastManager.transform, true);
+            if (anchorPlane != null)
+                placed.transform.SetParent(anchorPlane.transform, true);
             placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             ApplyArtwork(current);
             scanning = false;
@@ -2096,29 +2097,13 @@ namespace Capstone.Placement
 
             flat.Normalize();
             normal = -flat;
-            if (TryVerticalSurface(new Vector2(0.5f, 0.55f), true, out Vector3 hit, out _))
-            {
-                float along = Vector3.Dot(hit - arCamera.transform.position, flat);
-                if (along >= 0.75f && along <= MaxWallDistance)
-                {
-                    point = hit;
-                    return true;
-                }
-            }
-
-            if (!MeasureFacingDepth(flat, out float depth))
+            anchorPlane = null;
+            if (!TryVerticalSurface(new Vector2(0.5f, 0.55f), true, out point, out normal))
+                return false;
+            if (anchorPlane == null)
                 return false;
 
-            Vector3 anchor = arCamera.transform.position + flat * depth;
-            Plane surface = new Plane(normal, anchor);
-            Ray ray = arCamera.ScreenPointToRay(new Vector2(Screen.width * 0.5f, Screen.height * 0.55f));
-            if (!surface.Raycast(ray, out float enter) || enter < 0.75f || enter > MaxWallDistance)
-            {
-                point = anchor;
-                return true;
-            }
-
-            point = ray.GetPoint(enter);
+            normal = anchorPlane.normal;
             return true;
         }
 
@@ -2235,19 +2220,18 @@ namespace Capstone.Placement
                     continue;
 
                 ARPlane plane = hit.trackable as ARPlane;
-                if (plane != null && IsFurniture(plane))
+                if (plane == null || plane.alignment != PlaneAlignment.Vertical)
+                    continue;
+                if (IsFurniture(plane))
                 {
                     if (fromCircle)
                         aimingAtFurniture = true;
                     continue;
                 }
 
-                bool onTheSurface = (hit.hitType & (TrackableType.PlaneEstimated | TrackableType.PlaneWithinPolygon | TrackableType.PlaneWithinBounds)) != 0;
-                if (!onTheSurface && (plane == null || !IsWall(plane)))
-                    continue;
-
+                anchorPlane = plane;
                 point = hit.pose.position;
-                normal = up;
+                normal = plane.normal;
                 return true;
             }
 
