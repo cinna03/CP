@@ -392,8 +392,9 @@ namespace Capstone.Placement
             Vector3 cameraPosition = arCamera != null ? arCamera.transform.position : point + normal;
             WallPose pose = ArtworkWallPose.At(current, point, normal, cameraPosition);
             placed.SetActive(true);
-            if (anchorPlane != null)
-                placed.transform.SetParent(anchorPlane.transform, true);
+            Transform room = anchorPlane != null ? anchorPlane.transform.parent : null;
+            if (room != null)
+                placed.transform.SetParent(room, true);
             placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             ApplyArtwork(current);
             scanning = false;
