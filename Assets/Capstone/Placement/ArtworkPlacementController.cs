@@ -265,12 +265,11 @@ namespace Capstone.Placement
             if (found)
             {
                 ShowLivePiece(point, normal);
-                string live = distanceGuessed ? PlainWallMessage : WallFoundMessage;
-                if (wallReady && status.text == live)
+                if (wallReady && status.text == WallFoundMessage)
                     return;
 
                 wallReady = true;
-                status.text = live;
+                status.text = WallFoundMessage;
                 if (aimMark != null)
                     aimMark.color = AimReady;
                 ApplyStepVisibility();
@@ -382,15 +381,13 @@ namespace Capstone.Placement
 
         void ShowLivePiece(Vector3 point, Vector3 normal)
         {
-            bool fresh = placed == null || !placed.activeSelf;
             if (placed == null)
                 placed = CreateQuad();
             placed.SetActive(true);
             Vector3 cameraPosition = arCamera != null ? arCamera.transform.position : point + normal;
             WallPose pose = ArtworkWallPose.At(current, point, normal, cameraPosition);
             placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
-            if (fresh)
-                ApplyArtwork(current);
+            ApplyArtwork(current);
         }
 
         void PlaceOn(Vector3 point, Vector3 normal)
@@ -2105,38 +2102,33 @@ namespace Capstone.Placement
 
             flat.Normalize();
             normal = -flat;
-            bool measured = MeasureFacingDepth(flat, out float depth);
-            Vector3 anchor;
-            if (measured)
+            distanceGuessed = false;
+            hasGuessAnchor = false;
+            float depth = 0f;
+            bool haveHit = false;
+            if (TryVerticalSurface(new Vector2(0.5f, 0.55f), true, out Vector3 hit, out _))
             {
-                stableDepth = stableSince <= 0f ? depth : Mathf.Lerp(stableDepth, depth, 0.25f);
+                depth = Vector3.Dot(hit - arCamera.transform.position, flat);
+                haveHit = depth >= 0.9f && depth <= MaxWallDistance;
+            }
+
+            if (!haveHit && MeasureFacingDepth(flat, out depth))
+                haveHit = true;
+
+            if (haveHit)
+            {
+                stableDepth = stableSince <= 0f ? depth : Mathf.Lerp(stableDepth, depth, 0.35f);
                 stableSince = Time.time;
-                distanceGuessed = false;
-                hasGuessAnchor = false;
-                anchor = arCamera.transform.position + flat * stableDepth;
             }
-            else
+            else if (stableDepth < 0.9f)
             {
-                if (hasGuessAnchor)
-                {
-                    Vector3 toward = guessedAnchor - arCamera.transform.position;
-                    toward.y = 0f;
-                    if (toward.sqrMagnitude < 0.01f || Vector3.Dot(toward.normalized, flat) < 0.5f)
-                        hasGuessAnchor = false;
-                }
-
-                if (!hasGuessAnchor)
-                {
-                    guessedAnchor = arCamera.transform.position + flat * 2f;
-                    hasGuessAnchor = true;
-                }
-
-                distanceGuessed = true;
-                anchor = guessedAnchor;
+                stableDepth = 2f;
             }
+
+            Vector3 anchor = arCamera.transform.position + flat * stableDepth;
             Plane surface = new Plane(normal, anchor);
             Ray ray = arCamera.ScreenPointToRay(new Vector2(Screen.width * 0.5f, Screen.height * 0.55f));
-            if (!surface.Raycast(ray, out float enter) || enter < MinWallDistance || enter > MaxWallDistance)
+            if (!surface.Raycast(ray, out float enter) || enter < 0.9f || enter > MaxWallDistance)
             {
                 point = anchor;
                 return true;
@@ -2194,7 +2186,7 @@ namespace Capstone.Placement
         {
             Vector3 offset = world - eye;
             float along = Vector3.Dot(offset, flatForward);
-            if (along < 1.2f || along > MaxWallDistance)
+            if (along < 0.9f || along > MaxWallDistance)
                 return;
             if (world.y < eye.y - 1.15f || world.y > eye.y + 1.4f)
                 return;
