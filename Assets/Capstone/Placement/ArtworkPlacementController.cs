@@ -2194,7 +2194,7 @@ namespace Capstone.Placement
         {
             Vector3 offset = world - eye;
             float along = Vector3.Dot(offset, flatForward);
-            if (along < 0.6f || along > MaxWallDistance)
+            if (along < 1.2f || along > MaxWallDistance)
                 return;
             if (world.y < eye.y - 1.15f || world.y > eye.y + 1.4f)
                 return;
@@ -2549,6 +2549,9 @@ namespace Capstone.Placement
             material.SetTexture("_BaseMap", image);
             material.SetTexture("_MainTex", image);
             material.SetColor("_BaseColor", Color.white);
+            material.EnableKeyword("_EMISSION");
+            material.SetTexture("_EmissionMap", image);
+            material.SetColor("_EmissionColor", Color.white);
             return material;
         }
 
