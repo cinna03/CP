@@ -161,6 +161,7 @@ namespace Capstone.Placement
         bool wallSettling;
         float stableDepth;
         float stableSince;
+        float placeArmedAt;
         bool distanceGuessed;
         bool hasGuessAnchor;
         Vector3 guessedAnchor;
@@ -265,16 +266,25 @@ namespace Capstone.Placement
             if (found)
             {
                 ShowLivePiece(point, normal);
-                if (wallReady && status.text == WallFoundMessage)
+                if (placeArmedAt <= 0f)
+                    placeArmedAt = Time.time;
+                if (Time.time - placeArmedAt < 0.35f)
+                {
+                    if (status.text == HoldWallMessage)
+                        return;
+                    wallReady = true;
+                    status.text = HoldWallMessage;
+                    if (aimMark != null)
+                        aimMark.color = AimReady;
+                    ApplyStepVisibility();
                     return;
+                }
 
-                wallReady = true;
-                status.text = WallFoundMessage;
-                if (aimMark != null)
-                    aimMark.color = AimReady;
-                ApplyStepVisibility();
+                PlaceOn(point, normal);
                 return;
             }
+
+            placeArmedAt = 0f;
 
             if (placed != null)
                 placed.SetActive(false);
@@ -620,6 +630,7 @@ namespace Capstone.Placement
                 scanning = true;
                 wallReady = false;
                 stableSince = 0f;
+                placeArmedAt = 0f;
                 hasGuessAnchor = false;
                 wallSettling = false;
             }
@@ -2102,33 +2113,23 @@ namespace Capstone.Placement
 
             flat.Normalize();
             normal = -flat;
-            distanceGuessed = false;
-            hasGuessAnchor = false;
-            float depth = 0f;
-            bool haveHit = false;
             if (TryVerticalSurface(new Vector2(0.5f, 0.55f), true, out Vector3 hit, out _))
             {
-                depth = Vector3.Dot(hit - arCamera.transform.position, flat);
-                haveHit = depth >= 0.9f && depth <= MaxWallDistance;
+                float along = Vector3.Dot(hit - arCamera.transform.position, flat);
+                if (along >= 0.75f && along <= MaxWallDistance)
+                {
+                    point = hit;
+                    return true;
+                }
             }
 
-            if (!haveHit && MeasureFacingDepth(flat, out depth))
-                haveHit = true;
+            if (!MeasureFacingDepth(flat, out float depth))
+                return false;
 
-            if (haveHit)
-            {
-                stableDepth = stableSince <= 0f ? depth : Mathf.Lerp(stableDepth, depth, 0.35f);
-                stableSince = Time.time;
-            }
-            else if (stableDepth < 0.9f)
-            {
-                stableDepth = 2f;
-            }
-
-            Vector3 anchor = arCamera.transform.position + flat * stableDepth;
+            Vector3 anchor = arCamera.transform.position + flat * depth;
             Plane surface = new Plane(normal, anchor);
             Ray ray = arCamera.ScreenPointToRay(new Vector2(Screen.width * 0.5f, Screen.height * 0.55f));
-            if (!surface.Raycast(ray, out float enter) || enter < 0.9f || enter > MaxWallDistance)
+            if (!surface.Raycast(ray, out float enter) || enter < 0.75f || enter > MaxWallDistance)
             {
                 point = anchor;
                 return true;
@@ -2533,17 +2534,18 @@ namespace Capstone.Placement
 
         Material CreateSurface(Artwork artwork)
         {
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
             Material template = Resources.Load<Material>("SampleArtworkSurface");
-            Material material = template != null
-                ? new Material(template)
-                : new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            Material material = shader != null
+                ? new Material(shader)
+                : template != null
+                    ? new Material(template)
+                    : new Material(Shader.Find("Universal Render Pipeline/Lit"));
             Texture2D image = ImageFor(artwork);
             material.SetTexture("_BaseMap", image);
             material.SetTexture("_MainTex", image);
             material.SetColor("_BaseColor", Color.white);
-            material.EnableKeyword("_EMISSION");
-            material.SetTexture("_EmissionMap", image);
-            material.SetColor("_EmissionColor", Color.white);
+            material.SetFloat("_Cull", 0f);
             return material;
         }
 
