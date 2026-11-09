@@ -80,9 +80,10 @@ namespace Capstone.Placement
         public const string EndedMessage = "Session ended. The five uncertainty questions stay on the paper form.";
 
         /// <summary>
-        /// Opens the four trial pictures straight away. Set this to false to play the opening, the consent code, and the questions.
+        /// When false, the opening animation plays, then the consent code, then the questions.
+        /// Set this to true to open the four trial pictures straight away.
         /// </summary>
-        public const bool SkipOpeningForPreview = true;
+        public const bool SkipOpeningForPreview = false;
 
         static readonly List<ARRaycastHit> Hits = new List<ARRaycastHit>();
         static readonly List<ARPlane> PlaneChoices = new List<ARPlane>();
@@ -210,12 +211,22 @@ namespace Capstone.Placement
         RectTransform workViewRect;
         CanvasScaler screenFit;
         RectTransform screenColumn;
-        static readonly Color AimSearching = Color.white;
-        static readonly Color AimReady = new Color(0.25f, 0.9f, 0.4f, 1f);
+        CanvasGroup worksFade;
+        CanvasGroup wallFade;
+        CanvasGroup recommendFade;
+        Coroutine entrance;
+        string presentedStep;
+        static Sprite plate;
+        static readonly Color AimSearching = new Color(1f, 0.98f, 0.94f, 0.92f);
+        static readonly Color AimReady = new Color(0.93f, 0.84f, 0.55f, 1f);
 
-        static readonly Color PageInk = new Color(0.07f, 0.18f, 0.42f, 1f);
-        static readonly Color StepOn = new Color(0.15f, 0.35f, 0.75f, 0.95f);
-        static readonly Color StepOff = new Color(0.1f, 0.1f, 0.1f, 0.85f);
+        static readonly Color PageInk = new Color(0.102f, 0.090f, 0.078f, 1f);
+        static readonly Color PagePaper = new Color(0.957f, 0.941f, 0.910f, 1f);
+        static readonly Color PageCard = new Color(0.996f, 0.988f, 0.973f, 1f);
+        static readonly Color PageMuted = new Color(0.420f, 0.384f, 0.337f, 1f);
+        static readonly Color PageLine = new Color(0.847f, 0.816f, 0.757f, 1f);
+        static readonly Color StepOn = new Color(0.102f, 0.090f, 0.078f, 1f);
+        static readonly Color StepOff = new Color(0.102f, 0.090f, 0.078f, 0.08f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -998,9 +1009,9 @@ namespace Capstone.Placement
 
                 bool unknown = string.IsNullOrEmpty(choice.Tag);
                 if (quizImages[i] != null)
-                    quizImages[i].color = unknown ? new Color(0.75f, 0.82f, 0.90f, 1f) : StepOn;
+                    quizImages[i].color = unknown ? PageLine : StepOn;
                 if (quizLabels[i] != null)
-                    quizLabels[i].color = unknown ? new Color(0.07f, 0.18f, 0.42f, 1f) : Color.white;
+                    quizLabels[i].color = unknown ? PageInk : Color.white;
 
                 string tag = choice.Tag;
                 button.onClick.RemoveAllListeners();
@@ -1353,6 +1364,66 @@ namespace Capstone.Placement
                 status.text = RecommendStepMessage;
             else
                 status.text = WorksStatus();
+            Present(opened);
+        }
+
+        void Present(string opened)
+        {
+            if (opened == presentedStep)
+                return;
+
+            ResetFade(worksFade);
+            ResetFade(wallFade);
+            ResetFade(recommendFade);
+            presentedStep = opened;
+            bool phoneScan = !Application.isEditor && scanning && opened == PrototypeScreen.Wall;
+            CanvasGroup group = opened == PrototypeScreen.Recommend
+                ? recommendFade
+                : opened == PrototypeScreen.Works ? worksFade : wallFade;
+            if (phoneScan || group == null)
+                return;
+
+            if (entrance != null)
+                StopCoroutine(entrance);
+            entrance = StartCoroutine(FadeIn(group));
+        }
+
+        static void ResetFade(CanvasGroup group)
+        {
+            if (group == null)
+                return;
+
+            group.alpha = 1f;
+            RectTransform rect = group.transform as RectTransform;
+            if (rect != null)
+                rect.anchoredPosition = Vector2.zero;
+        }
+
+        System.Collections.IEnumerator FadeIn(CanvasGroup group)
+        {
+            RectTransform rect = group.transform as RectTransform;
+            Vector2 rest = rect != null ? rect.anchoredPosition : Vector2.zero;
+            Vector2 from = rest + new Vector2(0f, -28f);
+            group.alpha = 0f;
+            float time = 0f;
+            const float duration = 0.34f;
+            while (time < duration)
+            {
+                if (group == null || !group.gameObject.activeInHierarchy)
+                {
+                    ResetFade(group);
+                    yield break;
+                }
+
+                time += Time.unscaledDeltaTime;
+                float along = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(time / duration));
+                group.alpha = along;
+                if (rect != null)
+                    rect.anchoredPosition = Vector2.Lerp(from, rest, along);
+                yield return null;
+            }
+
+            ResetFade(group);
         }
 
         void ApplyStepVisibility()
@@ -1371,9 +1442,19 @@ namespace Capstone.Placement
                 worksPanel.SetActive(onWorks);
             bool asking = pathStep == BuyerPath.Question && step == PrototypeScreen.Wall && !phoneScan && !ended;
             if (statusShade != null)
+            {
                 statusShade.gameObject.SetActive(!onWorks);
+                Image shadeImage = statusShade.GetComponent<Image>();
+                if (shadeImage != null)
+                    shadeImage.color = phoneScan
+                        ? new Color(0.102f, 0.090f, 0.078f, 0.46f)
+                        : new Color(PagePaper.r, PagePaper.g, PagePaper.b, 0f);
+            }
             if (status != null)
+            {
                 status.gameObject.SetActive(!onWorks);
+                status.color = phoneScan ? new Color(1f, 0.98f, 0.94f, 1f) : PageInk;
+            }
             bool filtersOpen = (browsing || !narrowed) && !SkipOpeningForPreview;
             SetObjectActive(browseButton, onWorks && narrowed && !browsing);
             SetObjectActive(topPicksButton, onWorks && narrowed && browsing);
@@ -1569,7 +1650,23 @@ namespace Capstone.Placement
             GameObject cardObject = new GameObject(work.Title, typeof(RectTransform));
             cardObject.transform.SetParent(workList, false);
             Image image = cardObject.AddComponent<Image>();
-            image.color = selected ? PageInk : Color.white;
+            image.sprite = Plate();
+            image.type = Image.Type.Sliced;
+            image.color = selected ? Color.white : PageCard;
+            if (selected)
+            {
+                GameObject accent = new GameObject("Selected", typeof(RectTransform));
+                accent.transform.SetParent(cardObject.transform, false);
+                Image bar = accent.AddComponent<Image>();
+                bar.color = PageInk;
+                bar.raycastTarget = false;
+                RectTransform barRect = accent.GetComponent<RectTransform>();
+                barRect.anchorMin = new Vector2(0f, 0f);
+                barRect.anchorMax = new Vector2(0f, 1f);
+                barRect.pivot = new Vector2(0f, 0.5f);
+                barRect.sizeDelta = new Vector2(8f, -28f);
+                barRect.anchoredPosition = new Vector2(14f, 0f);
+            }
             Button button = cardObject.AddComponent<Button>();
             button.targetGraphic = image;
             int captured = index;
@@ -1615,8 +1712,8 @@ namespace Capstone.Placement
                 chipRect.anchoredPosition = new Vector2(24f, 0f);
             }
 
-            Color ink = selected ? Color.white : PageInk;
-            Color meta = selected ? new Color(0.82f, 0.9f, 1f, 1f) : new Color(0.35f, 0.48f, 0.64f, 1f);
+            Color ink = PageInk;
+            Color meta = PageMuted;
             Text title = CreateCardLine(cardObject.transform, work.Title, 32, ink, new Vector2(inset, 18f), new Vector2(-24f, -16f), new Vector2(0f, 0.42f), Vector2.one);
             title.alignment = TextAnchor.LowerLeft;
             string detail = work.Artist + ", " + work.Year + "   " + work.WidthCm.ToString("0") + " x " + work.HeightCm.ToString("0") + " cm";
@@ -1663,7 +1760,7 @@ namespace Capstone.Placement
                 return;
             Image image = widget.GetComponent<Image>();
             if (image != null)
-                image.color = Color.white;
+                image.color = PageCard;
             Text text = widget.GetComponentInChildren<Text>();
             if (text != null)
                 text.color = PageInk;
@@ -2586,9 +2683,11 @@ namespace Capstone.Placement
             screenColumn.sizeDelta = new Vector2(1080f, 0f);
             screenColumn.anchoredPosition = Vector2.zero;
 
-            uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            uiFont = Resources.Load<Font>("Fonts/Inter-Regular");
+            if (uiFont == null)
+                uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             tagsPanel = CreatePanel(column.transform, "Tags");
-            Cover(tagsPanel, new Color(0.86f, 0.93f, 1f, 1f));
+            Cover(tagsPanel, PagePaper);
             quizPrompt = CreateLabel(tagsPanel.transform, uiFont, TagsMessage, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -340f), 52);
             quizPrompt.color = new Color(0.07f, 0.18f, 0.42f, 1f);
             quizPrompt.rectTransform.sizeDelta = new Vector2(960f, 220f);
@@ -2610,7 +2709,7 @@ namespace Capstone.Placement
             }
 
             ownPiecePanel = CreatePanel(tagsPanel.transform, "Own piece");
-            Cover(ownPiecePanel, new Color(0.86f, 0.93f, 1f, 1f));
+            Cover(ownPiecePanel, PagePaper);
             pictureLabel = CreateButton(ownPiecePanel.transform, uiFont, "Upload a clear picture", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 1300f), new Vector2(1032f, 110f), UploadPainting, 32).GetComponentInChildren<Text>();
             widthValue = CreateMeasureBox(ownPiecePanel.transform, "Width cm", new Vector2(24f, 1140f), out widthBox);
             heightValue = CreateMeasureBox(ownPiecePanel.transform, "Height cm", new Vector2(24f, 990f), out heightBox);
@@ -2658,8 +2757,11 @@ namespace Capstone.Placement
             worksPanel = CreatePanel(column.transform, "Works panel");
             wallPanel = CreatePanel(column.transform, "Wall panel");
             recommendPanel = CreatePanel(column.transform, "Recommend panel");
-            Cover(worksPanel, new Color(0.86f, 0.93f, 1f, 1f));
-            Cover(recommendPanel, new Color(0.94f, 0.96f, 1f, 1f));
+            worksFade = worksPanel.AddComponent<CanvasGroup>();
+            wallFade = wallPanel.AddComponent<CanvasGroup>();
+            recommendFade = recommendPanel.AddComponent<CanvasGroup>();
+            Cover(worksPanel, PagePaper);
+            Cover(recommendPanel, PagePaper);
             GameObject workViewport = CreatePanel(worksPanel.transform, "Work scroll");
             RectTransform viewRect = workViewport.GetComponent<RectTransform>();
             viewRect.anchorMin = Vector2.zero;
@@ -2683,7 +2785,7 @@ namespace Capstone.Placement
             catalogueHeading.color = PageInk;
             catalogueHeading.rectTransform.sizeDelta = new Vector2(980f, 64f);
             catalogueSubtitle = CreateLabel(worksPanel.transform, uiFont, string.Empty, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -82f), 26);
-            catalogueSubtitle.color = new Color(0.35f, 0.48f, 0.64f, 1f);
+            catalogueSubtitle.color = PageMuted;
             catalogueSubtitle.rectTransform.sizeDelta = new Vector2(980f, 44f);
 
             browseButton = CreateButton(worksPanel.transform, uiFont, "Browse for more", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 148f), new Vector2(1032f, 84f), ShowAll, 28).gameObject;
@@ -2777,7 +2879,7 @@ namespace Capstone.Placement
             GameObject shade = new GameObject("Status shade", typeof(RectTransform));
             shade.transform.SetParent(parent, false);
             Image image = shade.AddComponent<Image>();
-            image.color = new Color(0f, 0f, 0f, 0.62f);
+            image.color = new Color(0.102f, 0.090f, 0.078f, 0.46f);
             image.raycastTarget = false;
             RectTransform rect = shade.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0f, 1f);
@@ -2861,14 +2963,67 @@ namespace Capstone.Placement
             return text;
         }
 
+        static Sprite Plate()
+        {
+            if (plate != null)
+                return plate;
+
+            const int size = 96;
+            const int radius = 28;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            Color clear = new Color(1f, 1f, 1f, 0f);
+            float limit = radius - 0.5f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = 0f;
+                    float dy = 0f;
+                    if (x < radius)
+                        dx = radius - x - 0.5f;
+                    else if (x >= size - radius)
+                        dx = x - (size - radius) + 0.5f;
+                    if (y < radius)
+                        dy = radius - y - 0.5f;
+                    else if (y >= size - radius)
+                        dy = y - (size - radius) + 0.5f;
+                    bool inside = (dx * dx) + (dy * dy) <= limit * limit;
+                    texture.SetPixel(x, y, inside ? Color.white : clear);
+                }
+            }
+
+            texture.Apply();
+            plate = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect,
+                new Vector4(radius, radius, radius, radius));
+            return plate;
+        }
+
         static Button CreateButton(Transform parent, Font font, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction onClick, int labelFontSize = 48)
         {
             GameObject buttonObject = new GameObject(label);
             buttonObject.transform.SetParent(parent, false);
             Image image = buttonObject.AddComponent<Image>();
-            image.color = new Color(0.1f, 0.1f, 0.1f, 0.85f);
+            image.sprite = Plate();
+            image.type = Image.Type.Sliced;
+            image.color = PageInk;
             Button button = buttonObject.AddComponent<Button>();
             button.targetGraphic = image;
+            ColorBlock colors = button.colors;
+            colors.fadeDuration = 0.08f;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.94f, 0.90f, 0.84f, 1f);
+            colors.pressedColor = new Color(0.82f, 0.76f, 0.68f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = new Color(1f, 1f, 1f, 0.45f);
+            button.colors = colors;
             button.onClick.AddListener(onClick);
             RectTransform rect = buttonObject.GetComponent<RectTransform>();
             rect.anchorMin = anchorMin;
@@ -2898,7 +3053,9 @@ namespace Capstone.Placement
             GameObject fieldObject = new GameObject(placeholder);
             fieldObject.transform.SetParent(parent, false);
             Image image = fieldObject.AddComponent<Image>();
-            image.color = new Color(1f, 1f, 1f, 0.96f);
+            image.sprite = Plate();
+            image.type = Image.Type.Sliced;
+            image.color = PageCard;
             Button button = fieldObject.AddComponent<Button>();
             button.targetGraphic = image;
             RectTransform rect = fieldObject.GetComponent<RectTransform>();
@@ -2908,10 +3065,10 @@ namespace Capstone.Placement
             rect.sizeDelta = new Vector2(1032f, 120f);
             rect.anchoredPosition = position;
 
-            Text value = CreateFieldText(fieldObject.transform, uiFont, string.Empty, new Color(0.07f, 0.18f, 0.42f, 1f), FontStyle.Bold, 48);
+            Text value = CreateFieldText(fieldObject.transform, uiFont, string.Empty, PageInk, FontStyle.Bold, 48);
             value.alignment = TextAnchor.MiddleLeft;
             value.raycastTarget = false;
-            Text hint = CreateFieldText(fieldObject.transform, uiFont, placeholder, new Color(0.35f, 0.42f, 0.52f, 0.9f), FontStyle.Italic, 36);
+            Text hint = CreateFieldText(fieldObject.transform, uiFont, placeholder, PageMuted, FontStyle.Italic, 36);
             hint.alignment = TextAnchor.MiddleLeft;
             hint.raycastTarget = false;
             box = image;
@@ -2952,8 +3109,8 @@ namespace Capstone.Placement
                 return;
 
             box.color = box == selected
-                ? new Color(0.75f, 0.86f, 1f, 1f)
-                : new Color(1f, 1f, 1f, 0.96f);
+                ? new Color(0.93f, 0.86f, 0.74f, 1f)
+                : PageCard;
         }
 
         void AppendMeasure(string digit)
@@ -3025,7 +3182,9 @@ namespace Capstone.Placement
             GameObject fieldObject = new GameObject("Concern");
             fieldObject.transform.SetParent(parent, false);
             Image image = fieldObject.AddComponent<Image>();
-            image.color = new Color(1f, 1f, 1f, 0.92f);
+            image.sprite = Plate();
+            image.type = Image.Type.Sliced;
+            image.color = PageCard;
             InputField field = fieldObject.AddComponent<InputField>();
             RectTransform rect = fieldObject.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0f, 0f);
@@ -3034,8 +3193,8 @@ namespace Capstone.Placement
             rect.sizeDelta = new Vector2(760f, 110f);
             rect.anchoredPosition = new Vector2(24f, 200f);
 
-            Text text = CreateFieldText(fieldObject.transform, font, string.Empty, Color.black, FontStyle.Normal, 36);
-            Text placeholder = CreateFieldText(fieldObject.transform, font, "Ask about size, fit, light, colour, meaning, or price", new Color(0.3f, 0.3f, 0.3f, 0.8f), FontStyle.Italic, 28);
+            Text text = CreateFieldText(fieldObject.transform, font, string.Empty, PageInk, FontStyle.Normal, 36);
+            Text placeholder = CreateFieldText(fieldObject.transform, font, "Ask about size, fit, light, colour, meaning, or price", PageMuted, FontStyle.Italic, 28);
             field.textComponent = text;
             field.placeholder = placeholder;
             return field;
