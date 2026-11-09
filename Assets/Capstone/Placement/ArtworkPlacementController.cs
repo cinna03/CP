@@ -2843,7 +2843,7 @@ namespace Capstone.Placement
             else
             {
                 canvasObject.SetActive(false);
-                Action playOpening = () => OpeningSequence.Play(uiFont, (id, code) =>
+                OpeningSequence.Play(uiFont, (id, code) =>
                 {
                     BuyerSession started;
                     if (BuyerSession.TryStart(code, out started))
@@ -2853,10 +2853,6 @@ namespace Capstone.Placement
                         canvasObject.SetActive(true);
                     StartBuyerPath();
                 });
-                if (Arrival.AlreadySeen())
-                    playOpening();
-                else
-                    Arrival.Play(uiFont, playOpening);
             }
         }
 

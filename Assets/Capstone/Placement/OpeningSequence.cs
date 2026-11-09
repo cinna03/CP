@@ -19,6 +19,8 @@ namespace Capstone.Placement
         };
 
         static readonly Color Paper = Color.white;
+        static readonly Color Ink = new Color(0.114f, 0.114f, 0.122f, 1f);
+        static readonly Color Slate = new Color(0.439f, 0.439f, 0.439f, 1f);
         static readonly Color BlueTop = new Color(0.22f, 0.52f, 1f, 1f);
         static readonly Color BlueDeep = new Color(0.04f, 0.22f, 0.86f, 1f);
         const float Gravity = 10800f;
@@ -59,6 +61,11 @@ namespace Capstone.Placement
         bool resting;
         float restTime;
         bool done;
+        bool staged;
+        float stageTime;
+        RawImage work;
+        CanvasGroup workFade;
+        CanvasGroup claimFade;
 
         public static void Play(Font typeface, Action<string, string> onFinished)
         {
@@ -86,7 +93,7 @@ namespace Capstone.Placement
             paper = CreateImage(canvasObject.transform, "Paper", Paper, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             paper.raycastTarget = false;
 
-            field = CreateImage(canvasObject.transform, "Blue field", Color.white, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            field = CreateImage(canvasObject.transform, "Blue field", new Color(1f, 1f, 1f, 0f), Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
             field.sprite = VerticalGradient(BlueTop, BlueDeep);
             field.raycastTarget = false;
 
@@ -94,6 +101,7 @@ namespace Capstone.Placement
             apex = half * 0.9f;
             hop = half * 0.42f;
             words = CreateWords(canvasObject.transform, typeface);
+            BuildGallery(canvasObject.transform, typeface);
 
             shadow = CreateImage(
                 canvasObject.transform,
@@ -105,6 +113,7 @@ namespace Capstone.Placement
                 new Vector2(70f, 18f));
             shadow.sprite = SoftEllipse();
             shadow.raycastTarget = false;
+            shadow.color = new Color(shadow.color.r, shadow.color.g, shadow.color.b, 0f);
 
             Image ballImage = CreateImage(
                 canvasObject.transform,
@@ -115,8 +124,10 @@ namespace Capstone.Placement
                 new Vector2(0f, half + BallSize),
                 new Vector2(BallSize, BallSize));
             ballImage.sprite = BallSprite();
+            ballImage.color = Ink;
             ballImage.raycastTarget = false;
             ball = ballImage.rectTransform;
+            ball.gameObject.SetActive(false);
 
             GameObject orbObject = new GameObject("Glass body", typeof(RectTransform));
             orbObject.transform.SetParent(canvasObject.transform, false);
@@ -151,6 +162,11 @@ namespace Capstone.Placement
                 return;
 
             float step = Mathf.Min(Time.deltaTime, 0.033f);
+            if (!staged)
+            {
+                StageWork(step);
+                return;
+            }
             if (covering)
             {
                 Cover(step);
@@ -199,7 +215,7 @@ namespace Capstone.Placement
             if (position.y > Centre)
                 return;
 
-            words[nextWord].color = Color.white;
+            words[nextWord].color = Ink;
             if (nextWord == words.Length - 1)
             {
                 covering = true;
@@ -213,6 +229,86 @@ namespace Capstone.Placement
             float landedX = words[nextWord].rectTransform.anchoredPosition.x;
             nextWord++;
             Kick(landedX, Centre, hop);
+        }
+
+        void StageWork(float step)
+        {
+            stageTime += step;
+            float along = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(stageTime / 1.05f));
+            if (workFade != null)
+                workFade.alpha = along;
+            if (work != null)
+            {
+                float scale = Mathf.Lerp(0.82f, 1f, along);
+                work.rectTransform.localScale = new Vector3(scale, scale, 1f);
+                work.rectTransform.anchoredPosition = Vector2.Lerp(new Vector2(0f, 220f), new Vector2(0f, 340f), along);
+            }
+
+            if (claimFade != null)
+                claimFade.alpha = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((stageTime - 0.28f) / 0.7f));
+            if (along < 1f)
+                return;
+
+            staged = true;
+            if (ball != null)
+                ball.gameObject.SetActive(true);
+        }
+
+        void BuildGallery(Transform parent, Font typeface)
+        {
+            Text kicker = CreateWord(parent, typeface, "Reclining figure", 36);
+            kicker.color = Ink;
+            kicker.rectTransform.anchoredPosition = new Vector2(0f, 620f);
+            kicker.rectTransform.sizeDelta = new Vector2(900f, 52f);
+            Text claim = CreateWord(parent, typeface, "On your wall.", 72);
+            claim.color = Ink;
+            claim.rectTransform.anchoredPosition = new Vector2(0f, 530f);
+            claim.rectTransform.sizeDelta = new Vector2(900f, 90f);
+            Text line = CreateWord(parent, typeface, "At the size it was made.", 32);
+            line.fontStyle = FontStyle.Normal;
+            line.color = Slate;
+            line.rectTransform.anchoredPosition = new Vector2(0f, 460f);
+            line.rectTransform.sizeDelta = new Vector2(900f, 48f);
+
+            GameObject claims = new GameObject("Claims", typeof(RectTransform));
+            claims.transform.SetParent(parent, false);
+            RectTransform claimsRect = claims.GetComponent<RectTransform>();
+            claimsRect.anchorMin = new Vector2(0.5f, 0.5f);
+            claimsRect.anchorMax = new Vector2(0.5f, 0.5f);
+            claimsRect.sizeDelta = new Vector2(1080f, 1920f);
+            kicker.transform.SetParent(claims.transform, true);
+            claim.transform.SetParent(claims.transform, true);
+            line.transform.SetParent(claims.transform, true);
+            claimFade = claims.AddComponent<CanvasGroup>();
+            claimFade.alpha = 0f;
+
+            Texture2D picture = Resources.Load<Texture2D>("TrialPieces/reclining");
+            if (picture == null)
+                return;
+
+            GameObject stage = new GameObject("Work", typeof(RectTransform));
+            stage.transform.SetParent(parent, false);
+            work = stage.AddComponent<RawImage>();
+            work.texture = picture;
+            work.raycastTarget = false;
+            float aspect = picture.width / (float)Mathf.Max(1, picture.height);
+            float width = 860f;
+            float height = width / aspect;
+            if (height > 520f)
+            {
+                height = 520f;
+                width = height * aspect;
+            }
+
+            RectTransform stageRect = stage.GetComponent<RectTransform>();
+            stageRect.anchorMin = new Vector2(0.5f, 0.5f);
+            stageRect.anchorMax = new Vector2(0.5f, 0.5f);
+            stageRect.pivot = new Vector2(0.5f, 0.5f);
+            stageRect.sizeDelta = new Vector2(width, height);
+            stageRect.anchoredPosition = new Vector2(0f, 220f);
+            stageRect.localScale = new Vector3(0.82f, 0.82f, 1f);
+            workFade = stage.AddComponent<CanvasGroup>();
+            workFade.alpha = 0f;
         }
 
         void Aim(int index)
@@ -264,9 +360,10 @@ namespace Capstone.Placement
             ball.anchoredPosition = Vector2.Lerp(coverOrigin, Vector2.zero, rush);
             float scale = Mathf.Lerp(1f, 56f, rush);
             ball.localScale = new Vector3(scale, scale, 1f);
-            Color fieldColor = field.color;
-            fieldColor.a = 1f - rush;
-            field.color = fieldColor;
+            if (workFade != null)
+                workFade.alpha = 1f - rush;
+            if (claimFade != null)
+                claimFade.alpha = 1f - rush;
             for (int i = 0; i < words.Length; i++)
             {
                 Color color = words[i].color;
@@ -350,7 +447,7 @@ namespace Capstone.Placement
             if (ball != null)
                 ball.gameObject.SetActive(false);
             if (paper != null)
-                paper.color = new Color(0.07f, 0.18f, 0.42f, 1f);
+                paper.color = Color.white;
             if (field != null)
                 field.gameObject.SetActive(false);
             if (shadow != null)
@@ -375,12 +472,12 @@ namespace Capstone.Placement
         {
             Transform root = canvasRoot != null ? canvasRoot : (paper != null ? paper.transform.parent : null);
             if (paper != null)
-                paper.color = new Color(0.86f, 0.93f, 1f, 1f);
+                paper.color = Color.white;
 
             Image backCard = CreateImage(
                 root,
                 "Back card",
-                new Color(0.78f, 0.9f, 1f, 1f),
+                new Color(0.961f, 0.961f, 0.969f, 1f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(150f, -30f),
@@ -390,7 +487,7 @@ namespace Capstone.Placement
             Image blueCircle = CreateImage(
                 backCard.transform,
                 "Blue circle",
-                new Color(0.35f, 0.62f, 1f, 1f),
+                new Color(0f, 0.443f, 0.890f, 1f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(90f, 40f),
@@ -410,7 +507,7 @@ namespace Capstone.Placement
             card.transform.SetAsLastSibling();
 
             Text heading = CreateWord(card.transform, cardFont, "Consent code", 56);
-            heading.color = new Color(0.06f, 0.12f, 0.28f, 1f);
+            heading.color = new Color(0.114f, 0.114f, 0.122f, 1f);
             heading.alignment = TextAnchor.MiddleLeft;
             heading.rectTransform.anchoredPosition = new Vector2(0f, 280f);
             heading.rectTransform.sizeDelta = new Vector2(560f, 90f);
@@ -440,7 +537,7 @@ namespace Capstone.Placement
             Image enter = CreateImage(
                 card.transform,
                 "Enter",
-                new Color(0.06f, 0.12f, 0.28f, 1f),
+                new Color(0f, 0.443f, 0.890f, 1f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(180f, -250f),
