@@ -1751,7 +1751,7 @@ namespace Capstone.Placement
         {
             ARPlaneManager planes = FindAnyObjectByType<ARPlaneManager>();
             if (planes != null)
-                planes.requestedDetectionMode = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
+                planes.requestedDetectionMode = PlaneDetectionMode.Vertical;
             HideTrackingDots();
         }
 
@@ -2071,7 +2071,7 @@ namespace Capstone.Placement
             if (planeManager == null)
                 planeManager = FindAnyObjectByType<ARPlaneManager>();
             if (planeManager != null)
-                planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
+                planeManager.requestedDetectionMode = PlaneDetectionMode.Vertical;
 
             return TryGravityWall(out point, out normal);
         }
