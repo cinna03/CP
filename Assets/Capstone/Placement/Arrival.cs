@@ -6,16 +6,18 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The still door of a first visit. It plays once, before the opening film and before any guide.
-    /// Begin marks the visit, then the opening starts.
+    /// The first-visit door. A white gallery: the work is the event, and the type and blue control stay quiet around it.
+    /// Begin marks the visit, then the opening film starts.
     /// </summary>
     public sealed class Arrival : MonoBehaviour
     {
-        const string SeenKey = "capstone-first-visit";
-        static readonly Color Paper = new Color(0.957f, 0.941f, 0.910f, 1f);
-        static readonly Color Ink = new Color(0.102f, 0.090f, 0.078f, 1f);
-        static readonly Color Muted = new Color(0.420f, 0.384f, 0.337f, 1f);
+        const string SeenKey = "capstone-arrival-gallery";
+        static readonly Color Gallery = Color.white;
+        static readonly Color Ink = new Color(0.114f, 0.114f, 0.122f, 1f);
+        static readonly Color Slate = new Color(0.439f, 0.439f, 0.439f, 1f);
+        static readonly Color PricingBlue = new Color(0f, 0.443f, 0.890f, 1f);
 
+        static Sprite pill;
         Action begin;
 
         public static bool AlreadySeen()
@@ -46,39 +48,63 @@ namespace Capstone.Placement
             CanvasGroup fade = canvasObject.AddComponent<CanvasGroup>();
             fade.alpha = 0f;
 
-            Image paper = CreateImage(canvasObject.transform, "Paper", Paper);
-            paper.rectTransform.anchorMin = Vector2.zero;
-            paper.rectTransform.anchorMax = Vector2.one;
-            paper.rectTransform.offsetMin = Vector2.zero;
-            paper.rectTransform.offsetMax = Vector2.zero;
+            Image paper = CreateImage(canvasObject.transform, "Gallery", Gallery);
+            Stretch(paper.rectTransform);
 
-            Text eyebrow = CreateText(canvasObject.transform, typeface, "First visit", 28, Muted, FontStyle.Normal);
-            Place(eyebrow.rectTransform, new Vector2(0f, 280f), new Vector2(880f, 48f));
+            Text kicker = CreateText(canvasObject.transform, typeface, "Reclining figure", 42, Ink, FontStyle.Bold);
+            AnchorTop(kicker.rectTransform, 168f, 64f);
 
-            Text title = CreateText(canvasObject.transform, typeface, "One work,\non your wall.", 84, Ink, FontStyle.Normal);
-            title.lineSpacing = 0.85f;
-            Place(title.rectTransform, new Vector2(0f, 40f), new Vector2(880f, 280f));
+            Text claim = CreateText(canvasObject.transform, typeface, "On your wall.", 76, Ink, FontStyle.Bold);
+            AnchorTop(claim.rectTransform, 248f, 96f);
 
-            Text line = CreateText(
-                canvasObject.transform,
-                typeface,
-                "Its size is already stored. You place it, ask one thing, then decide.",
-                34,
-                Muted,
-                FontStyle.Normal);
-            Place(line.rectTransform, new Vector2(0f, -280f), new Vector2(820f, 160f));
+            Text line = CreateText(canvasObject.transform, typeface, "At the size it was made.", 36, Slate, FontStyle.Normal);
+            AnchorTop(line.rectTransform, 352f, 52f);
 
-            Image buttonImage = CreateImage(canvasObject.transform, "Begin", Ink);
+            Texture2D picture = Resources.Load<Texture2D>("TrialPieces/reclining");
+            if (picture != null)
+            {
+                GameObject stage = new GameObject("Work", typeof(RectTransform));
+                stage.transform.SetParent(canvasObject.transform, false);
+                RawImage raw = stage.AddComponent<RawImage>();
+                raw.texture = picture;
+                raw.raycastTarget = false;
+                float aspect = picture.width / (float)Mathf.Max(1, picture.height);
+                float width = 920f;
+                float height = width / aspect;
+                if (height > 860f)
+                {
+                    height = 860f;
+                    width = height * aspect;
+                }
+
+                RectTransform stageRect = stage.GetComponent<RectTransform>();
+                stageRect.anchorMin = new Vector2(0.5f, 0.5f);
+                stageRect.anchorMax = new Vector2(0.5f, 0.5f);
+                stageRect.pivot = new Vector2(0.5f, 0.5f);
+                stageRect.sizeDelta = new Vector2(width, height);
+                stageRect.anchoredPosition = new Vector2(0f, -40f);
+            }
+
+            Image buttonImage = CreateImage(canvasObject.transform, "Begin", PricingBlue);
+            buttonImage.sprite = PillSprite();
+            buttonImage.type = Image.Type.Sliced;
             RectTransform buttonRect = buttonImage.rectTransform;
             buttonRect.anchorMin = new Vector2(0.5f, 0f);
             buttonRect.anchorMax = new Vector2(0.5f, 0f);
             buttonRect.pivot = new Vector2(0.5f, 0f);
-            buttonRect.sizeDelta = new Vector2(880f, 120f);
+            buttonRect.sizeDelta = new Vector2(280f, 88f);
             buttonRect.anchoredPosition = new Vector2(0f, 96f);
             Button button = buttonImage.gameObject.AddComponent<Button>();
             button.targetGraphic = buttonImage;
+            ColorBlock colors = button.colors;
+            colors.fadeDuration = 0.12f;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.92f, 0.95f, 1f, 1f);
+            colors.pressedColor = new Color(0.82f, 0.88f, 0.96f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            button.colors = colors;
             button.onClick.AddListener(Begin);
-            Text label = CreateText(buttonImage.transform, typeface, "Begin", 36, Color.white, FontStyle.Normal);
+            Text label = CreateText(buttonImage.transform, typeface, "Begin", 32, Color.white, FontStyle.Normal);
             Stretch(label.rectTransform);
 
             StartCoroutine(Rise(fade));
@@ -97,15 +123,51 @@ namespace Capstone.Placement
         static IEnumerator Rise(CanvasGroup fade)
         {
             float time = 0f;
-            const float duration = 0.45f;
+            const float duration = 0.4f;
             while (time < duration)
             {
+                if (fade == null)
+                    yield break;
                 time += Time.unscaledDeltaTime;
                 fade.alpha = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(time / duration));
                 yield return null;
             }
 
-            fade.alpha = 1f;
+            if (fade != null)
+                fade.alpha = 1f;
+        }
+
+        static Sprite PillSprite()
+        {
+            if (pill != null)
+                return pill;
+
+            const int size = 64;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            float radius = (size * 0.5f) - 0.5f;
+            Vector2 center = new Vector2(radius, radius);
+            Color clear = new Color(1f, 1f, 1f, 0f);
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    bool inside = Vector2.Distance(new Vector2(x, y), center) <= radius;
+                    texture.SetPixel(x, y, inside ? Color.white : clear);
+                }
+            }
+
+            texture.Apply();
+            pill = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect,
+                new Vector4(30f, 30f, 30f, 30f));
+            return pill;
         }
 
         static Image CreateImage(Transform parent, string name, Color color)
@@ -134,13 +196,13 @@ namespace Capstone.Placement
             return text;
         }
 
-        static void Place(RectTransform rect, Vector2 position, Vector2 size)
+        static void AnchorTop(RectTransform rect, float fromTop, float height)
         {
-            rect.anchorMin = new Vector2(0.5f, 0.5f);
-            rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = size;
-            rect.anchoredPosition = position;
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.sizeDelta = new Vector2(920f, height);
+            rect.anchoredPosition = new Vector2(0f, -fromTop);
         }
 
         static void Stretch(RectTransform rect)
