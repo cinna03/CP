@@ -49,7 +49,8 @@ namespace Capstone.Placement
         CanvasGroup copyFade;
         CanvasGroup controlFade;
         RectTransform workRect;
-        readonly Vector2 workRest = new Vector2(0f, -80f);
+        Vector2 workRest = new Vector2(0f, -80f);
+        bool ready;
 
         public static void Play(Font typeface, Action onFinished)
         {
@@ -72,11 +73,19 @@ namespace Capstone.Placement
             scaler.matchWidthOrHeight = 0.5f;
             canvasObject.AddComponent<GraphicRaycaster>();
 
+            float half = VisibleHalfHeight(canvas);
+            float top = half - 28f;
+
             Image paper = CreateImage(canvasObject.transform, "Gallery", Gallery);
+            paper.raycastTarget = true;
             Stretch(paper.rectTransform);
+            Button page = paper.gameObject.AddComponent<Button>();
+            page.targetGraphic = paper;
+            page.transition = Selectable.Transition.None;
+            page.onClick.AddListener(Continue);
 
             count = CreateText(canvasObject.transform, typeface, "1 of 4", 28, Slate, FontStyle.Normal);
-            Place(count.rectTransform, 0f, 760f, 400f, 40f);
+            Place(count.rectTransform, 0f, top, 400f, 40f);
 
             kicker = CreateText(canvasObject.transform, typeface, Steps[0].Kicker, 36, Ink, FontStyle.Bold);
             claim = CreateText(canvasObject.transform, typeface, Steps[0].Claim, 72, Ink, FontStyle.Bold);
@@ -90,9 +99,9 @@ namespace Capstone.Placement
             kicker.transform.SetParent(copy.transform, false);
             claim.transform.SetParent(copy.transform, false);
             line.transform.SetParent(copy.transform, false);
-            Place(kicker.rectTransform, 0f, 620f, 900f, 52f);
-            Place(claim.rectTransform, 0f, 530f, 900f, 96f);
-            Place(line.rectTransform, 0f, 450f, 900f, 80f);
+            Place(kicker.rectTransform, 0f, top - 88f, 900f, 52f);
+            Place(claim.rectTransform, 0f, top - 176f, 900f, 96f);
+            Place(line.rectTransform, 0f, top - 268f, 900f, 80f);
             copyFade = copy.AddComponent<CanvasGroup>();
             copyFade.alpha = 0f;
 
@@ -105,14 +114,16 @@ namespace Capstone.Placement
                 work.texture = picture;
                 work.raycastTarget = false;
                 float aspect = picture.width / (float)Mathf.Max(1, picture.height);
-                float width = 900f;
-                float height = width / aspect;
-                if (height > 640f)
+                float room = Mathf.Max(280f, (top - 320f) - (-half + 220f));
+                float height = Mathf.Min(560f, room);
+                float width = height * aspect;
+                if (width > 860f)
                 {
-                    height = 640f;
-                    width = height * aspect;
+                    width = 860f;
+                    height = width / aspect;
                 }
 
+                workRest = new Vector2(0f, ((top - 320f) + (-half + 220f)) * 0.5f);
                 workRect = stage.GetComponent<RectTransform>();
                 workRect.anchorMin = new Vector2(0.5f, 0.5f);
                 workRect.anchorMax = new Vector2(0.5f, 0.5f);
@@ -134,7 +145,7 @@ namespace Capstone.Placement
             Image buttonImage = CreateImage(controls.transform, "Continue", PricingBlue);
             buttonImage.sprite = Pill();
             buttonImage.type = Image.Type.Sliced;
-            Place(buttonImage.rectTransform, 0f, -760f, 280f, 88f);
+            Place(buttonImage.rectTransform, 0f, -half + 132f, 280f, 88f);
             Button button = buttonImage.gameObject.AddComponent<Button>();
             button.targetGraphic = buttonImage;
             ColorBlock colors = button.colors;
@@ -153,7 +164,7 @@ namespace Capstone.Placement
             Button skip = skipLabel.gameObject.AddComponent<Button>();
             skip.targetGraphic = skipLabel;
             skip.onClick.AddListener(Finish);
-            Place(skip.GetComponent<RectTransform>(), 0f, -860f, 240f, 48f);
+            Place(skip.GetComponent<RectTransform>(), 0f, -half + 52f, 240f, 48f);
 
             controlFade = controls.AddComponent<CanvasGroup>();
             controlFade.alpha = 0f;
@@ -184,6 +195,7 @@ namespace Capstone.Placement
                 ShowStep();
                 leaving = false;
                 motionTime = 0f;
+                ready = false;
                 return;
             }
 
@@ -200,18 +212,20 @@ namespace Capstone.Placement
                 copyFade.alpha = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((motionTime - 0.16f) / 0.55f));
             if (controlFade != null)
             {
-                float shown = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((motionTime - 0.4f) / 0.4f));
+                float shown = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((motionTime - 0.28f) / 0.35f));
                 controlFade.alpha = shown;
-                controlFade.blocksRaycasts = shown > 0.85f;
+                controlFade.blocksRaycasts = shown > 0.2f;
             }
 
             if (enter >= 1f)
                 enteredOnce = true;
+            if (motionTime > 0.35f)
+                ready = true;
         }
 
         void Continue()
         {
-            if (leaving || controlFade == null || !controlFade.blocksRaycasts)
+            if (leaving || !ready)
                 return;
 
             leaving = true;
@@ -239,6 +253,19 @@ namespace Capstone.Placement
             Destroy(gameObject);
             if (done != null)
                 done();
+        }
+
+        static float VisibleHalfHeight(Canvas canvas)
+        {
+            Canvas.ForceUpdateCanvases();
+            float scale = canvas.scaleFactor;
+            if (scale < 0.01f)
+                scale = 1f;
+
+            float height = canvas.pixelRect.height / scale;
+            if (height < 400f)
+                height = 1920f;
+            return height * 0.5f;
         }
 
         static Sprite Pill()
