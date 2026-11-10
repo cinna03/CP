@@ -5,8 +5,8 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The instructions turn like a cube tipped in the hand. Each chapter is one face.
-    /// A switch tips 90 degrees on one axis, and the face being turned to stays upright.
+    /// The instructions turn like a cube in the hand. Each chapter is one face.
+    /// A switch pitches, yaws, and rolls around the painting, then the face being turned to settles upright.
     /// The last chapter, or Skip, starts the opening film.
     /// </summary>
     public sealed class Instructions : MonoBehaviour
@@ -40,7 +40,7 @@ namespace Capstone.Placement
         static readonly Color PricingBlue = new Color(0f, 0.4f, 0.8f, 1f);
         const float EnterDuration = 0.75f;
         const float HoldDuration = 3.2f;
-        const float LeaveDuration = 1.05f;
+        const float LeaveDuration = 1.2f;
         const int StageLayer = 3;
 
         static Sprite pill;
@@ -79,6 +79,7 @@ namespace Capstone.Placement
         Face next;
         Image[] dots;
         Vector2 frameRest;
+        Vector2 faceRest;
 
         public static void Play(Font typeface, Action onFinished)
         {
@@ -115,8 +116,8 @@ namespace Capstone.Placement
             shown = BuildFace(canvasObject.transform, typeface, 0);
             next = BuildFace(canvasObject.transform, typeface, 1);
             shown.Group.alpha = 0f;
-            shown.Rect.localRotation = Quaternion.Euler(22f, 0f, 0f);
-            next.Rect.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            shown.Rect.localRotation = Quaternion.Euler(-32f, 40f, -14f);
+            next.Rect.localRotation = Quaternion.identity;
             next.Root.SetActive(false);
 
             GameObject controls = new GameObject("Controls", typeof(RectTransform));
@@ -320,7 +321,15 @@ namespace Capstone.Placement
         {
             float along = Ease(motionTime / EnterDuration);
             if (shown != null && shown.Rect != null)
-                shown.Rect.localRotation = Quaternion.Euler(Mathf.Lerp(22f, 0f, along), 0f, 0f);
+            {
+                shown.Rect.localRotation = Quaternion.Slerp(Quaternion.Euler(-32f, 40f, -14f), Quaternion.identity, along);
+                Vector3 from = new Vector3(faceRest.x - 56f, faceRest.y - 40f, -80f);
+                Vector3 to = new Vector3(faceRest.x, faceRest.y, 0f);
+                shown.Rect.localPosition = Vector3.Lerp(from, to, along);
+                float scale = Mathf.Lerp(1.08f, 1f, along);
+                shown.Rect.localScale = new Vector3(scale, scale, 1f);
+            }
+
             if (shown != null && shown.Group != null)
                 shown.Group.alpha = along;
             if (controlFade != null)
@@ -332,8 +341,7 @@ namespace Capstone.Placement
             if (motionTime < EnterDuration)
                 return;
 
-            if (shown != null && shown.Rect != null)
-                shown.Rect.localRotation = Quaternion.identity;
+            Rest(shown);
             if (shown != null && shown.Group != null)
                 shown.Group.alpha = 1f;
             beat = Beat.Hold;
@@ -358,24 +366,68 @@ namespace Capstone.Placement
 
         void Tip(float along)
         {
-            float angle = Mathf.Clamp01(along) * 90f;
-            if (shown != null && shown.Rect != null)
-                shown.Rect.localRotation = Quaternion.Euler(-angle, 0f, 0f);
-            if (next != null && next.Rect != null)
-                next.Rect.localRotation = Quaternion.Euler(90f - angle, 0f, 0f);
+            float t = Mathf.Clamp01(along);
+            float side = index % 2 == 0 ? 1f : -1f;
+            float leave = Mathf.Clamp01(t / 0.58f);
+            float arrive = Mathf.Clamp01((t - 0.4f) / 0.6f);
+            float leaveLift = Mathf.Sin(leave * Mathf.PI);
+            float arriveLift = Mathf.Sin(arrive * Mathf.PI);
+
+            Quaternion leaveSpin = Quaternion.Slerp(Quaternion.identity, Quaternion.Euler(26f, -48f * side, 12f * side), leave);
+            Quaternion leaveWrist = Quaternion.Euler(leaveLift * -10f, leaveLift * 8f * side, leaveLift * 6f * side);
+            Vector3 leaveAt = new Vector3(
+                faceRest.x + (Mathf.Lerp(0f, 560f, leave) * side),
+                faceRest.y + Mathf.Lerp(0f, 80f, leave),
+                Mathf.Lerp(0f, 160f, leave));
+            Pose(shown, leaveWrist * leaveSpin, leaveAt, Mathf.Lerp(1f, 0.88f, leave));
+            if (shown != null && shown.Group != null)
+                shown.Group.alpha = 1f - Mathf.SmoothStep(0.28f, 1f, leave);
+
+            Quaternion arriveFrom = Quaternion.Euler(-22f, 44f * side, -10f * side);
+            Quaternion arriveSpin = Quaternion.Slerp(arriveFrom, Quaternion.identity, arrive);
+            Quaternion arriveWrist = Quaternion.Euler(arriveLift * -8f, arriveLift * 6f * side, arriveLift * 5f * side);
+            Vector3 arriveAt = new Vector3(
+                faceRest.x + (Mathf.Lerp(-560f, 0f, arrive) * side),
+                faceRest.y + Mathf.Lerp(-64f, 0f, arrive),
+                Mathf.Lerp(90f, 0f, arrive));
+            Pose(next, arriveWrist * arriveSpin, arriveAt, Mathf.Lerp(0.92f, 1f, arrive));
+            if (next != null && next.Group != null)
+                next.Group.alpha = Mathf.SmoothStep(0.08f, 0.72f, arrive);
+        }
+
+        void Pose(Face face, Quaternion rotation, Vector3 travel, float scale)
+        {
+            if (face == null || face.Rect == null)
+                return;
+
+            face.Rect.localRotation = rotation;
+            face.Rect.localPosition = travel;
+            face.Rect.localScale = new Vector3(scale, scale, 1f);
+        }
+
+        void Rest(Face face)
+        {
+            if (face == null || face.Rect == null)
+                return;
+
+            face.Rect.localRotation = Quaternion.identity;
+            face.Rect.localPosition = new Vector3(faceRest.x, faceRest.y, 0f);
+            face.Rect.localScale = Vector3.one;
         }
 
         void Settle()
         {
             Fill(shown, index);
-            if (shown != null && shown.Rect != null)
-                shown.Rect.localRotation = Quaternion.identity;
+            Rest(shown);
             if (shown != null && shown.Group != null)
                 shown.Group.alpha = 1f;
             if (next == null)
                 return;
 
-            next.Rect.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            next.Rect.localRotation = Quaternion.identity;
+            next.Rect.localScale = Vector3.one;
+            if (next.Group != null)
+                next.Group.alpha = 0f;
             next.Root.SetActive(false);
         }
 
@@ -397,10 +449,13 @@ namespace Capstone.Placement
             Fill(next, index + 1);
             if (next != null)
             {
+                float side = index % 2 == 0 ? 1f : -1f;
                 next.Root.SetActive(true);
-                next.Rect.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                next.Rect.localRotation = Quaternion.Euler(-22f, 44f * side, -10f * side);
+                next.Rect.localPosition = new Vector3(faceRest.x - (560f * side), faceRest.y - 64f, 90f);
+                next.Rect.localScale = new Vector3(0.92f, 0.92f, 1f);
                 if (next.Group != null)
-                    next.Group.alpha = 1f;
+                    next.Group.alpha = 0f;
             }
 
             beat = Beat.Leave;
@@ -481,9 +536,9 @@ namespace Capstone.Placement
             if (face.Rect != null)
             {
                 float height = Mathf.Max(1f, face.Rect.sizeDelta.y);
-                float hinge = cardY + (cardHeight * 0.5f);
-                face.Rect.pivot = new Vector2(0.5f, 0.5f + (hinge / height));
-                face.Rect.anchoredPosition = new Vector2(0f, hinge);
+                face.Rect.pivot = new Vector2(0.5f, 0.5f + (cardY / height));
+                face.Rect.anchoredPosition = new Vector2(0f, cardY);
+                faceRest = face.Rect.anchoredPosition;
             }
 
             float top = half - 72f;
