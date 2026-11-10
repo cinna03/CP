@@ -5,8 +5,9 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The instructions turn like the Beyond Depth reel. Each chapter is a card on black.
-    /// The card swings through depth into the next painting. The last chapter, or Skip, starts the opening film.
+    /// The instructions turn like a cube tipped in the hand. Each chapter is one face.
+    /// A switch tips 90 degrees on one axis, and the face being turned to stays upright.
+    /// The last chapter, or Skip, starts the opening film.
     /// </summary>
     public sealed class Instructions : MonoBehaviour
     {
@@ -37,9 +38,10 @@ namespace Capstone.Placement
         static readonly Color Title = Color.white;
         static readonly Color Mist = new Color(1f, 1f, 1f, 0.78f);
         static readonly Color PricingBlue = new Color(0f, 0.4f, 0.8f, 1f);
-        const float EnterDuration = 0.95f;
+        const float EnterDuration = 0.75f;
         const float HoldDuration = 3.2f;
-        const float LeaveDuration = 0.92f;
+        const float LeaveDuration = 1.05f;
+        const int StageLayer = 3;
 
         static Sprite pill;
         static Sprite plate;
@@ -49,30 +51,32 @@ namespace Capstone.Placement
         float motionTime;
         Beat beat;
         bool ready;
-        bool swapped;
         bool closing;
         float laidHalf = -1f;
+        sealed class Face
+        {
+            public GameObject Root;
+            public RectTransform Rect;
+            public CanvasGroup Group;
+            public Text Kicker;
+            public Text Claim;
+            public Text ClaimSoft;
+            public Text Line;
+            public RectTransform Frame;
+            public RectTransform Rim;
+            public RawImage Picture;
+            public RectTransform PictureRect;
+        }
+
         Canvas stageCanvas;
+        Canvas hud;
+        Camera stageCamera;
+        RenderTexture frameTexture;
         CanvasGroup rootFade;
-        CanvasGroup copyFade;
-        CanvasGroup frameFade;
-        CanvasGroup rimFade;
-        CanvasGroup frontFade;
-        CanvasGroup backFade;
+        CanvasGroup hudFade;
         CanvasGroup controlFade;
-        RectTransform planeRect;
-        CanvasGroup planeFade;
-        RectTransform copyRect;
-        RectTransform frameRect;
-        RectTransform rimRect;
-        RectTransform frontRect;
-        RectTransform backRect;
-        RawImage front;
-        RawImage back;
-        Text kicker;
-        Text claim;
-        Text claimSoft;
-        Text line;
+        Face shown;
+        Face next;
         Image[] dots;
         Vector2 frameRest;
 
@@ -89,7 +93,9 @@ namespace Capstone.Placement
             GameObject canvasObject = new GameObject("Instructions canvas");
             canvasObject.transform.SetParent(transform, false);
             stageCanvas = canvasObject.AddComponent<Canvas>();
-            stageCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            stageCanvas.renderMode = RenderMode.ScreenSpaceCamera;
+            stageCanvas.worldCamera = StageCamera();
+            stageCanvas.planeDistance = 12f;
             stageCanvas.sortingOrder = 900;
             CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -106,73 +112,12 @@ namespace Capstone.Placement
             page.transition = Selectable.Transition.None;
             page.onClick.AddListener(Advance);
 
-            GameObject copy = new GameObject("Copy", typeof(RectTransform));
-            copy.transform.SetParent(canvasObject.transform, false);
-            copyRect = copy.GetComponent<RectTransform>();
-            copyRect.anchorMin = new Vector2(0.5f, 0.5f);
-            copyRect.anchorMax = new Vector2(0.5f, 0.5f);
-            copyRect.sizeDelta = new Vector2(1080f, 1920f);
-            kicker = CreateText(copy.transform, typeface, "01", 28, Title, FontStyle.Normal);
-            kicker.alignment = TextAnchor.MiddleLeft;
-            claimSoft = CreateText(copy.transform, typeface, Steps[0].Claim, 78, new Color(1f, 1f, 1f, 0f), FontStyle.Bold);
-            claim = CreateText(copy.transform, typeface, Steps[0].Claim, 78, Title, FontStyle.Bold);
-            claim.alignment = TextAnchor.MiddleLeft;
-            claimSoft.alignment = TextAnchor.MiddleLeft;
-            line = CreateText(copy.transform, typeface, Steps[0].Line, 30, Mist, FontStyle.Normal);
-            line.alignment = TextAnchor.MiddleLeft;
-            copyFade = copy.AddComponent<CanvasGroup>();
-            copyFade.alpha = 0f;
-
-            GameObject rim = new GameObject("Rim", typeof(RectTransform));
-            rim.transform.SetParent(canvasObject.transform, false);
-            rimRect = rim.GetComponent<RectTransform>();
-            rimRect.anchorMin = new Vector2(0.5f, 0.5f);
-            rimRect.anchorMax = new Vector2(0.5f, 0.5f);
-            rimRect.pivot = new Vector2(0.5f, 0.5f);
-            Image rimImage = rim.AddComponent<Image>();
-            rimImage.sprite = Plate();
-            rimImage.type = Image.Type.Sliced;
-            rimImage.color = new Color(1f, 1f, 1f, 0.35f);
-            rimImage.raycastTarget = false;
-            rimFade = rim.AddComponent<CanvasGroup>();
-            rimFade.alpha = 0f;
-
-            GameObject frame = new GameObject("Frame", typeof(RectTransform));
-            frame.transform.SetParent(canvasObject.transform, false);
-            frameRect = frame.GetComponent<RectTransform>();
-            frameRect.anchorMin = new Vector2(0.5f, 0.5f);
-            frameRect.anchorMax = new Vector2(0.5f, 0.5f);
-            frameRect.pivot = new Vector2(0.5f, 0.5f);
-            Image framePlate = frame.AddComponent<Image>();
-            framePlate.sprite = Plate();
-            framePlate.type = Image.Type.Sliced;
-            framePlate.color = Card;
-            framePlate.raycastTarget = false;
-            frame.AddComponent<Mask>().showMaskGraphic = true;
-            frameFade = frame.AddComponent<CanvasGroup>();
-            frameFade.alpha = 0f;
-
-            front = AddPicture(frame.transform, "Front", out frontRect, out frontFade);
-            back = AddPicture(frame.transform, "Back", out backRect, out backFade);
-            Texture2D first = Load(Steps[0].Picture);
-            front.texture = first;
-            backFade.alpha = 0f;
-            copyFade.alpha = 1f;
-            frameFade.alpha = 1f;
-            rimFade.alpha = 1f;
-
-            GameObject plane = new GameObject("Plane", typeof(RectTransform));
-            plane.transform.SetParent(canvasObject.transform, false);
-            planeRect = plane.GetComponent<RectTransform>();
-            planeRect.anchorMin = new Vector2(0.5f, 0.5f);
-            planeRect.anchorMax = new Vector2(0.5f, 0.5f);
-            planeRect.pivot = new Vector2(0.5f, 0.5f);
-            planeRect.sizeDelta = new Vector2(1080f, 1920f);
-            planeFade = plane.AddComponent<CanvasGroup>();
-            planeFade.alpha = 0f;
-            copy.transform.SetParent(plane.transform, true);
-            rim.transform.SetParent(plane.transform, true);
-            frame.transform.SetParent(plane.transform, true);
+            shown = BuildFace(canvasObject.transform, typeface, 0);
+            next = BuildFace(canvasObject.transform, typeface, 1);
+            shown.Group.alpha = 0f;
+            shown.Rect.localRotation = Quaternion.Euler(22f, 0f, 0f);
+            next.Rect.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            next.Root.SetActive(false);
 
             GameObject controls = new GameObject("Controls", typeof(RectTransform));
             controls.transform.SetParent(canvasObject.transform, false);
@@ -217,12 +162,129 @@ namespace Capstone.Placement
             controlFade.alpha = 0f;
             controlFade.blocksRaycasts = false;
             PaintDots();
+            PresentOnTop(controls);
             Layout(960f);
+            SetLayer(canvasObject.transform, StageLayer);
+        }
+
+        void PresentOnTop(GameObject controls)
+        {
+            GameObject overlayObject = new GameObject("Instructions overlay");
+            overlayObject.transform.SetParent(transform, false);
+            hud = overlayObject.AddComponent<Canvas>();
+            hud.renderMode = RenderMode.ScreenSpaceOverlay;
+            hud.sortingOrder = 900;
+            CanvasScaler scaler = overlayObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1080f, 1920f);
+            scaler.matchWidthOrHeight = 0.5f;
+            overlayObject.AddComponent<GraphicRaycaster>();
+            hudFade = overlayObject.AddComponent<CanvasGroup>();
+
+            GameObject plate = new GameObject("Tilt", typeof(RectTransform));
+            plate.transform.SetParent(overlayObject.transform, false);
+            RawImage image = plate.AddComponent<RawImage>();
+            image.texture = frameTexture;
+            image.raycastTarget = true;
+            Stretch(image.rectTransform);
+            Button page = plate.AddComponent<Button>();
+            page.targetGraphic = image;
+            page.transition = Selectable.Transition.None;
+            page.onClick.AddListener(Advance);
+            controls.transform.SetParent(overlayObject.transform, false);
+        }
+
+        Camera StageCamera()
+        {
+            int width = Mathf.Max(16, Screen.width);
+            int height = Mathf.Max(16, Screen.height);
+            frameTexture = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
+            frameTexture.antiAliasing = 1;
+            frameTexture.Create();
+
+            GameObject cameraObject = new GameObject("Instructions camera");
+            cameraObject.transform.SetParent(transform, false);
+            stageCamera = cameraObject.AddComponent<Camera>();
+            stageCamera.clearFlags = CameraClearFlags.SolidColor;
+            stageCamera.backgroundColor = Color.black;
+            stageCamera.cullingMask = 1 << StageLayer;
+            stageCamera.depth = 100f;
+            stageCamera.orthographic = false;
+            stageCamera.fieldOfView = 34f;
+            stageCamera.nearClipPlane = 0.05f;
+            stageCamera.farClipPlane = 40f;
+            stageCamera.allowHDR = false;
+            stageCamera.allowMSAA = false;
+            stageCamera.stereoTargetEye = StereoTargetEyeMask.None;
+            stageCamera.targetTexture = frameTexture;
+            return stageCamera;
+        }
+
+        Face BuildFace(Transform parent, Font typeface, int stepIndex)
+        {
+            Face face = new Face();
+            GameObject root = new GameObject("Face", typeof(RectTransform));
+            root.transform.SetParent(parent, false);
+            face.Root = root;
+            face.Rect = root.GetComponent<RectTransform>();
+            face.Rect.anchorMin = new Vector2(0.5f, 0.5f);
+            face.Rect.anchorMax = new Vector2(0.5f, 0.5f);
+            face.Rect.pivot = new Vector2(0.5f, 0.5f);
+            face.Rect.sizeDelta = new Vector2(1080f, 1920f);
+            face.Group = root.AddComponent<CanvasGroup>();
+            face.Group.blocksRaycasts = false;
+
+            Step step = Steps[Mathf.Clamp(stepIndex, 0, Steps.Length - 1)];
+            GameObject copy = new GameObject("Copy", typeof(RectTransform));
+            copy.transform.SetParent(root.transform, false);
+            RectTransform copyRect = copy.GetComponent<RectTransform>();
+            copyRect.anchorMin = new Vector2(0.5f, 0.5f);
+            copyRect.anchorMax = new Vector2(0.5f, 0.5f);
+            copyRect.sizeDelta = new Vector2(1080f, 1920f);
+            face.Kicker = CreateText(copy.transform, typeface, (stepIndex + 1).ToString("00"), 28, Title, FontStyle.Normal);
+            face.Kicker.alignment = TextAnchor.MiddleLeft;
+            face.ClaimSoft = CreateText(copy.transform, typeface, step.Claim, 78, new Color(1f, 1f, 1f, 0f), FontStyle.Bold);
+            face.Claim = CreateText(copy.transform, typeface, step.Claim, 78, Title, FontStyle.Bold);
+            face.Claim.alignment = TextAnchor.MiddleLeft;
+            face.ClaimSoft.alignment = TextAnchor.MiddleLeft;
+            face.Line = CreateText(copy.transform, typeface, step.Line, 30, Mist, FontStyle.Normal);
+            face.Line.alignment = TextAnchor.MiddleLeft;
+
+            GameObject rim = new GameObject("Rim", typeof(RectTransform));
+            rim.transform.SetParent(root.transform, false);
+            face.Rim = rim.GetComponent<RectTransform>();
+            face.Rim.anchorMin = new Vector2(0.5f, 0.5f);
+            face.Rim.anchorMax = new Vector2(0.5f, 0.5f);
+            face.Rim.pivot = new Vector2(0.5f, 0.5f);
+            Image rimImage = rim.AddComponent<Image>();
+            rimImage.sprite = Plate();
+            rimImage.type = Image.Type.Sliced;
+            rimImage.color = new Color(1f, 1f, 1f, 0.35f);
+            rimImage.raycastTarget = false;
+
+            GameObject frame = new GameObject("Frame", typeof(RectTransform));
+            frame.transform.SetParent(root.transform, false);
+            face.Frame = frame.GetComponent<RectTransform>();
+            face.Frame.anchorMin = new Vector2(0.5f, 0.5f);
+            face.Frame.anchorMax = new Vector2(0.5f, 0.5f);
+            face.Frame.pivot = new Vector2(0.5f, 0.5f);
+            Image framePlate = frame.AddComponent<Image>();
+            framePlate.sprite = Plate();
+            framePlate.type = Image.Type.Sliced;
+            framePlate.color = Card;
+            framePlate.raycastTarget = false;
+            frame.AddComponent<Mask>().showMaskGraphic = true;
+
+            CanvasGroup pictureFade;
+            face.Picture = AddPicture(frame.transform, "Picture", out face.PictureRect, out pictureFade);
+            pictureFade.blocksRaycasts = false;
+            Fill(face, stepIndex);
+            return face;
         }
 
         void Update()
         {
-            float half = VisibleHalfHeight(stageCanvas);
+            float half = VisibleHalfHeight(hud != null ? hud : stageCanvas);
             if (Mathf.Abs(half - laidHalf) > 12f)
                 Layout(half);
 
@@ -233,6 +295,8 @@ namespace Capstone.Placement
                 float gone = Ease(motionTime / 0.45f);
                 if (rootFade != null)
                     rootFade.alpha = 1f - gone;
+                if (hudFade != null)
+                    hudFade.alpha = 1f - gone;
                 if (gone >= 1f)
                     Finish();
                 return;
@@ -254,7 +318,11 @@ namespace Capstone.Placement
 
         void PlayEnter()
         {
-            Pose(Ease(motionTime / EnterDuration), true);
+            float along = Ease(motionTime / EnterDuration);
+            if (shown != null && shown.Rect != null)
+                shown.Rect.localRotation = Quaternion.Euler(Mathf.Lerp(22f, 0f, along), 0f, 0f);
+            if (shown != null && shown.Group != null)
+                shown.Group.alpha = along;
             if (controlFade != null)
             {
                 controlFade.alpha = Ease((motionTime - 0.28f) / 0.4f);
@@ -264,7 +332,10 @@ namespace Capstone.Placement
             if (motionTime < EnterDuration)
                 return;
 
-            RestPlane();
+            if (shown != null && shown.Rect != null)
+                shown.Rect.localRotation = Quaternion.identity;
+            if (shown != null && shown.Group != null)
+                shown.Group.alpha = 1f;
             beat = Beat.Hold;
             motionTime = 0f;
             ready = true;
@@ -273,70 +344,39 @@ namespace Capstone.Placement
         void PlayLeave()
         {
             float along = Ease(motionTime / LeaveDuration);
-            if (!swapped)
-            {
-                Pose(Mathf.Clamp01(along / 0.46f), false);
-                if (along < 0.46f)
-                    return;
-
-                ApplyCopy(index + 1);
-                Texture2D picture = Load(Steps[index + 1].Picture);
-                if (front != null)
-                    front.texture = picture;
-                Fit(front, frontRect, picture);
-                swapped = true;
-            }
-
-            Pose(Mathf.Clamp01((along - 0.46f) / 0.54f), true);
+            Tip(along);
             if (along < 1f)
                 return;
 
-            RestPlane();
-            if (frontFade != null)
-                frontFade.alpha = 1f;
-            if (backFade != null)
-                backFade.alpha = 0f;
             index += 1;
-            swapped = false;
+            Settle();
             PaintDots();
             beat = Beat.Hold;
             motionTime = 0f;
             ready = true;
         }
 
-        void Pose(float along, bool incoming)
+        void Tip(float along)
         {
-            Vector2 from = incoming ? new Vector2(-170f, -240f) : Vector2.zero;
-            Vector2 to = incoming ? Vector2.zero : new Vector2(190f, 210f);
-            float scaleFrom = incoming ? 1.24f : 1f;
-            float scaleTo = incoming ? 1f : 0.4f;
-            Vector3 rotFrom = incoming ? new Vector3(-18f, 38f, 12f) : Vector3.zero;
-            Vector3 rotTo = incoming ? Vector3.zero : new Vector3(22f, -48f, -12f);
-            float fadeFrom = incoming ? 0f : 1f;
-            float fadeTo = incoming ? 1f : 0.05f;
-            if (planeRect != null)
-            {
-                planeRect.anchoredPosition = Vector2.Lerp(from, to, along);
-                float scale = Mathf.Lerp(scaleFrom, scaleTo, along);
-                planeRect.localScale = new Vector3(scale, scale, 1f);
-                planeRect.localRotation = Quaternion.Euler(Vector3.Lerp(rotFrom, rotTo, along));
-            }
-
-            if (planeFade != null)
-                planeFade.alpha = Mathf.Lerp(fadeFrom, fadeTo, along);
+            float angle = Mathf.Clamp01(along) * 90f;
+            if (shown != null && shown.Rect != null)
+                shown.Rect.localRotation = Quaternion.Euler(-angle, 0f, 0f);
+            if (next != null && next.Rect != null)
+                next.Rect.localRotation = Quaternion.Euler(90f - angle, 0f, 0f);
         }
 
-        void RestPlane()
+        void Settle()
         {
-            if (planeRect != null)
-            {
-                planeRect.anchoredPosition = Vector2.zero;
-                planeRect.localScale = Vector3.one;
-                planeRect.localRotation = Quaternion.identity;
-            }
+            Fill(shown, index);
+            if (shown != null && shown.Rect != null)
+                shown.Rect.localRotation = Quaternion.identity;
+            if (shown != null && shown.Group != null)
+                shown.Group.alpha = 1f;
+            if (next == null)
+                return;
 
-            if (planeFade != null)
-                planeFade.alpha = 1f;
+            next.Rect.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            next.Root.SetActive(false);
         }
 
         void Advance()
@@ -354,31 +394,38 @@ namespace Capstone.Placement
                 return;
             }
 
-            Texture2D picture = Load(Steps[index + 1].Picture);
-            if (back != null)
-                back.texture = picture;
-            Fit(back, backRect, picture);
-            if (backFade != null)
-                backFade.alpha = 0f;
+            Fill(next, index + 1);
+            if (next != null)
+            {
+                next.Root.SetActive(true);
+                next.Rect.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                if (next.Group != null)
+                    next.Group.alpha = 1f;
+            }
+
             beat = Beat.Leave;
             motionTime = 0f;
-            swapped = false;
         }
 
-        void ApplyCopy(int stepIndex)
+        void Fill(Face face, int stepIndex)
         {
-            if (stepIndex < 0 || stepIndex >= Steps.Length)
+            if (face == null || stepIndex < 0 || stepIndex >= Steps.Length)
                 return;
 
             Step step = Steps[stepIndex];
-            if (kicker != null)
-                kicker.text = (stepIndex + 1).ToString("00");
-            if (claim != null)
-                claim.text = step.Claim;
-            if (claimSoft != null)
-                claimSoft.text = step.Claim;
-            if (line != null)
-                line.text = step.Line;
+            if (face.Kicker != null)
+                face.Kicker.text = (stepIndex + 1).ToString("00");
+            if (face.Claim != null)
+                face.Claim.text = step.Claim;
+            if (face.ClaimSoft != null)
+                face.ClaimSoft.text = step.Claim;
+            if (face.Line != null)
+                face.Line.text = step.Line;
+
+            Texture2D picture = Load(step.Picture);
+            if (face.Picture != null)
+                face.Picture.texture = picture;
+            Fit(face.Picture, face.PictureRect, picture);
         }
 
         void PaintDots()
@@ -400,38 +447,16 @@ namespace Capstone.Placement
         {
             laidHalf = half;
             float top = half - 72f;
-            Place(kicker.rectTransform, -40f, top, 280f, 40f);
             float cardWidth = Mathf.Min(460f, half * 0.72f);
             float cardHeight = cardWidth * 0.72f;
             float cardY = top - 36f - (cardHeight * 0.5f) - 28f;
-            Place(claim.rectTransform, -20f, cardY - (cardHeight * 0.5f) - 78f, 860f, 150f);
-            if (claimSoft != null)
-                Place(claimSoft.rectTransform, -20f, claim.rectTransform.anchoredPosition.y, 860f, 150f);
-            Place(line.rectTransform, -20f, claim.rectTransform.anchoredPosition.y - 120f, 760f, 110f);
+            frameRest = new Vector2(0f, cardY);
+            PlaceFace(shown, half, cardWidth, cardHeight, cardY);
+            PlaceFace(next, half, cardWidth, cardHeight, cardY);
 
             float buttonY = -half + 118f;
             float skipY = -half + 42f;
             float dotsY = buttonY + 78f;
-            float width = cardWidth;
-            float height = cardHeight;
-            float center = cardY;
-            frameRest = new Vector2(0f, center);
-            if (frameRect != null)
-            {
-                frameRect.sizeDelta = new Vector2(width, height);
-                if (beat != Beat.Enter)
-                    frameRect.anchoredPosition = frameRest;
-            }
-
-            if (rimRect != null)
-            {
-                rimRect.sizeDelta = new Vector2(width + 18f, height + 18f);
-                if (beat != Beat.Enter)
-                    rimRect.anchoredPosition = frameRest;
-            }
-
-            Fit(front, frontRect, front != null ? front.texture as Texture2D : null);
-            Fit(back, backRect, back != null ? back.texture as Texture2D : null);
 
             float dotX = -((dots.Length - 1) * 42f) * 0.5f;
             for (int i = 0; i < dots.Length; i++)
@@ -446,6 +471,49 @@ namespace Capstone.Placement
             Transform skip = controlFade.transform.Find("Skip");
             if (skip != null)
                 Place(skip.GetComponent<RectTransform>(), 0f, skipY, 220f, 44f);
+        }
+
+        void PlaceFace(Face face, float half, float cardWidth, float cardHeight, float cardY)
+        {
+            if (face == null)
+                return;
+
+            if (face.Rect != null)
+            {
+                float height = Mathf.Max(1f, face.Rect.sizeDelta.y);
+                float hinge = cardY + (cardHeight * 0.5f);
+                face.Rect.pivot = new Vector2(0.5f, 0.5f + (hinge / height));
+                face.Rect.anchoredPosition = new Vector2(0f, hinge);
+            }
+
+            float top = half - 72f;
+            Place(face.Kicker.rectTransform, -40f, top, 280f, 40f);
+            Place(face.Claim.rectTransform, -20f, cardY - (cardHeight * 0.5f) - 78f, 860f, 150f);
+            if (face.ClaimSoft != null && face.Claim != null)
+                Place(face.ClaimSoft.rectTransform, -20f, face.Claim.rectTransform.anchoredPosition.y, 860f, 150f);
+            if (face.Line != null && face.Claim != null)
+                Place(face.Line.rectTransform, -20f, face.Claim.rectTransform.anchoredPosition.y - 120f, 760f, 110f);
+
+            if (face.Frame != null)
+            {
+                face.Frame.sizeDelta = new Vector2(cardWidth, cardHeight);
+                face.Frame.anchoredPosition = frameRest;
+            }
+
+            if (face.Rim != null)
+            {
+                face.Rim.sizeDelta = new Vector2(cardWidth + 18f, cardHeight + 18f);
+                face.Rim.anchoredPosition = frameRest;
+            }
+
+            Fit(face.Picture, face.PictureRect, face.Picture != null ? face.Picture.texture as Texture2D : null);
+        }
+
+        static void SetLayer(Transform root, int layer)
+        {
+            root.gameObject.layer = layer;
+            for (int i = 0; i < root.childCount; i++)
+                SetLayer(root.GetChild(i), layer);
         }
 
         static RawImage AddPicture(Transform parent, string name, out RectTransform rect, out CanvasGroup fade)
@@ -488,6 +556,18 @@ namespace Capstone.Placement
         static Texture2D Load(string picture)
         {
             return Resources.Load<Texture2D>("TrialPieces/" + picture);
+        }
+
+        void OnDestroy()
+        {
+            if (stageCamera != null)
+                stageCamera.targetTexture = null;
+            if (frameTexture == null)
+                return;
+
+            frameTexture.Release();
+            Destroy(frameTexture);
+            frameTexture = null;
         }
 
         void Finish()
