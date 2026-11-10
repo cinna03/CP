@@ -32,7 +32,8 @@ namespace Capstone.Placement
     /// Consent must be marked before a keep, save, dismiss, matched question, or chosen rank is stored.
     /// No wall means a retry message and no invented size.
     /// In the editor, a chosen work is placed on the plain wall. On a phone, the camera opens so that work can be placed on a real wall. The artwork keeps its stored centimetres.
-    /// The first page places one work beside what the app is for. Anyone can read it. A consent code starts the session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for a clear picture, the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, dismiss, or ask for alternatives ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
+    /// Homepage and Testing session are separate panels. The homepage is the first page. Begin opens the testing session. The camera feed belongs only to that session, and only while a chosen work is being placed.
+    /// A consent code starts the testing session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for a clear picture, the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer can ask again about the piece and how it fits that wall. Go on ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -75,7 +76,8 @@ namespace Capstone.Placement
         public const string MatchMessage = "Top picks for what you said.";
         public const string NoQuizMatchMessage = "Nothing matches every answer. Browse for more.";
         public const string BrowseMessage = "Every piece in the catalogue.";
-        public const string AskOrSkipMessage = "Ask one thing, or skip.";
+        public const string AskOrSkipMessage = "Ask about this piece or how it fits this wall. Ask again, or go on.";
+        public const string AskAgainMessage = "Ask another thing, or go on.";
         public const string SkippedMessage = "Skipped. Keep, save, dismiss, or ask for alternatives.";
         public const string EndedMessage = "Session ended. The five uncertainty questions stay on the paper form.";
 
@@ -121,6 +123,10 @@ namespace Capstone.Placement
         ARPlane anchorPlane;
         ARPointCloudManager pointCloudManager;
         Camera arCamera;
+        CameraClearFlags heldClearFlags;
+        Color heldClearColor;
+        bool heldClearStored;
+        bool cameraFeedOpen;
         GameObject placed;
         Text status;
         Material surface;
@@ -157,6 +163,8 @@ namespace Capstone.Placement
         bool scanning;
         bool wallReady;
         bool wallHeld;
+        float wallWidthCm;
+        float wallHeightCm;
         bool savingView;
         bool triedSave;
         bool aimingAtFloor;
@@ -212,10 +220,7 @@ namespace Capstone.Placement
         Text recommendTitle;
         Text themeLabel;
         GameObject consentGate;
-        InputField consentField;
-        Text consentHint;
-        Text consentHeading;
-        GameObject homeGate;
+        GameObject homePanel;
         Image homeCover;
         Text homeLead;
         Text homeHeadline;
@@ -228,10 +233,12 @@ namespace Capstone.Placement
         Vector2 homeFullSize;
         Vector2 homeRestPosition;
         Vector2 homeRestSize;
-        Text[] homeLines;
-        Vector2[] homeLineRest;
+        Text[] homeLines = new Text[0];
+        Vector2[] homeLineRest = new Vector2[0];
         Button homeBeginButton;
-        Color homeThemeColor;
+        InputField consentField;
+        Text consentHint;
+        Text consentHeading;
         readonly List<Image> paperCovers = new List<Image>();
         readonly List<GameObject> loudButtons = new List<GameObject>();
         readonly List<GameObject> quietButtons = new List<GameObject>();
@@ -294,6 +301,71 @@ namespace Capstone.Placement
                 HideSimulatedRoom();
             }
             BuildControls();
+            SetCameraFeed(false);
+        }
+
+        void SetCameraFeed(bool open)
+        {
+            if (Application.isEditor)
+                return;
+
+            cameraFeedOpen = open;
+            ARSession[] sessions = FindObjectsByType<ARSession>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < sessions.Length; i++)
+            {
+                if (sessions[i] == null)
+                    continue;
+                if (!open)
+                    sessions[i].enabled = false;
+                sessions[i].gameObject.SetActive(open);
+                if (open)
+                    sessions[i].enabled = true;
+            }
+
+            ARCameraManager[] managers = FindObjectsByType<ARCameraManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < managers.Length; i++)
+            {
+                if (managers[i] == null)
+                    continue;
+                managers[i].enabled = open;
+                if (arCamera == null)
+                    arCamera = managers[i].GetComponent<Camera>();
+            }
+
+            ARCameraBackground[] backgrounds = FindObjectsByType<ARCameraBackground>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < backgrounds.Length; i++)
+            {
+                if (backgrounds[i] != null)
+                    backgrounds[i].enabled = open;
+            }
+
+            if (arCamera == null)
+                return;
+
+            if (!heldClearStored)
+            {
+                heldClearFlags = arCamera.clearFlags;
+                heldClearColor = arCamera.backgroundColor;
+                heldClearStored = true;
+            }
+
+            if (open)
+            {
+                arCamera.clearFlags = heldClearFlags;
+                arCamera.backgroundColor = heldClearColor;
+                return;
+            }
+
+            arCamera.clearFlags = CameraClearFlags.SolidColor;
+            arCamera.backgroundColor = Color.white;
+        }
+
+        bool TestingNeedsCamera()
+        {
+            return screenColumn != null
+                && screenColumn.gameObject.activeInHierarchy
+                && scanning
+                && !wallHeld;
         }
 
         void Update()
@@ -334,6 +406,8 @@ namespace Capstone.Placement
 
         void LateUpdate()
         {
+            if (!Application.isEditor && cameraFeedOpen != TestingNeedsCamera())
+                SetCameraFeed(TestingNeedsCamera());
             FitScreen();
             if (!Application.isEditor || rooms == null || arCamera == null)
                 return;
@@ -443,8 +517,9 @@ namespace Capstone.Placement
             ApplyArtwork(current);
             scanning = false;
             wallReady = false;
+            RememberWall();
             pathStep = BuyerPath.Next(pathStep, BuyerPath.Placed);
-            status.text = "On the wall. " + Describe(current) + " Ask one thing, or skip.";
+            status.text = "On the wall. " + Describe(current) + " " + AskOrSkipMessage;
             ApplyStepVisibility();
         }
 
@@ -457,7 +532,7 @@ namespace Capstone.Placement
                 field.sizeDelta = new Vector2(1032f, 110f);
             }
 
-            PlaceBottom(skipButton, 24f, "Skip");
+            PlaceBottom(skipButton, 24f, "Go on");
             PlaceBottom(sendButton, 556f, "Send");
         }
 
@@ -528,7 +603,9 @@ namespace Capstone.Placement
             KeepTranscript();
             if (pathStep == BuyerPath.Rank)
                 OpenStep(PrototypeScreen.Recommend);
-            status.text = ReplyForCurrentWork(reply) + " Keep, save, dismiss, or ask for alternatives.";
+            if (concernField != null)
+                concernField.text = string.Empty;
+            status.text = ReplyForCurrentWork(reply) + " " + AskAgainMessage;
             ApplyStepVisibility();
         }
 
@@ -541,7 +618,7 @@ namespace Capstone.Placement
             pathStep = BuyerPath.Next(pathStep, BuyerPath.Skip);
             if (pathStep == BuyerPath.Rank)
                 OpenStep(PrototypeScreen.Recommend);
-            status.text = SkippedMessage;
+            status.text = RecommendStepMessage;
         }
 
         public void ConfirmTags()
@@ -658,6 +735,7 @@ namespace Capstone.Placement
                 }
 
                 scanning = true;
+                SetCameraFeed(true);
                 wallReady = false;
                 stableSince = 0f;
                 hasGuessAnchor = false;
@@ -1054,21 +1132,33 @@ namespace Capstone.Placement
 
         string ReplyForCurrentWork(DialogueReply reply)
         {
-            if (!reply.Matched || reply.Language != "en" || current == null)
+            if (!reply.Matched || current == null)
                 return reply.Text;
-            if (reply.Concern == "size" || reply.Concern == "fit")
-                return reply.Text + " " + Describe(current);
-            if (reply.Concern == "meaning")
+
+            string fact = PieceInRoom.Fact(reply.Concern, reply.Language, current, wallWidthCm, wallHeightCm);
+            return string.IsNullOrEmpty(fact) ? reply.Text : fact;
+        }
+
+        void RememberWall()
+        {
+            wallWidthCm = 0f;
+            wallHeightCm = 0f;
+            if (Application.isEditor && rooms != null && rooms.Current != null)
             {
-                string meaning = current.StoryNotes.Meaning;
-                string note = string.IsNullOrWhiteSpace(meaning) ? ArtworkDetail.MissingNote : meaning;
-                return reply.Text + " " + note;
+                wallWidthCm = rooms.Current.WidthMetres * 100f;
+                wallHeightCm = rooms.Current.HeightMetres * 100f;
+                return;
             }
-            if (reply.Concern == "colour")
-                return reply.Text + " Stored colour: " + current.Colour + ".";
-            if (reply.Concern == "price")
-                return reply.Text + " Stored price band: " + current.PriceBand + ".";
-            return reply.Text;
+
+            if (anchorPlane == null)
+                return;
+
+            Vector2 size = anchorPlane.size;
+            if (size.x <= 0.01f || size.y <= 0.01f)
+                return;
+
+            wallWidthCm = size.x * 100f;
+            wallHeightCm = size.y * 100f;
         }
 
         public void Keep()
@@ -1536,8 +1626,10 @@ namespace Capstone.Placement
                 aimMark.gameObject.SetActive(phoneScan);
                 aimMark.color = wallReady ? AimReady : AimSearching;
             }
+            if (status != null)
+                status.rectTransform.sizeDelta = new Vector2(1000f, asking ? 360f : 150f);
             if (statusShade != null)
-                statusShade.sizeDelta = new Vector2(0f, phoneScan ? 160f : (asking ? 120f : 200f));
+                statusShade.sizeDelta = new Vector2(0f, phoneScan ? 160f : (asking ? 400f : 200f));
             if (stepLine != null)
             {
                 stepLine.gameObject.SetActive(false);
@@ -1573,7 +1665,7 @@ namespace Capstone.Placement
             if (browsing && narrowed && step == PrototypeScreen.Works)
                 return "Top picks returns to the matches.";
             if (step == PrototypeScreen.Wall && pathStep == BuyerPath.Question)
-                return "On the wall. Ask one thing, or skip.";
+                return "On the wall. Ask about the piece or how it fits. Go on for other works.";
             if (step == PrototypeScreen.Wall)
                 return Application.isEditor ? WallStepMessage : ScanWallMessage;
             if (step == PrototypeScreen.Recommend)
@@ -2715,7 +2807,7 @@ namespace Capstone.Placement
             screenFit.matchWidthOrHeight = 1f;
             canvasObject.AddComponent<GraphicRaycaster>();
 
-            GameObject column = CreatePanel(canvasObject.transform, "Prototype column");
+            GameObject column = CreatePanel(canvasObject.transform, "Testing session");
             screenColumn = column.GetComponent<RectTransform>();
             screenColumn.anchorMin = new Vector2(0.5f, 0f);
             screenColumn.anchorMax = new Vector2(0.5f, 1f);
@@ -2878,16 +2970,6 @@ namespace Capstone.Placement
                 aimMark.rectTransform.SetAsLastSibling();
             ApplyStepVisibility();
 
-            themeLabel = CreateLabel(column.transform, uiFont, "Dark", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-28f, -28f), 28);
-            themeLabel.alignment = TextAnchor.UpperRight;
-            themeLabel.color = PageInk;
-            themeLabel.rectTransform.sizeDelta = new Vector2(180f, 48f);
-            Button themeButton = themeLabel.gameObject.AddComponent<Button>();
-            themeButton.targetGraphic = themeLabel;
-            themeButton.transition = Selectable.Transition.None;
-            themeButton.onClick.AddListener(ToggleLook);
-            themeLabel.raycastTarget = true;
-
             if (SkipOpeningForPreview)
             {
                 StartPreview();
@@ -2897,11 +2979,253 @@ namespace Capstone.Placement
             {
                 canvasObject.SetActive(true);
                 BuildConsentGate(column.transform);
-                if (consentGate != null)
-                    consentGate.SetActive(false);
-                BuildHome(column.transform);
+                column.SetActive(false);
+                BuildHome(canvasObject.transform);
             }
 
+            themeLabel = CreateLabel(canvasObject.transform, uiFont, "Dark", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-28f, -28f), 28);
+            themeLabel.alignment = TextAnchor.UpperRight;
+            themeLabel.color = PageInk;
+            themeLabel.rectTransform.sizeDelta = new Vector2(180f, 48f);
+            Button themeButton = themeLabel.gameObject.AddComponent<Button>();
+            themeButton.targetGraphic = themeLabel;
+            themeButton.transition = Selectable.Transition.None;
+            themeButton.onClick.AddListener(ToggleLook);
+            themeLabel.raycastTarget = true;
+            themeLabel.rectTransform.SetAsLastSibling();
+        }
+
+        void BuildHome(Transform parent)
+        {
+            homePanel = CreatePanel(parent, "Homepage");
+            GameObject shade = new GameObject("Cover", typeof(RectTransform));
+            shade.transform.SetParent(homePanel.transform, false);
+            homeCover = shade.AddComponent<Image>();
+            homeCover.color = Color.white;
+            homeCover.raycastTarget = true;
+            RectTransform shadeRect = shade.GetComponent<RectTransform>();
+            shadeRect.anchorMin = Vector2.zero;
+            shadeRect.anchorMax = Vector2.one;
+            shadeRect.offsetMin = Vector2.zero;
+            shadeRect.offsetMax = Vector2.zero;
+
+            GameObject artObject = new GameObject("Work", typeof(RectTransform));
+            artObject.transform.SetParent(homePanel.transform, false);
+            RawImage art = artObject.AddComponent<RawImage>();
+            art.texture = Resources.Load<Texture2D>("Home/flowers");
+            art.raycastTarget = false;
+            RectTransform artRect = art.rectTransform;
+            artRect.anchorMin = new Vector2(0f, 1f);
+            artRect.anchorMax = new Vector2(0f, 1f);
+            artRect.pivot = new Vector2(0f, 1f);
+            homeArt = artRect;
+
+            homeHeadline = HomeLine(homePanel.transform, "CINNARIOS", 84);
+            homeLead = HomeLine(homePanel.transform, "AR visualization of a work on your wall, at its real size.", 28);
+            homeLead.font = uiFont;
+            homeBegin = HomeLine(homePanel.transform, "Begin", 36);
+            Button begin = homeBegin.gameObject.AddComponent<Button>();
+            begin.targetGraphic = homeBegin;
+            begin.transition = Selectable.Transition.None;
+            begin.onClick.AddListener(OpenTestingSession);
+            homeBeginButton = begin;
+
+            PaintHome();
+            BeginHomeMorph();
+        }
+
+        void BeginHomeMorph()
+        {
+            homeLines = new[] { homeHeadline, homeLead, homeBegin };
+            homeLineRest = new Vector2[homeLines.Length];
+            for (int i = 0; i < homeLines.Length; i++)
+                SetHomeAlpha(homeLines[i], 0f);
+
+            if (homeBeginButton != null)
+                homeBeginButton.interactable = false;
+            if (homeBegin != null)
+                homeBegin.raycastTarget = false;
+            if (homeCover != null)
+            {
+                Button coverTap = homeCover.gameObject.AddComponent<Button>();
+                coverTap.targetGraphic = homeCover;
+                coverTap.transition = Selectable.Transition.None;
+                coverTap.onClick.AddListener(ReleaseHome);
+            }
+
+            homeClock = 0f;
+            homeReleased = false;
+            homeMorphing = true;
+            PoseHomeCover();
+        }
+
+        void ReleaseHome()
+        {
+            if (!homeMorphing || homeReleased || homeArt == null)
+                return;
+
+            PoseHomeCover();
+            LayoutHomeRest();
+            homeClock = 0f;
+            homeReleased = true;
+        }
+
+        void StepHomeMorph()
+        {
+            if (!homeMorphing || homeArt == null || homePanel == null || !homePanel.activeInHierarchy)
+                return;
+
+            if (!homeReleased)
+            {
+                PoseHomeCover();
+                return;
+            }
+
+            float delta = Time.unscaledDeltaTime;
+            if (delta > 0.2f)
+                return;
+
+            const float morph = 1.6f;
+            homeClock += Mathf.Min(delta, 0.033f);
+            float move = Smooth(homeClock / morph);
+            LayoutHomeRest();
+            homeArt.anchoredPosition = Vector2.LerpUnclamped(homeFullPosition, homeRestPosition, move);
+            homeArt.sizeDelta = Vector2.LerpUnclamped(homeFullSize, homeRestSize, move);
+            float word = Smooth((homeClock - 0.7f) / 0.9f);
+            for (int i = 0; i < homeLines.Length; i++)
+            {
+                if (homeLines[i] == null)
+                    continue;
+                Vector2 rest = homeLineRest[i];
+                homeLines[i].rectTransform.anchoredPosition = Vector2.LerpUnclamped(rest + new Vector2(0f, -12f), rest, word);
+                SetHomeAlpha(homeLines[i], word);
+            }
+
+            if (homeClock < morph)
+                return;
+
+            homeArt.anchoredPosition = homeRestPosition;
+            homeArt.sizeDelta = homeRestSize;
+            for (int i = 0; i < homeLines.Length; i++)
+            {
+                if (homeLines[i] == null)
+                    continue;
+                homeLines[i].rectTransform.anchoredPosition = homeLineRest[i];
+                SetHomeAlpha(homeLines[i], 1f);
+            }
+
+            if (homeBegin != null)
+                homeBegin.raycastTarget = true;
+            if (homeBeginButton != null)
+                homeBeginButton.interactable = true;
+            homeMorphing = false;
+        }
+
+        void PoseHomeCover()
+        {
+            Rect page = homePanel.GetComponent<RectTransform>().rect;
+            float pageW = page.width > 2f ? page.width : 1080f;
+            float pageH = page.height > 2f ? page.height : 1920f;
+            const float aspect = 736f / 981f;
+            float coverW = pageH * aspect;
+            float coverH = pageH;
+            if (coverW < pageW)
+            {
+                coverW = pageW;
+                coverH = pageW / aspect;
+            }
+
+            homeFullSize = new Vector2(coverW, coverH);
+            homeFullPosition = new Vector2((pageW - coverW) * 0.5f, (coverH - pageH) * 0.5f);
+            homeArt.anchoredPosition = homeFullPosition;
+            homeArt.sizeDelta = homeFullSize;
+        }
+
+        void LayoutHomeRest()
+        {
+            Rect page = homePanel.GetComponent<RectTransform>().rect;
+            float pageW = page.width > 2f ? page.width : 1080f;
+            float pageH = page.height > 2f ? page.height : 1920f;
+            homeRestSize = new Vector2(600f, 800f);
+            float artTop = -((pageH * 0.5f) - 480f);
+            homeRestPosition = new Vector2((pageW - homeRestSize.x) * 0.5f, artTop);
+            PlaceHomeLine(homeHeadline, new Vector2((pageW - 980f) * 0.5f, artTop + 146f), new Vector2(980f, 110f));
+            PlaceHomeLine(homeLead, new Vector2((pageW - 860f) * 0.5f, artTop - 828f), new Vector2(860f, 100f));
+            PlaceHomeLine(homeBegin, new Vector2((pageW - 360f) * 0.5f, artTop - 960f), new Vector2(360f, 72f));
+            for (int i = 0; i < homeLines.Length; i++)
+            {
+                if (homeLines[i] != null)
+                    homeLineRest[i] = homeLines[i].rectTransform.anchoredPosition;
+            }
+        }
+
+        static float Smooth(float amount)
+        {
+            float t = Mathf.Clamp01(amount);
+            return t * t * t * (t * (t * 6f - 15f) + 10f);
+        }
+
+        static void SetHomeAlpha(Text line, float alpha)
+        {
+            if (line == null)
+                return;
+            Color color = line.color;
+            color.a = alpha;
+            line.color = color;
+        }
+
+        Text HomeLine(Transform parent, string message, int size)
+        {
+            Text line = CreateLabel(parent, displayFont, message, new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, size);
+            line.alignment = TextAnchor.MiddleCenter;
+            line.color = HomePink;
+            line.raycastTarget = false;
+            line.rectTransform.pivot = new Vector2(0f, 1f);
+            return line;
+        }
+
+        static void PlaceHomeLine(Text line, Vector2 position, Vector2 size)
+        {
+            if (line == null)
+                return;
+            RectTransform rect = line.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+        }
+
+        void PaintHome()
+        {
+            if (homeCover != null)
+                homeCover.color = night ? Color.black : Color.white;
+            TintHome(homeLead);
+            TintHome(homeHeadline);
+            TintHome(homeBegin);
+        }
+
+        static void TintHome(Text line)
+        {
+            if (line == null)
+                return;
+            line.color = new Color(HomePink.r, HomePink.g, HomePink.b, line.color.a);
+        }
+
+        void OpenTestingSession()
+        {
+            homeMorphing = false;
+            if (homePanel != null)
+                homePanel.SetActive(false);
+            if (screenColumn != null)
+                screenColumn.gameObject.SetActive(true);
+            if (consentGate != null)
+            {
+                consentGate.SetActive(true);
+                consentGate.transform.SetAsLastSibling();
+            }
+
+            SetCameraFeed(false);
             if (themeLabel != null)
                 themeLabel.rectTransform.SetAsLastSibling();
         }
@@ -2958,244 +3282,6 @@ namespace Capstone.Placement
             if (consentGate != null)
                 consentGate.SetActive(false);
             StartBuyerPath();
-        }
-
-        void BuildHome(Transform parent)
-        {
-            homeGate = CreatePanel(parent, "Home");
-            GameObject shade = new GameObject("Cover", typeof(RectTransform));
-            shade.transform.SetParent(homeGate.transform, false);
-            homeCover = shade.AddComponent<Image>();
-            homeCover.color = Color.white;
-            homeCover.raycastTarget = true;
-            RectTransform shadeRect = shade.GetComponent<RectTransform>();
-            shadeRect.anchorMin = Vector2.zero;
-            shadeRect.anchorMax = Vector2.one;
-            shadeRect.offsetMin = Vector2.zero;
-            shadeRect.offsetMax = Vector2.zero;
-
-            GameObject artObject = new GameObject("Work", typeof(RectTransform));
-            artObject.transform.SetParent(homeGate.transform, false);
-            RawImage art = artObject.AddComponent<RawImage>();
-            art.texture = Resources.Load<Texture2D>("Home/flowers");
-            art.raycastTarget = false;
-            RectTransform artRect = art.rectTransform;
-            artRect.anchorMin = new Vector2(0f, 1f);
-            artRect.anchorMax = new Vector2(0f, 1f);
-            artRect.pivot = new Vector2(0f, 1f);
-            artRect.anchoredPosition = new Vector2(240f, -560f);
-            artRect.sizeDelta = new Vector2(600f, 800f);
-            homeArt = artRect;
-
-            homeHeadline = HomeLine(homeGate.transform, "CINNARIOS", 84, TextAnchor.MiddleCenter);
-            PlaceHomeLine(homeHeadline, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -400f), new Vector2(980f, 120f));
-            homeHeadline.rectTransform.pivot = new Vector2(0.5f, 1f);
-
-            homeLead = HomeLine(homeGate.transform, "AR visualization of a work on your wall, at its real size.", 28, TextAnchor.MiddleCenter);
-            PlaceHomeLine(homeLead, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -1396f), new Vector2(860f, 90f));
-            homeLead.rectTransform.pivot = new Vector2(0.5f, 1f);
-            homeLead.font = uiFont;
-
-            homeBegin = HomeLine(homeGate.transform, "Begin", 36, TextAnchor.MiddleCenter);
-            PlaceHomeLine(homeBegin, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -1510f), new Vector2(360f, 72f));
-            homeBegin.rectTransform.pivot = new Vector2(0.5f, 1f);
-            Button begin = homeBegin.gameObject.AddComponent<Button>();
-            begin.targetGraphic = homeBegin;
-            begin.transition = Selectable.Transition.None;
-            begin.onClick.AddListener(LeaveHome);
-            homeBegin.raycastTarget = true;
-
-            PaintHome();
-            BeginHomeMorph();
-        }
-
-        void BeginHomeMorph()
-        {
-            homeRestPosition = homeArt.anchoredPosition;
-            homeRestSize = homeArt.sizeDelta;
-            homeLines = new[] { homeHeadline, homeLead, homeBegin };
-            homeLineRest = new Vector2[homeLines.Length];
-            for (int i = 0; i < homeLines.Length; i++)
-            {
-                if (homeLines[i] == null)
-                    continue;
-                homeLineRest[i] = homeLines[i].rectTransform.anchoredPosition;
-                SetHomeAlpha(homeLines[i], 0f);
-            }
-
-            homeBeginButton = homeBegin != null ? homeBegin.GetComponent<Button>() : null;
-            if (homeBeginButton != null)
-                homeBeginButton.interactable = false;
-            if (homeBegin != null)
-                homeBegin.raycastTarget = false;
-            if (homeCover != null)
-            {
-                Button coverTap = homeCover.gameObject.AddComponent<Button>();
-                coverTap.targetGraphic = homeCover;
-                coverTap.transition = Selectable.Transition.None;
-                coverTap.onClick.AddListener(ReleaseHome);
-            }
-
-            if (themeLabel != null)
-            {
-                homeThemeColor = themeLabel.color;
-                homeThemeColor.a = 1f;
-                themeLabel.color = new Color(homeThemeColor.r, homeThemeColor.g, homeThemeColor.b, 0f);
-            }
-
-            homeClock = 0f;
-            homeReleased = false;
-            homeMorphing = true;
-            PoseHomeCover();
-        }
-
-        void ReleaseHome()
-        {
-            if (!homeMorphing || homeReleased || homeArt == null)
-                return;
-
-            PoseHomeCover();
-            homeClock = 0f;
-            homeReleased = true;
-        }
-
-        void StepHomeMorph()
-        {
-            if (!homeMorphing || homeArt == null)
-                return;
-
-            if (!homeReleased)
-            {
-                PoseHomeCover();
-                return;
-            }
-
-            float delta = Time.unscaledDeltaTime;
-            if (delta > 0.2f)
-                return;
-
-            const float morph = 1.6f;
-            homeClock += Mathf.Min(delta, 0.033f);
-            float move = Smooth(homeClock / morph);
-            homeArt.anchoredPosition = Vector2.LerpUnclamped(homeFullPosition, homeRestPosition, move);
-            homeArt.sizeDelta = Vector2.LerpUnclamped(homeFullSize, homeRestSize, move);
-
-            float word = Smooth((homeClock - 0.7f) / 0.9f);
-            for (int i = 0; i < homeLines.Length; i++)
-            {
-                if (homeLines[i] == null)
-                    continue;
-                homeLines[i].rectTransform.anchoredPosition = Vector2.LerpUnclamped(homeLineRest[i] + new Vector2(0f, -12f), homeLineRest[i], word);
-                SetHomeAlpha(homeLines[i], word);
-            }
-
-            if (themeLabel != null)
-                themeLabel.color = new Color(homeThemeColor.r, homeThemeColor.g, homeThemeColor.b, word);
-
-            if (homeClock < morph)
-                return;
-
-            homeArt.anchoredPosition = homeRestPosition;
-            homeArt.sizeDelta = homeRestSize;
-            for (int i = 0; i < homeLines.Length; i++)
-            {
-                if (homeLines[i] == null)
-                    continue;
-                homeLines[i].rectTransform.anchoredPosition = homeLineRest[i];
-                SetHomeAlpha(homeLines[i], 1f);
-            }
-
-            if (themeLabel != null)
-                themeLabel.color = homeThemeColor;
-            if (homeBegin != null)
-                homeBegin.raycastTarget = true;
-            if (homeBeginButton != null)
-                homeBeginButton.interactable = true;
-            homeMorphing = false;
-        }
-
-        void PoseHomeCover()
-        {
-            Rect page = homeGate.GetComponent<RectTransform>().rect;
-            float pageW = page.width > 2f ? page.width : 1080f;
-            float pageH = page.height > 2f ? page.height : 1920f;
-            const float aspect = 736f / 981f;
-            float coverW = pageH * aspect;
-            float coverH = pageH;
-            if (coverW < pageW)
-            {
-                coverW = pageW;
-                coverH = pageW / aspect;
-            }
-
-            homeFullSize = new Vector2(coverW, coverH);
-            homeFullPosition = new Vector2((pageW - coverW) * 0.5f, (coverH - pageH) * 0.5f);
-            homeArt.anchoredPosition = homeFullPosition;
-            homeArt.sizeDelta = homeFullSize;
-        }
-
-        static float Smooth(float amount)
-        {
-            float t = Mathf.Clamp01(amount);
-            return t * t * t * (t * (t * 6f - 15f) + 10f);
-        }
-
-        static void SetHomeAlpha(Text line, float alpha)
-        {
-            Color color = line.color;
-            color.a = alpha;
-            line.color = color;
-        }
-
-        Text HomeLine(Transform parent, string message, int size, TextAnchor alignment)
-        {
-            Text line = CreateLabel(parent, displayFont, message, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, size);
-            line.alignment = alignment;
-            line.color = HomePink;
-            line.raycastTarget = false;
-            return line;
-        }
-
-        static void PlaceHomeLine(Text line, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size)
-        {
-            RectTransform rect = line.rectTransform;
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = position;
-            rect.sizeDelta = size;
-        }
-
-        void PaintHome()
-        {
-            if (homeCover != null)
-                homeCover.color = night ? Color.black : Color.white;
-            TintHome(homeLead);
-            TintHome(homeHeadline);
-            TintHome(homeBegin);
-        }
-
-        static void TintHome(Text line)
-        {
-            if (line == null)
-                return;
-
-            line.color = new Color(HomePink.r, HomePink.g, HomePink.b, line.color.a);
-        }
-
-        void LeaveHome()
-        {
-            homeMorphing = false;
-            if (homeGate != null)
-                homeGate.SetActive(false);
-            if (consentGate != null)
-            {
-                consentGate.SetActive(true);
-                consentGate.transform.SetAsLastSibling();
-            }
-
-            if (themeLabel != null)
-                themeLabel.rectTransform.SetAsLastSibling();
         }
 
         void ToggleLook()
@@ -3642,7 +3728,7 @@ namespace Capstone.Placement
             rect.anchoredPosition = new Vector2(24f, 200f);
 
             Text text = CreateFieldText(fieldObject.transform, font, string.Empty, PageInk, FontStyle.Normal, 36);
-            Text placeholder = CreateFieldText(fieldObject.transform, font, "Ask about size, fit, light, colour, meaning, or price", PageMuted, FontStyle.Italic, 28);
+            Text placeholder = CreateFieldText(fieldObject.transform, font, "Ask about this piece or this wall", PageMuted, FontStyle.Italic, 28);
             field.textComponent = text;
             field.placeholder = placeholder;
             return field;
