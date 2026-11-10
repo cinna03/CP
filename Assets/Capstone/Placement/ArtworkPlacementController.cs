@@ -32,7 +32,7 @@ namespace Capstone.Placement
     /// Consent must be marked before a keep, save, dismiss, matched question, or chosen rank is stored.
     /// No wall means a retry message and no invented size.
     /// In the editor, a chosen work is placed on the plain wall. On a phone, the camera opens so that work can be placed on a real wall. The artwork keeps its stored centimetres.
-    /// The app opens on blue. A white ball bounces on each word and turns it white, then comes toward the camera until the page is white. The blue circle stays until that circle is tapped. The tap asks for a consent code. A matching code starts this session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for a clear picture, the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, dismiss, or ask for alternatives ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
+    /// A consent code starts the session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for a clear picture, the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, dismiss, or ask for alternatives ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -132,6 +132,7 @@ namespace Capstone.Placement
         List<Artwork> shown;
         string step = PrototypeScreen.Works;
         Font uiFont;
+        Font displayFont;
         GameObject worksPanel;
         GameObject wallPanel;
         GameObject recommendPanel;
@@ -208,6 +209,16 @@ namespace Capstone.Placement
         GameObject browseFilters;
         Text catalogueHeading;
         Text catalogueSubtitle;
+        Text recommendTitle;
+        Text themeLabel;
+        GameObject consentGate;
+        InputField consentField;
+        Text consentHint;
+        Text consentHeading;
+        readonly List<Image> paperCovers = new List<Image>();
+        readonly List<GameObject> loudButtons = new List<GameObject>();
+        readonly List<GameObject> quietButtons = new List<GameObject>();
+        bool night;
         RectTransform workViewRect;
         CanvasScaler screenFit;
         RectTransform screenColumn;
@@ -217,16 +228,19 @@ namespace Capstone.Placement
         Coroutine entrance;
         string presentedStep;
         static Sprite plate;
-        static readonly Color AimSearching = new Color(1f, 0.98f, 0.94f, 0.92f);
-        static readonly Color AimReady = new Color(0.93f, 0.84f, 0.55f, 1f);
-
-        static readonly Color PageInk = new Color(0.102f, 0.090f, 0.078f, 1f);
-        static readonly Color PagePaper = new Color(0.957f, 0.941f, 0.910f, 1f);
-        static readonly Color PageCard = new Color(0.996f, 0.988f, 0.973f, 1f);
-        static readonly Color PageMuted = new Color(0.420f, 0.384f, 0.337f, 1f);
-        static readonly Color PageLine = new Color(0.847f, 0.816f, 0.757f, 1f);
-        static readonly Color StepOn = new Color(0.102f, 0.090f, 0.078f, 1f);
-        static readonly Color StepOff = new Color(0.102f, 0.090f, 0.078f, 0.08f);
+        static Color AimSearching = new Color(0.086f, 0.086f, 0.086f, 0.92f);
+        static Color AimReady = new Color(0.949f, 0.627f, 0.769f, 1f);
+        static Color PageInk = new Color(0.086f, 0.086f, 0.086f, 1f);
+        static Color PagePaper = new Color(0.957f, 0.941f, 0.910f, 1f);
+        static Color PageCard = new Color(0.984f, 0.973f, 0.957f, 1f);
+        static Color PageMuted = new Color(0.227f, 0.204f, 0.180f, 1f);
+        static Color PageLine = new Color(0.894f, 0.863f, 0.824f, 1f);
+        static Color PagePink = new Color(0.949f, 0.627f, 0.769f, 1f);
+        static Color PageBar = new Color(0.086f, 0.086f, 0.086f, 1f);
+        static Color PageBarInk = new Color(0.949f, 0.627f, 0.769f, 1f);
+        static Color PageOnBar = new Color(0.965f, 0.945f, 0.918f, 0.78f);
+        static Color StepOn = new Color(0.086f, 0.086f, 0.086f, 1f);
+        static Color StepOff = new Color(0.086f, 0.086f, 0.086f, 0.08f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -1009,9 +1023,9 @@ namespace Capstone.Placement
 
                 bool unknown = string.IsNullOrEmpty(choice.Tag);
                 if (quizImages[i] != null)
-                    quizImages[i].color = unknown ? PageLine : StepOn;
+                    quizImages[i].color = unknown ? PageCard : PageBar;
                 if (quizLabels[i] != null)
-                    quizLabels[i].color = unknown ? PageInk : Color.white;
+                    quizLabels[i].color = unknown ? PageInk : PageBarInk;
 
                 string tag = choice.Tag;
                 button.onClick.RemoveAllListeners();
@@ -1532,7 +1546,7 @@ namespace Capstone.Placement
             if (ended)
                 return EndedMessage;
             if (!tagsChosen && enteringOwnPiece)
-                return "Tap a box. The keys type into the blue one.";
+                return "Tap a box. The keys type into the marked one.";
             if (!tagsChosen)
                 return "I don't know leaves this category open.";
             if (narrowed && !browsing && step == PrototypeScreen.Works)
@@ -1652,21 +1666,7 @@ namespace Capstone.Placement
             Image image = cardObject.AddComponent<Image>();
             image.sprite = Plate();
             image.type = Image.Type.Sliced;
-            image.color = selected ? Color.white : PageCard;
-            if (selected)
-            {
-                GameObject accent = new GameObject("Selected", typeof(RectTransform));
-                accent.transform.SetParent(cardObject.transform, false);
-                Image bar = accent.AddComponent<Image>();
-                bar.color = PageInk;
-                bar.raycastTarget = false;
-                RectTransform barRect = accent.GetComponent<RectTransform>();
-                barRect.anchorMin = new Vector2(0f, 0f);
-                barRect.anchorMax = new Vector2(0f, 1f);
-                barRect.pivot = new Vector2(0f, 0.5f);
-                barRect.sizeDelta = new Vector2(8f, -28f);
-                barRect.anchoredPosition = new Vector2(14f, 0f);
-            }
+            image.color = selected ? PageBar : PageCard;
             Button button = cardObject.AddComponent<Button>();
             button.targetGraphic = image;
             int captured = index;
@@ -1712,8 +1712,8 @@ namespace Capstone.Placement
                 chipRect.anchoredPosition = new Vector2(24f, 0f);
             }
 
-            Color ink = PageInk;
-            Color meta = PageMuted;
+            Color ink = selected ? PageBarInk : PageInk;
+            Color meta = selected ? PageOnBar : PageMuted;
             Text title = CreateCardLine(cardObject.transform, work.Title, 32, ink, new Vector2(inset, 18f), new Vector2(-24f, -16f), new Vector2(0f, 0.42f), Vector2.one);
             title.alignment = TextAnchor.LowerLeft;
             string detail = work.Artist + ", " + work.Year + "   " + work.WidthCm.ToString("0") + " x " + work.HeightCm.ToString("0") + " cm";
@@ -1742,16 +1742,36 @@ namespace Capstone.Placement
             return text;
         }
 
+        void MarkLoud(GameObject widget)
+        {
+            if (widget == null)
+                return;
+            quietButtons.Remove(widget);
+            if (!loudButtons.Contains(widget))
+                loudButtons.Add(widget);
+            PaintPrimary(widget);
+        }
+
+        void MarkQuiet(GameObject widget)
+        {
+            if (widget == null)
+                return;
+            loudButtons.Remove(widget);
+            if (!quietButtons.Contains(widget))
+                quietButtons.Add(widget);
+            PaintQuiet(widget);
+        }
+
         static void PaintPrimary(GameObject widget)
         {
             if (widget == null)
                 return;
             Image image = widget.GetComponent<Image>();
             if (image != null)
-                image.color = PageInk;
+                image.color = PageBar;
             Text text = widget.GetComponentInChildren<Text>();
             if (text != null)
-                text.color = Color.white;
+                text.color = PageBarInk;
         }
 
         static void PaintQuiet(GameObject widget)
@@ -2664,6 +2684,7 @@ namespace Capstone.Placement
 
         void BuildControls()
         {
+            AssignPalette();
             GameObject canvasObject = new GameObject("Artwork placement controls");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -2686,10 +2707,13 @@ namespace Capstone.Placement
             uiFont = Resources.Load<Font>("Fonts/Inter-Regular");
             if (uiFont == null)
                 uiFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            displayFont = Resources.Load<Font>("Fonts/Inter-SemiBold");
+            if (displayFont == null)
+                displayFont = uiFont;
             tagsPanel = CreatePanel(column.transform, "Tags");
             Cover(tagsPanel, PagePaper);
-            quizPrompt = CreateLabel(tagsPanel.transform, uiFont, TagsMessage, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -340f), 52);
-            quizPrompt.color = new Color(0.07f, 0.18f, 0.42f, 1f);
+            quizPrompt = CreateLabel(tagsPanel.transform, displayFont, TagsMessage, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -340f), 64);
+            quizPrompt.color = PageInk;
             quizPrompt.rectTransform.sizeDelta = new Vector2(960f, 220f);
             for (int i = 0; i < quizButtons.Length; i++)
             {
@@ -2781,7 +2805,7 @@ namespace Capstone.Placement
             workScroll.viewport = viewRect;
             workList = CreatePanel(workViewport.transform, "Work list").GetComponent<RectTransform>();
             workScroll.content = workList;
-            catalogueHeading = CreateLabel(worksPanel.transform, uiFont, "Top picks", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -16f), 48);
+            catalogueHeading = CreateLabel(worksPanel.transform, displayFont, "Top picks", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -16f), 64);
             catalogueHeading.color = PageInk;
             catalogueHeading.rectTransform.sizeDelta = new Vector2(980f, 64f);
             catalogueSubtitle = CreateLabel(worksPanel.transform, uiFont, string.Empty, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -82f), 26);
@@ -2790,27 +2814,27 @@ namespace Capstone.Placement
 
             browseButton = CreateButton(worksPanel.transform, uiFont, "Browse for more", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 148f), new Vector2(1032f, 84f), ShowAll, 28).gameObject;
             topPicksButton = CreateButton(worksPanel.transform, uiFont, "Top picks", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 148f), new Vector2(1032f, 84f), ShowTopPicks, 28).gameObject;
-            PaintQuiet(browseButton);
-            PaintQuiet(topPicksButton);
+            MarkQuiet(browseButton);
+            MarkQuiet(topPicksButton);
             browseFilters = CreatePanel(worksPanel.transform, "Browse filters");
-            PaintQuiet(CreateButton(browseFilters.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 248f), new Vector2(246f, 80f), ShowAll, 26).gameObject);
-            PaintQuiet(CreateButton(browseFilters.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(286f, 248f), new Vector2(246f, 80f), ShowBlue, 26).gameObject);
-            PaintQuiet(CreateButton(browseFilters.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 248f), new Vector2(246f, 80f), ShowCalm, 26).gameObject);
-            PaintQuiet(CreateButton(browseFilters.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(810f, 248f), new Vector2(246f, 80f), ShowFitsFifty, 26).gameObject);
-            PaintPrimary(CreateButton(worksPanel.transform, uiFont, "Try this piece", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 24f), new Vector2(1032f, 108f), BeginPlacement, 34).gameObject);
+            MarkQuiet(CreateButton(browseFilters.transform, uiFont, "All", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 248f), new Vector2(246f, 80f), ShowAll, 26).gameObject);
+            MarkQuiet(CreateButton(browseFilters.transform, uiFont, "Blue", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(286f, 248f), new Vector2(246f, 80f), ShowBlue, 26).gameObject);
+            MarkQuiet(CreateButton(browseFilters.transform, uiFont, "Calm", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(548f, 248f), new Vector2(246f, 80f), ShowCalm, 26).gameObject);
+            MarkQuiet(CreateButton(browseFilters.transform, uiFont, "Fits 50", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(810f, 248f), new Vector2(246f, 80f), ShowFitsFifty, 26).gameObject);
+            MarkLoud(CreateButton(worksPanel.transform, uiFont, "Try this piece", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 24f), new Vector2(1032f, 108f), BeginPlacement, 34).gameObject);
             RefreshWorkList();
 
             notesButton = CreateButton(wallPanel.transform, uiFont, "Notes", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 460f), new Vector2(500f, 100f), ShowNotes, 36).gameObject;
             skipButton = CreateButton(wallPanel.transform, uiFont, "Skip", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 28f), new Vector2(500f, 110f), SkipQuestion, 32).gameObject;
             concernField = CreateInput(wallPanel.transform, uiFont);
             sendButton = CreateButton(wallPanel.transform, uiFont, "Send", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(556f, 28f), new Vector2(500f, 110f), Send, 32).gameObject;
-            PaintQuiet(skipButton);
-            PaintPrimary(sendButton);
+            MarkQuiet(skipButton);
+            MarkLoud(sendButton);
             placeButton = CreateButton(wallPanel.transform, uiFont, "Place", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 40f), new Vector2(320f, 140f), Place);
             swapButton = CreateButton(wallPanel.transform, uiFont, "Swap", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 40f), new Vector2(320f, 140f), Swap).gameObject;
             removeButton = CreateButton(wallPanel.transform, uiFont, "Remove", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 40f), new Vector2(320f, 140f), Remove).gameObject;
 
-            Text recommendTitle = CreateLabel(recommendPanel.transform, uiFont, "What do you want to do?", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -36f), 42);
+            recommendTitle = CreateLabel(recommendPanel.transform, displayFont, "What do you want to do?", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -36f), 42);
             recommendTitle.color = PageInk;
             recommendTitle.rectTransform.sizeDelta = new Vector2(980f, 80f);
             CreateButton(recommendPanel.transform, uiFont, "Keep", new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(24f, 320f), new Vector2(320f, 120f), Keep);
@@ -2835,6 +2859,16 @@ namespace Capstone.Placement
                 aimMark.rectTransform.SetAsLastSibling();
             ApplyStepVisibility();
 
+            themeLabel = CreateLabel(column.transform, uiFont, "Dark", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-28f, -28f), 28);
+            themeLabel.alignment = TextAnchor.UpperRight;
+            themeLabel.color = PageInk;
+            themeLabel.rectTransform.sizeDelta = new Vector2(180f, 48f);
+            Button themeButton = themeLabel.gameObject.AddComponent<Button>();
+            themeButton.targetGraphic = themeLabel;
+            themeButton.transition = Selectable.Transition.None;
+            themeButton.onClick.AddListener(ToggleLook);
+            themeLabel.raycastTarget = true;
+
             if (SkipOpeningForPreview)
             {
                 StartPreview();
@@ -2842,22 +2876,172 @@ namespace Capstone.Placement
             }
             else
             {
-                canvasObject.SetActive(false);
-                Action playOpening = () => OpeningSequence.Play(uiFont, (id, code) =>
-                {
-                    BuyerSession started;
-                    if (BuyerSession.TryStart(code, out started))
-                        session = started;
-                    ChooseOpeningWork(id);
-                    if (canvasObject != null)
-                        canvasObject.SetActive(true);
-                    StartBuyerPath();
-                });
-                Instructions.Play(uiFont, playOpening);
+                canvasObject.SetActive(true);
+                BuildConsentGate(column.transform);
             }
+
+            if (themeLabel != null)
+                themeLabel.rectTransform.SetAsLastSibling();
         }
 
-        static void Cover(GameObject panel, Color color)
+        void BuildConsentGate(Transform parent)
+        {
+            consentGate = CreatePanel(parent, "Consent gate");
+            Cover(consentGate, PagePaper);
+
+            consentHeading = CreateLabel(consentGate.transform, displayFont, "Consent code", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 280f), 72);
+            consentHeading.color = PageInk;
+            consentHeading.rectTransform.sizeDelta = new Vector2(900f, 120f);
+
+            GameObject fieldObject = new GameObject("Code");
+            fieldObject.transform.SetParent(consentGate.transform, false);
+            Image image = fieldObject.AddComponent<Image>();
+            image.sprite = Plate();
+            image.type = Image.Type.Sliced;
+            image.color = PageBar;
+            consentField = fieldObject.AddComponent<InputField>();
+            RectTransform rect = fieldObject.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(760f, 120f);
+            rect.anchoredPosition = new Vector2(0f, 40f);
+            Text typed = CreateFieldText(fieldObject.transform, displayFont, string.Empty, PageBarInk, FontStyle.Normal, 42);
+            Text placeholder = CreateFieldText(fieldObject.transform, uiFont, "Type your code", PageOnBar, FontStyle.Normal, 32);
+            consentField.textComponent = typed;
+            consentField.placeholder = placeholder;
+            consentField.onSubmit.AddListener(_ => SubmitConsentGate());
+
+            MarkLoud(CreateButton(consentGate.transform, displayFont, "Enter", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -260f), new Vector2(360f, 110f), SubmitConsentGate, 36).gameObject);
+
+            consentHint = CreateLabel(consentGate.transform, uiFont, string.Empty, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -420f), 32);
+            consentHint.color = PageInk;
+            consentHint.rectTransform.sizeDelta = new Vector2(800f, 60f);
+        }
+
+        void SubmitConsentGate()
+        {
+            if (consentField == null)
+                return;
+
+            BuyerSession started;
+            if (!BuyerSession.TryStart(consentField.text, out started))
+            {
+                if (consentHint != null)
+                    consentHint.text = "Try again.";
+                return;
+            }
+
+            session = started;
+            if (consentGate != null)
+                consentGate.SetActive(false);
+            StartBuyerPath();
+        }
+
+        void ToggleLook()
+        {
+            night = !night;
+            AssignPalette();
+            for (int i = 0; i < paperCovers.Count; i++)
+            {
+                if (paperCovers[i] != null)
+                    paperCovers[i].color = PagePaper;
+            }
+
+            for (int i = 0; i < loudButtons.Count; i++)
+                PaintPrimary(loudButtons[i]);
+            for (int i = 0; i < quietButtons.Count; i++)
+                PaintQuiet(quietButtons[i]);
+
+            if (quizPrompt != null)
+                quizPrompt.color = PageInk;
+            if (catalogueHeading != null)
+                catalogueHeading.color = PageInk;
+            if (catalogueSubtitle != null)
+                catalogueSubtitle.color = PageMuted;
+            if (recommendTitle != null)
+                recommendTitle.color = PageInk;
+            if (status != null)
+                status.color = PageInk;
+            if (themeLabel != null)
+            {
+                themeLabel.text = night ? "Light" : "Dark";
+                themeLabel.color = PageInk;
+            }
+
+            if (consentField != null)
+            {
+                Image well = consentField.GetComponent<Image>();
+                if (well != null)
+                    well.color = PageBar;
+                if (consentField.textComponent != null)
+                    consentField.textComponent.color = PageBarInk;
+                if (consentField.placeholder != null)
+                    consentField.placeholder.color = PageOnBar;
+            }
+
+            if (consentHeading != null)
+                consentHeading.color = PageInk;
+            if (consentHint != null)
+                consentHint.color = PageInk;
+            TintMeasure(widthValue);
+            TintMeasure(heightValue);
+            TintMeasure(mouldingValue);
+            ShowQuestion();
+            RefreshWorkList(false);
+            PaintMeasure(widthBox, selectedValue == widthValue ? widthBox : null);
+            PaintMeasure(heightBox, selectedValue == heightValue ? heightBox : null);
+            PaintMeasure(mouldingBox, selectedValue == mouldingValue ? mouldingBox : null);
+        }
+
+        static void TintMeasure(Text value)
+        {
+            if (value == null)
+                return;
+
+            value.color = PageInk;
+            Transform hint = value.transform.parent.Find("Placeholder");
+            if (hint == null)
+                return;
+
+            Text hintText = hint.GetComponent<Text>();
+            if (hintText != null)
+                hintText.color = PageMuted;
+        }
+
+        void AssignPalette()
+        {
+            PagePink = new Color(0.949f, 0.627f, 0.769f, 1f);
+            AimReady = PagePink;
+            if (!night)
+            {
+                PagePaper = new Color(0.957f, 0.941f, 0.910f, 1f);
+                PageInk = new Color(0.086f, 0.086f, 0.086f, 1f);
+                PageCard = new Color(0.984f, 0.973f, 0.957f, 1f);
+                PageMuted = new Color(0.227f, 0.204f, 0.180f, 1f);
+                PageLine = new Color(0.894f, 0.863f, 0.824f, 1f);
+                PageBar = PageInk;
+                PageBarInk = PagePink;
+                PageOnBar = new Color(0.965f, 0.945f, 0.918f, 0.78f);
+            }
+            else
+            {
+                PagePaper = new Color(0.071f, 0.071f, 0.071f, 1f);
+                PageInk = new Color(0.965f, 0.945f, 0.918f, 1f);
+                PageCard = new Color(0.122f, 0.122f, 0.122f, 1f);
+                PageMuted = new Color(0.965f, 0.945f, 0.918f, 0.72f);
+                PageLine = new Color(0.965f, 0.945f, 0.918f, 0.16f);
+                PageBar = PagePink;
+                PageBarInk = new Color(0.086f, 0.086f, 0.086f, 1f);
+                PageOnBar = new Color(0.086f, 0.086f, 0.086f, 0.62f);
+            }
+
+            AimSearching = new Color(PageInk.r, PageInk.g, PageInk.b, 0.92f);
+            StepOn = PageBar;
+            StepOff = PageLine;
+        }
+
+        void Cover(GameObject panel, Color color)
         {
             if (panel == null)
                 return;
@@ -2868,6 +3052,7 @@ namespace Capstone.Placement
             Image image = shade.AddComponent<Image>();
             image.color = color;
             image.raycastTarget = true;
+            paperCovers.Add(image);
             RectTransform rect = shade.GetComponent<RectTransform>();
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
@@ -3007,21 +3192,21 @@ namespace Capstone.Placement
             return plate;
         }
 
-        static Button CreateButton(Transform parent, Font font, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction onClick, int labelFontSize = 48)
+        Button CreateButton(Transform parent, Font font, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size, UnityEngine.Events.UnityAction onClick, int labelFontSize = 48)
         {
             GameObject buttonObject = new GameObject(label);
             buttonObject.transform.SetParent(parent, false);
             Image image = buttonObject.AddComponent<Image>();
             image.sprite = Plate();
             image.type = Image.Type.Sliced;
-            image.color = PageInk;
+            image.color = PageBar;
             Button button = buttonObject.AddComponent<Button>();
             button.targetGraphic = image;
             ColorBlock colors = button.colors;
             colors.fadeDuration = 0.08f;
             colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(0.94f, 0.90f, 0.84f, 1f);
-            colors.pressedColor = new Color(0.82f, 0.76f, 0.68f, 1f);
+            colors.highlightedColor = new Color(1f, 0.93f, 0.96f, 1f);
+            colors.pressedColor = new Color(0.86f, 0.78f, 0.82f, 1f);
             colors.selectedColor = colors.highlightedColor;
             colors.disabledColor = new Color(1f, 1f, 1f, 0.45f);
             button.colors = colors;
@@ -3039,13 +3224,14 @@ namespace Capstone.Placement
             text.font = font;
             text.fontSize = labelFontSize;
             text.alignment = TextAnchor.MiddleCenter;
-            text.color = Color.white;
+            text.color = PageBarInk;
             text.text = label;
             RectTransform textRect = text.rectTransform;
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
+            MarkLoud(buttonObject);
             return button;
         }
 
@@ -3110,7 +3296,7 @@ namespace Capstone.Placement
                 return;
 
             box.color = box == selected
-                ? new Color(0.93f, 0.86f, 0.74f, 1f)
+                ? Color.Lerp(PageCard, PagePink, 0.55f)
                 : PageCard;
         }
 
