@@ -32,7 +32,7 @@ namespace Capstone.Placement
     /// Consent must be marked before a keep, save, dismiss, matched question, or chosen rank is stored.
     /// No wall means a retry message and no invented size.
     /// In the editor, a chosen work is placed on the plain wall. On a phone, the camera opens so that work can be placed on a real wall. The artwork keeps its stored centimetres.
-    /// A consent code starts the session. Any other code asks for another attempt. The buyer is asked whether they already have a piece. A piece they bring asks for a clear picture, the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, dismiss, or ask for alternatives ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
+    /// A consent code starts the session. Any other code asks for another attempt. The next page places one work beside what the app is for, then the buyer is asked whether they already have a piece. A piece they bring asks for a clear picture, the painted width, the painted height, and a frame, then goes to the wall at the outer size. Exploring answers three questions. An answer stores a style, a mood, or a colour. I don't know leaves that category open. The catalogue opens on those matches as the top picks. Browse for more lists every piece. The camera opens when a chosen work is placed. After the work is on the wall the buyer may ask one thing or skip. Keep, save, dismiss, or ask for alternatives ranks three other works with their story notes. The buyer can answer the questions again and place another work, or end. The five uncertainty questions stay on the paper form.
     /// </summary>
     [DefaultExecutionOrder(10000)]
     public sealed class ArtworkPlacementController : MonoBehaviour
@@ -215,6 +215,14 @@ namespace Capstone.Placement
         InputField consentField;
         Text consentHint;
         Text consentHeading;
+        GameObject homeGate;
+        Image homeCover;
+        Text homeMarkA;
+        Text homeMarkB;
+        Text homeLead;
+        Text homeHeadline;
+        Text homeBody;
+        Text homeBegin;
         readonly List<Image> paperCovers = new List<Image>();
         readonly List<GameObject> loudButtons = new List<GameObject>();
         readonly List<GameObject> quietButtons = new List<GameObject>();
@@ -241,6 +249,7 @@ namespace Capstone.Placement
         static Color PageOnBar = new Color(0.965f, 0.945f, 0.918f, 0.78f);
         static Color StepOn = new Color(0.086f, 0.086f, 0.086f, 1f);
         static Color StepOff = new Color(0.086f, 0.086f, 0.086f, 0.08f);
+        static readonly Color HomePink = new Color(0.878f, 0.082f, 0.384f, 1f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -2878,6 +2887,7 @@ namespace Capstone.Placement
             {
                 canvasObject.SetActive(true);
                 BuildConsentGate(column.transform);
+                BuildHome(column.transform);
             }
 
             if (themeLabel != null)
@@ -2935,6 +2945,123 @@ namespace Capstone.Placement
             session = started;
             if (consentGate != null)
                 consentGate.SetActive(false);
+            OpenHome();
+        }
+
+        void BuildHome(Transform parent)
+        {
+            homeGate = CreatePanel(parent, "Home");
+            GameObject shade = new GameObject("Cover", typeof(RectTransform));
+            shade.transform.SetParent(homeGate.transform, false);
+            homeCover = shade.AddComponent<Image>();
+            homeCover.color = Color.white;
+            homeCover.raycastTarget = true;
+            RectTransform shadeRect = shade.GetComponent<RectTransform>();
+            shadeRect.anchorMin = Vector2.zero;
+            shadeRect.anchorMax = Vector2.one;
+            shadeRect.offsetMin = Vector2.zero;
+            shadeRect.offsetMax = Vector2.zero;
+
+            homeMarkA = HomeLine(homeGate.transform, "SEE", 188, TextAnchor.MiddleLeft);
+            PlaceHomeLine(homeMarkA, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(-48f, 64f), new Vector2(720f, 250f));
+            homeMarkA.horizontalOverflow = HorizontalWrapMode.Overflow;
+
+            GameObject artObject = new GameObject("Work", typeof(RectTransform));
+            artObject.transform.SetParent(homeGate.transform, false);
+            RawImage art = artObject.AddComponent<RawImage>();
+            art.texture = Resources.Load<Texture2D>("TrialPieces/folded");
+            art.raycastTarget = false;
+            RectTransform artRect = art.rectTransform;
+            artRect.anchorMin = new Vector2(0f, 1f);
+            artRect.anchorMax = new Vector2(0f, 1f);
+            artRect.pivot = new Vector2(0f, 1f);
+            artRect.anchoredPosition = new Vector2(0f, -188f);
+            artRect.sizeDelta = new Vector2(600f, 890f);
+
+            homeLead = HomeLine(homeGate.transform, "A work goes on your wall at the centimetres stored on it. You ask one thing.", 28, TextAnchor.UpperLeft);
+            PlaceHomeLine(homeLead, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(628f, -240f), new Vector2(412f, 280f));
+
+            homeHeadline = HomeLine(homeGate.transform, "At its\nreal size", 64, TextAnchor.UpperLeft);
+            PlaceHomeLine(homeHeadline, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(628f, -540f), new Vector2(412f, 220f));
+            homeHeadline.lineSpacing = 0.85f;
+
+            homeBody = HomeLine(homeGate.transform, "Bring a piece you already have, or answer for style, mood, and colour. The camera opens when the work is placed. Then you keep it, save it, or dismiss it.", 28, TextAnchor.UpperLeft);
+            PlaceHomeLine(homeBody, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(628f, -790f), new Vector2(412f, 460f));
+
+            homeBegin = HomeLine(homeGate.transform, "Begin", 42, TextAnchor.MiddleLeft);
+            PlaceHomeLine(homeBegin, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(628f, -1160f), new Vector2(412f, 80f));
+            Button begin = homeBegin.gameObject.AddComponent<Button>();
+            begin.targetGraphic = homeBegin;
+            begin.transition = Selectable.Transition.None;
+            begin.onClick.AddListener(LeaveHome);
+            homeBegin.raycastTarget = true;
+
+            homeMarkB = HomeLine(homeGate.transform, "SEE", 188, TextAnchor.MiddleRight);
+            PlaceHomeLine(homeMarkB, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(72f, -36f), new Vector2(720f, 250f));
+            homeMarkB.rectTransform.pivot = new Vector2(1f, 0f);
+            homeMarkB.rectTransform.anchoredPosition = new Vector2(72f, -36f);
+            homeMarkB.horizontalOverflow = HorizontalWrapMode.Overflow;
+
+            PaintHome();
+            homeGate.SetActive(false);
+        }
+
+        Text HomeLine(Transform parent, string message, int size, TextAnchor alignment)
+        {
+            Text line = CreateLabel(parent, displayFont, message, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, size);
+            line.alignment = alignment;
+            line.color = HomePink;
+            line.raycastTarget = false;
+            return line;
+        }
+
+        static void PlaceHomeLine(Text line, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 size)
+        {
+            RectTransform rect = line.rectTransform;
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+        }
+
+        void PaintHome()
+        {
+            if (homeCover != null)
+                homeCover.color = night ? Color.black : Color.white;
+            TintHome(homeMarkA);
+            TintHome(homeMarkB);
+            TintHome(homeLead);
+            TintHome(homeHeadline);
+            TintHome(homeBody);
+            TintHome(homeBegin);
+        }
+
+        static void TintHome(Text line)
+        {
+            if (line != null)
+                line.color = HomePink;
+        }
+
+        void OpenHome()
+        {
+            if (homeGate == null)
+            {
+                StartBuyerPath();
+                return;
+            }
+
+            PaintHome();
+            homeGate.SetActive(true);
+            homeGate.transform.SetAsLastSibling();
+            if (themeLabel != null)
+                themeLabel.rectTransform.SetAsLastSibling();
+        }
+
+        void LeaveHome()
+        {
+            if (homeGate != null)
+                homeGate.SetActive(false);
             StartBuyerPath();
         }
 
@@ -2984,6 +3111,7 @@ namespace Capstone.Placement
                 consentHeading.color = PageInk;
             if (consentHint != null)
                 consentHint.color = PageInk;
+            PaintHome();
             TintMeasure(widthValue);
             TintMeasure(heightValue);
             TintMeasure(mouldingValue);
