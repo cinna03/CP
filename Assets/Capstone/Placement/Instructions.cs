@@ -5,9 +5,8 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The instructions follow the Apple motion guide: a light field, a rounded card that
-    /// settles into place, and type that sharpens in. Chapters morph from one to the next.
-    /// The last chapter, or Skip, starts the opening film.
+    /// The instructions turn like the Beyond Depth reel. Each chapter is a card on black.
+    /// The card swings through depth into the next painting. The last chapter, or Skip, starts the opening film.
     /// </summary>
     public sealed class Instructions : MonoBehaviour
     {
@@ -34,14 +33,13 @@ namespace Capstone.Placement
             new Step { Kicker = "Then", Claim = "Keep one.", Line = "Save, dismiss, or take one of three.", Picture = "hands" }
         };
 
-        static readonly Color Stage = new Color(0.961f, 0.961f, 0.969f, 1f);
-        static readonly Color Card = Color.white;
-        static readonly Color Ink = new Color(0.114f, 0.114f, 0.122f, 1f);
-        static readonly Color Mist = new Color(0.439f, 0.439f, 0.439f, 1f);
-        static readonly Color PricingBlue = new Color(0f, 0.443f, 0.890f, 1f);
-        const float EnterDuration = 1.05f;
+        static readonly Color Card = new Color(1f, 1f, 1f, 0.82f);
+        static readonly Color Title = Color.white;
+        static readonly Color Mist = new Color(1f, 1f, 1f, 0.78f);
+        static readonly Color PricingBlue = new Color(0f, 0.4f, 0.8f, 1f);
+        const float EnterDuration = 0.95f;
         const float HoldDuration = 3.2f;
-        const float LeaveDuration = 0.72f;
+        const float LeaveDuration = 0.92f;
 
         static Sprite pill;
         static Sprite plate;
@@ -58,11 +56,15 @@ namespace Capstone.Placement
         CanvasGroup rootFade;
         CanvasGroup copyFade;
         CanvasGroup frameFade;
+        CanvasGroup rimFade;
         CanvasGroup frontFade;
         CanvasGroup backFade;
         CanvasGroup controlFade;
+        RectTransform planeRect;
+        CanvasGroup planeFade;
         RectTransform copyRect;
         RectTransform frameRect;
+        RectTransform rimRect;
         RectTransform frontRect;
         RectTransform backRect;
         RawImage front;
@@ -96,7 +98,7 @@ namespace Capstone.Placement
             canvasObject.AddComponent<GraphicRaycaster>();
             rootFade = canvasObject.AddComponent<CanvasGroup>();
 
-            Image paper = CreateImage(canvasObject.transform, "Stage", Stage);
+            Image paper = CreateImage(canvasObject.transform, "Stage", Color.black);
             paper.raycastTarget = true;
             Stretch(paper.rectTransform);
             Button page = paper.gameObject.AddComponent<Button>();
@@ -110,12 +112,30 @@ namespace Capstone.Placement
             copyRect.anchorMin = new Vector2(0.5f, 0.5f);
             copyRect.anchorMax = new Vector2(0.5f, 0.5f);
             copyRect.sizeDelta = new Vector2(1080f, 1920f);
-            kicker = CreateText(copy.transform, typeface, Steps[0].Kicker, 28, Mist, FontStyle.Normal);
-            claimSoft = CreateText(copy.transform, typeface, Steps[0].Claim, 78, new Color(Ink.r, Ink.g, Ink.b, 0f), FontStyle.Bold);
-            claim = CreateText(copy.transform, typeface, Steps[0].Claim, 78, Ink, FontStyle.Bold);
+            kicker = CreateText(copy.transform, typeface, "01", 28, Title, FontStyle.Normal);
+            kicker.alignment = TextAnchor.MiddleLeft;
+            claimSoft = CreateText(copy.transform, typeface, Steps[0].Claim, 78, new Color(1f, 1f, 1f, 0f), FontStyle.Bold);
+            claim = CreateText(copy.transform, typeface, Steps[0].Claim, 78, Title, FontStyle.Bold);
+            claim.alignment = TextAnchor.MiddleLeft;
+            claimSoft.alignment = TextAnchor.MiddleLeft;
             line = CreateText(copy.transform, typeface, Steps[0].Line, 30, Mist, FontStyle.Normal);
+            line.alignment = TextAnchor.MiddleLeft;
             copyFade = copy.AddComponent<CanvasGroup>();
             copyFade.alpha = 0f;
+
+            GameObject rim = new GameObject("Rim", typeof(RectTransform));
+            rim.transform.SetParent(canvasObject.transform, false);
+            rimRect = rim.GetComponent<RectTransform>();
+            rimRect.anchorMin = new Vector2(0.5f, 0.5f);
+            rimRect.anchorMax = new Vector2(0.5f, 0.5f);
+            rimRect.pivot = new Vector2(0.5f, 0.5f);
+            Image rimImage = rim.AddComponent<Image>();
+            rimImage.sprite = Plate();
+            rimImage.type = Image.Type.Sliced;
+            rimImage.color = new Color(1f, 1f, 1f, 0.35f);
+            rimImage.raycastTarget = false;
+            rimFade = rim.AddComponent<CanvasGroup>();
+            rimFade.alpha = 0f;
 
             GameObject frame = new GameObject("Frame", typeof(RectTransform));
             frame.transform.SetParent(canvasObject.transform, false);
@@ -137,6 +157,22 @@ namespace Capstone.Placement
             Texture2D first = Load(Steps[0].Picture);
             front.texture = first;
             backFade.alpha = 0f;
+            copyFade.alpha = 1f;
+            frameFade.alpha = 1f;
+            rimFade.alpha = 1f;
+
+            GameObject plane = new GameObject("Plane", typeof(RectTransform));
+            plane.transform.SetParent(canvasObject.transform, false);
+            planeRect = plane.GetComponent<RectTransform>();
+            planeRect.anchorMin = new Vector2(0.5f, 0.5f);
+            planeRect.anchorMax = new Vector2(0.5f, 0.5f);
+            planeRect.pivot = new Vector2(0.5f, 0.5f);
+            planeRect.sizeDelta = new Vector2(1080f, 1920f);
+            planeFade = plane.AddComponent<CanvasGroup>();
+            planeFade.alpha = 0f;
+            copy.transform.SetParent(plane.transform, true);
+            rim.transform.SetParent(plane.transform, true);
+            frame.transform.SetParent(plane.transform, true);
 
             GameObject controls = new GameObject("Controls", typeof(RectTransform));
             controls.transform.SetParent(canvasObject.transform, false);
@@ -218,44 +254,17 @@ namespace Capstone.Placement
 
         void PlayEnter()
         {
-            float travel = motionTime / EnterDuration;
-            float eased = Ease(travel);
-            if (frameFade != null)
-                frameFade.alpha = Ease(motionTime / 0.7f);
-            if (frameRect != null)
-            {
-                float scale = travel < 0.72f
-                    ? Mathf.Lerp(0.88f, 1.045f, Ease(travel / 0.72f))
-                    : Mathf.Lerp(1.045f, 1f, (travel - 0.72f) / 0.28f);
-                frameRect.localScale = new Vector3(scale, scale, 1f);
-                frameRect.anchoredPosition = Vector2.Lerp(frameRest + new Vector2(0f, -48f), frameRest, eased);
-            }
-
-            if (copyFade != null)
-                copyFade.alpha = 1f;
-            float kickerIn = Ease((motionTime - 0.04f) / 0.42f);
-            float claimIn = Ease((motionTime - 0.16f) / 0.5f);
-            float lineIn = Ease((motionTime - 0.3f) / 0.42f);
-            SetFade(kicker, Mist, kickerIn);
-            SetFade(claim, Ink, claimIn);
-            SetFade(line, Mist, lineIn);
-            if (claimSoft != null)
-            {
-                SetFade(claimSoft, Ink, (1f - claimIn) * 0.28f);
-                claimSoft.rectTransform.localScale = Vector3.one * Mathf.Lerp(1.14f, 1f, claimIn);
-            }
-
+            Pose(Ease(motionTime / EnterDuration), true);
             if (controlFade != null)
             {
-                controlFade.alpha = Ease((motionTime - 0.42f) / 0.4f);
+                controlFade.alpha = Ease((motionTime - 0.28f) / 0.4f);
                 controlFade.blocksRaycasts = controlFade.alpha > 0.55f;
             }
 
             if (motionTime < EnterDuration)
                 return;
 
-            if (claimSoft != null)
-                SetFade(claimSoft, Ink, 0f);
+            RestPlane();
             beat = Beat.Hold;
             motionTime = 0f;
             ready = true;
@@ -264,44 +273,25 @@ namespace Capstone.Placement
         void PlayLeave()
         {
             float along = Ease(motionTime / LeaveDuration);
-            float morph = along < 0.5f
-                ? Mathf.Lerp(1f, 0.94f, along / 0.5f)
-                : Mathf.Lerp(0.94f, 1f, (along - 0.5f) / 0.5f);
-            if (frameRect != null)
-                frameRect.localScale = new Vector3(morph, morph, 1f);
-
-            float copy = along < 0.42f ? 1f - (along / 0.42f) : (along - 0.42f) / 0.58f;
-            if (copyFade != null)
-                copyFade.alpha = copy;
-            if (along >= 0.42f && claimSoft != null)
+            if (!swapped)
             {
-                SetFade(claimSoft, Ink, (1f - copy) * 0.22f);
-                claimSoft.rectTransform.localScale = Vector3.one * Mathf.Lerp(1.1f, 1f, copy);
-            }
+                Pose(Mathf.Clamp01(along / 0.46f), false);
+                if (along < 0.46f)
+                    return;
 
-            if (copyRect != null)
-            {
-                float rise = along < 0.42f ? along / 0.42f : (along - 0.42f) / 0.58f;
-                float y = along < 0.42f ? Mathf.Lerp(0f, 18f, rise) : Mathf.Lerp(-16f, 0f, rise);
-                copyRect.anchoredPosition = new Vector2(0f, y);
-            }
-
-            if (!swapped && along >= 0.42f)
-            {
                 ApplyCopy(index + 1);
+                Texture2D picture = Load(Steps[index + 1].Picture);
+                if (front != null)
+                    front.texture = picture;
+                Fit(front, frontRect, picture);
                 swapped = true;
             }
 
-            if (backFade != null)
-                backFade.alpha = along;
-            if (frontFade != null)
-                frontFade.alpha = 1f - along;
+            Pose(Mathf.Clamp01((along - 0.46f) / 0.54f), true);
             if (along < 1f)
                 return;
 
-            if (front != null && back != null)
-                front.texture = back.texture;
-            Fit(front, frontRect, front != null ? front.texture as Texture2D : null);
+            RestPlane();
             if (frontFade != null)
                 frontFade.alpha = 1f;
             if (backFade != null)
@@ -312,6 +302,41 @@ namespace Capstone.Placement
             beat = Beat.Hold;
             motionTime = 0f;
             ready = true;
+        }
+
+        void Pose(float along, bool incoming)
+        {
+            Vector2 from = incoming ? new Vector2(-170f, -240f) : Vector2.zero;
+            Vector2 to = incoming ? Vector2.zero : new Vector2(190f, 210f);
+            float scaleFrom = incoming ? 1.24f : 1f;
+            float scaleTo = incoming ? 1f : 0.4f;
+            Vector3 rotFrom = incoming ? new Vector3(-18f, 38f, 12f) : Vector3.zero;
+            Vector3 rotTo = incoming ? Vector3.zero : new Vector3(22f, -48f, -12f);
+            float fadeFrom = incoming ? 0f : 1f;
+            float fadeTo = incoming ? 1f : 0.05f;
+            if (planeRect != null)
+            {
+                planeRect.anchoredPosition = Vector2.Lerp(from, to, along);
+                float scale = Mathf.Lerp(scaleFrom, scaleTo, along);
+                planeRect.localScale = new Vector3(scale, scale, 1f);
+                planeRect.localRotation = Quaternion.Euler(Vector3.Lerp(rotFrom, rotTo, along));
+            }
+
+            if (planeFade != null)
+                planeFade.alpha = Mathf.Lerp(fadeFrom, fadeTo, along);
+        }
+
+        void RestPlane()
+        {
+            if (planeRect != null)
+            {
+                planeRect.anchoredPosition = Vector2.zero;
+                planeRect.localScale = Vector3.one;
+                planeRect.localRotation = Quaternion.identity;
+            }
+
+            if (planeFade != null)
+                planeFade.alpha = 1f;
         }
 
         void Advance()
@@ -347,7 +372,7 @@ namespace Capstone.Placement
 
             Step step = Steps[stepIndex];
             if (kicker != null)
-                kicker.text = step.Kicker;
+                kicker.text = (stepIndex + 1).ToString("00");
             if (claim != null)
                 claim.text = step.Claim;
             if (claimSoft != null)
@@ -366,7 +391,7 @@ namespace Capstone.Placement
                 if (dots[i] == null)
                     continue;
                 bool current = i == index;
-                dots[i].color = new Color(Ink.r, Ink.g, Ink.b, current ? 1f : 0.28f);
+                dots[i].color = new Color(1f, 1f, 1f, current ? 1f : 0.4f);
                 dots[i].rectTransform.sizeDelta = current ? new Vector2(36f, 10f) : new Vector2(10f, 10f);
             }
         }
@@ -374,28 +399,35 @@ namespace Capstone.Placement
         void Layout(float half)
         {
             laidHalf = half;
-            float top = half - 36f;
-            Place(kicker.rectTransform, 0f, top, 920f, 40f);
-            Place(claim.rectTransform, 0f, top - 96f, 980f, 100f);
+            float top = half - 72f;
+            Place(kicker.rectTransform, -40f, top, 280f, 40f);
+            float cardWidth = Mathf.Min(460f, half * 0.72f);
+            float cardHeight = cardWidth * 0.72f;
+            float cardY = top - 36f - (cardHeight * 0.5f) - 28f;
+            Place(claim.rectTransform, -20f, cardY - (cardHeight * 0.5f) - 78f, 860f, 150f);
             if (claimSoft != null)
-                Place(claimSoft.rectTransform, 0f, top - 96f, 980f, 100f);
-            Place(line.rectTransform, 0f, top - 186f, 920f, 72f);
+                Place(claimSoft.rectTransform, -20f, claim.rectTransform.anchoredPosition.y, 860f, 150f);
+            Place(line.rectTransform, -20f, claim.rectTransform.anchoredPosition.y - 120f, 760f, 110f);
 
-            float lineBottom = (top - 186f) - 36f;
             float buttonY = -half + 118f;
             float skipY = -half + 42f;
             float dotsY = buttonY + 78f;
-            float frameTop = lineBottom - 20f;
-            float frameBottom = dotsY + 28f;
-            float height = Mathf.Clamp(frameTop - frameBottom, 240f, 720f);
-            float center = (frameTop + frameBottom) * 0.5f;
-            float width = Mathf.Min(960f, height * 1.35f);
+            float width = cardWidth;
+            float height = cardHeight;
+            float center = cardY;
             frameRest = new Vector2(0f, center);
             if (frameRect != null)
             {
                 frameRect.sizeDelta = new Vector2(width, height);
                 if (beat != Beat.Enter)
                     frameRect.anchoredPosition = frameRest;
+            }
+
+            if (rimRect != null)
+            {
+                rimRect.sizeDelta = new Vector2(width + 18f, height + 18f);
+                if (beat != Beat.Enter)
+                    rimRect.anchoredPosition = frameRest;
             }
 
             Fit(front, frontRect, front != null ? front.texture as Texture2D : null);
