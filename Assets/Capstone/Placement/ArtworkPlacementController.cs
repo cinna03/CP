@@ -217,15 +217,12 @@ namespace Capstone.Placement
         Text consentHeading;
         GameObject homeGate;
         Image homeCover;
-        Text homeMarkA;
-        Text homeMarkB;
         Text homeLead;
         Text homeHeadline;
-        Text homeBody;
         Text homeBegin;
         RectTransform homeArt;
         bool homeMorphing;
-        bool homeClockRunning;
+        bool homeReleased;
         float homeClock;
         Vector2 homeFullPosition;
         Vector2 homeFullSize;
@@ -2977,10 +2974,6 @@ namespace Capstone.Placement
             shadeRect.offsetMin = Vector2.zero;
             shadeRect.offsetMax = Vector2.zero;
 
-            homeMarkA = HomeLine(homeGate.transform, "SEE", 188, TextAnchor.MiddleLeft);
-            PlaceHomeLine(homeMarkA, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(-48f, 64f), new Vector2(720f, 250f));
-            homeMarkA.horizontalOverflow = HorizontalWrapMode.Overflow;
-
             GameObject artObject = new GameObject("Work", typeof(RectTransform));
             artObject.transform.SetParent(homeGate.transform, false);
             RawImage art = artObject.AddComponent<RawImage>();
@@ -2990,33 +2983,27 @@ namespace Capstone.Placement
             artRect.anchorMin = new Vector2(0f, 1f);
             artRect.anchorMax = new Vector2(0f, 1f);
             artRect.pivot = new Vector2(0f, 1f);
-            artRect.anchoredPosition = new Vector2(0f, -188f);
+            artRect.anchoredPosition = new Vector2(240f, -560f);
             artRect.sizeDelta = new Vector2(600f, 800f);
             homeArt = artRect;
 
-            homeLead = HomeLine(homeGate.transform, "A work goes on your wall at the centimetres stored on it. You ask one thing.", 28, TextAnchor.UpperLeft);
-            PlaceHomeLine(homeLead, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(628f, -240f), new Vector2(412f, 280f));
+            homeHeadline = HomeLine(homeGate.transform, "CINNARIOS", 84, TextAnchor.MiddleCenter);
+            PlaceHomeLine(homeHeadline, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -400f), new Vector2(980f, 120f));
+            homeHeadline.rectTransform.pivot = new Vector2(0.5f, 1f);
 
-            homeHeadline = HomeLine(homeGate.transform, "At its\nreal size", 64, TextAnchor.UpperLeft);
-            PlaceHomeLine(homeHeadline, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(628f, -540f), new Vector2(412f, 220f));
-            homeHeadline.lineSpacing = 0.85f;
+            homeLead = HomeLine(homeGate.transform, "AR visualization of a work on your wall, at its real size.", 28, TextAnchor.MiddleCenter);
+            PlaceHomeLine(homeLead, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -1396f), new Vector2(860f, 90f));
+            homeLead.rectTransform.pivot = new Vector2(0.5f, 1f);
+            homeLead.font = uiFont;
 
-            homeBody = HomeLine(homeGate.transform, "Bring a piece you already have, or answer for style, mood, and colour. The camera opens when the work is placed. Then you keep it, save it, or dismiss it.", 28, TextAnchor.UpperLeft);
-            PlaceHomeLine(homeBody, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(628f, -790f), new Vector2(412f, 460f));
-
-            homeBegin = HomeLine(homeGate.transform, "Begin", 42, TextAnchor.MiddleLeft);
-            PlaceHomeLine(homeBegin, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(628f, -1160f), new Vector2(412f, 80f));
+            homeBegin = HomeLine(homeGate.transform, "Begin", 36, TextAnchor.MiddleCenter);
+            PlaceHomeLine(homeBegin, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -1510f), new Vector2(360f, 72f));
+            homeBegin.rectTransform.pivot = new Vector2(0.5f, 1f);
             Button begin = homeBegin.gameObject.AddComponent<Button>();
             begin.targetGraphic = homeBegin;
             begin.transition = Selectable.Transition.None;
             begin.onClick.AddListener(LeaveHome);
             homeBegin.raycastTarget = true;
-
-            homeMarkB = HomeLine(homeGate.transform, "SEE", 188, TextAnchor.MiddleRight);
-            PlaceHomeLine(homeMarkB, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(72f, -36f), new Vector2(720f, 250f));
-            homeMarkB.rectTransform.pivot = new Vector2(1f, 0f);
-            homeMarkB.rectTransform.anchoredPosition = new Vector2(72f, -36f);
-            homeMarkB.horizontalOverflow = HorizontalWrapMode.Overflow;
 
             PaintHome();
             BeginHomeMorph();
@@ -3026,7 +3013,7 @@ namespace Capstone.Placement
         {
             homeRestPosition = homeArt.anchoredPosition;
             homeRestSize = homeArt.sizeDelta;
-            homeLines = new[] { homeMarkA, homeLead, homeHeadline, homeBody, homeBegin, homeMarkB };
+            homeLines = new[] { homeHeadline, homeLead, homeBegin };
             homeLineRest = new Vector2[homeLines.Length];
             for (int i = 0; i < homeLines.Length; i++)
             {
@@ -3039,6 +3026,16 @@ namespace Capstone.Placement
             homeBeginButton = homeBegin != null ? homeBegin.GetComponent<Button>() : null;
             if (homeBeginButton != null)
                 homeBeginButton.interactable = false;
+            if (homeBegin != null)
+                homeBegin.raycastTarget = false;
+            if (homeCover != null)
+            {
+                Button coverTap = homeCover.gameObject.AddComponent<Button>();
+                coverTap.targetGraphic = homeCover;
+                coverTap.transition = Selectable.Transition.None;
+                coverTap.onClick.AddListener(ReleaseHome);
+            }
+
             if (themeLabel != null)
             {
                 homeThemeColor = themeLabel.color;
@@ -3047,9 +3044,19 @@ namespace Capstone.Placement
             }
 
             homeClock = 0f;
-            homeClockRunning = false;
+            homeReleased = false;
             homeMorphing = true;
             PoseHomeCover();
+        }
+
+        void ReleaseHome()
+        {
+            if (!homeMorphing || homeReleased || homeArt == null)
+                return;
+
+            PoseHomeCover();
+            homeClock = 0f;
+            homeReleased = true;
         }
 
         void StepHomeMorph()
@@ -3057,29 +3064,23 @@ namespace Capstone.Placement
             if (!homeMorphing || homeArt == null)
                 return;
 
-            float delta = Time.unscaledDeltaTime;
-            if (!homeClockRunning)
-            {
-                PoseHomeCover();
-                if (delta > 0.2f)
-                    return;
-                homeClockRunning = true;
-            }
-
-            const float hold = 0.45f;
-            const float morph = 1.6f;
-            homeClock += Mathf.Min(delta, 0.033f);
-            if (homeClock <= hold)
+            if (!homeReleased)
             {
                 PoseHomeCover();
                 return;
             }
 
-            float move = Smooth((homeClock - hold) / morph);
+            float delta = Time.unscaledDeltaTime;
+            if (delta > 0.2f)
+                return;
+
+            const float morph = 1.6f;
+            homeClock += Mathf.Min(delta, 0.033f);
+            float move = Smooth(homeClock / morph);
             homeArt.anchoredPosition = Vector2.LerpUnclamped(homeFullPosition, homeRestPosition, move);
             homeArt.sizeDelta = Vector2.LerpUnclamped(homeFullSize, homeRestSize, move);
 
-            float word = Smooth((homeClock - hold - 0.7f) / 0.9f);
+            float word = Smooth((homeClock - 0.7f) / 0.9f);
             for (int i = 0; i < homeLines.Length; i++)
             {
                 if (homeLines[i] == null)
@@ -3091,7 +3092,7 @@ namespace Capstone.Placement
             if (themeLabel != null)
                 themeLabel.color = new Color(homeThemeColor.r, homeThemeColor.g, homeThemeColor.b, word);
 
-            if (homeClock < hold + morph)
+            if (homeClock < morph)
                 return;
 
             homeArt.anchoredPosition = homeRestPosition;
@@ -3106,6 +3107,8 @@ namespace Capstone.Placement
 
             if (themeLabel != null)
                 themeLabel.color = homeThemeColor;
+            if (homeBegin != null)
+                homeBegin.raycastTarget = true;
             if (homeBeginButton != null)
                 homeBeginButton.interactable = true;
             homeMorphing = false;
@@ -3167,11 +3170,8 @@ namespace Capstone.Placement
         {
             if (homeCover != null)
                 homeCover.color = night ? Color.black : Color.white;
-            TintHome(homeMarkA);
-            TintHome(homeMarkB);
             TintHome(homeLead);
             TintHome(homeHeadline);
-            TintHome(homeBody);
             TintHome(homeBegin);
         }
 
