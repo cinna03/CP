@@ -5,8 +5,8 @@ using UnityEngine.UI;
 namespace Capstone.Placement
 {
     /// <summary>
-    /// The instructions play like the iPad Pro page. A black stage, the work as the picture,
-    /// and the line changes in a crossfade the way the highlights reel does.
+    /// The instructions follow the Apple motion guide: a light field, a rounded card that
+    /// settles into place, and type that sharpens in. Chapters morph from one to the next.
     /// The last chapter, or Skip, starts the opening film.
     /// </summary>
     public sealed class Instructions : MonoBehaviour
@@ -34,9 +34,10 @@ namespace Capstone.Placement
             new Step { Kicker = "Then", Claim = "Keep one.", Line = "Save, dismiss, or take one of three.", Picture = "hands" }
         };
 
-        static readonly Color Stage = Color.black;
-        static readonly Color Ink = Color.white;
-        static readonly Color Mist = new Color(1f, 1f, 1f, 0.72f);
+        static readonly Color Stage = new Color(0.961f, 0.961f, 0.969f, 1f);
+        static readonly Color Card = Color.white;
+        static readonly Color Ink = new Color(0.114f, 0.114f, 0.122f, 1f);
+        static readonly Color Mist = new Color(0.439f, 0.439f, 0.439f, 1f);
         static readonly Color PricingBlue = new Color(0f, 0.443f, 0.890f, 1f);
         const float EnterDuration = 1.05f;
         const float HoldDuration = 3.2f;
@@ -68,6 +69,7 @@ namespace Capstone.Placement
         RawImage back;
         Text kicker;
         Text claim;
+        Text claimSoft;
         Text line;
         Image[] dots;
         Vector2 frameRest;
@@ -109,6 +111,7 @@ namespace Capstone.Placement
             copyRect.anchorMax = new Vector2(0.5f, 0.5f);
             copyRect.sizeDelta = new Vector2(1080f, 1920f);
             kicker = CreateText(copy.transform, typeface, Steps[0].Kicker, 28, Mist, FontStyle.Normal);
+            claimSoft = CreateText(copy.transform, typeface, Steps[0].Claim, 78, new Color(Ink.r, Ink.g, Ink.b, 0f), FontStyle.Bold);
             claim = CreateText(copy.transform, typeface, Steps[0].Claim, 78, Ink, FontStyle.Bold);
             line = CreateText(copy.transform, typeface, Steps[0].Line, 30, Mist, FontStyle.Normal);
             copyFade = copy.AddComponent<CanvasGroup>();
@@ -123,7 +126,7 @@ namespace Capstone.Placement
             Image framePlate = frame.AddComponent<Image>();
             framePlate.sprite = Plate();
             framePlate.type = Image.Type.Sliced;
-            framePlate.color = Stage;
+            framePlate.color = Card;
             framePlate.raycastTarget = false;
             frame.AddComponent<Mask>().showMaskGraphic = true;
             frameFade = frame.AddComponent<CanvasGroup>();
@@ -215,30 +218,44 @@ namespace Capstone.Placement
 
         void PlayEnter()
         {
-            float along = Ease(motionTime / EnterDuration);
+            float travel = motionTime / EnterDuration;
+            float eased = Ease(travel);
             if (frameFade != null)
-                frameFade.alpha = along;
+                frameFade.alpha = Ease(motionTime / 0.7f);
             if (frameRect != null)
             {
-                float scale = Mathf.Lerp(1.08f, 1f, along);
+                float scale = travel < 0.72f
+                    ? Mathf.Lerp(0.88f, 1.045f, Ease(travel / 0.72f))
+                    : Mathf.Lerp(1.045f, 1f, (travel - 0.72f) / 0.28f);
                 frameRect.localScale = new Vector3(scale, scale, 1f);
-                frameRect.anchoredPosition = Vector2.Lerp(frameRest + new Vector2(0f, -70f), frameRest, along);
+                frameRect.anchoredPosition = Vector2.Lerp(frameRest + new Vector2(0f, -48f), frameRest, eased);
             }
 
-            float copy = Ease((motionTime - 0.14f) / 0.62f);
             if (copyFade != null)
-                copyFade.alpha = copy;
-            if (copyRect != null)
-                copyRect.anchoredPosition = Vector2.Lerp(new Vector2(0f, -28f), Vector2.zero, copy);
+                copyFade.alpha = 1f;
+            float kickerIn = Ease((motionTime - 0.04f) / 0.42f);
+            float claimIn = Ease((motionTime - 0.16f) / 0.5f);
+            float lineIn = Ease((motionTime - 0.3f) / 0.42f);
+            SetFade(kicker, Mist, kickerIn);
+            SetFade(claim, Ink, claimIn);
+            SetFade(line, Mist, lineIn);
+            if (claimSoft != null)
+            {
+                SetFade(claimSoft, Ink, (1f - claimIn) * 0.28f);
+                claimSoft.rectTransform.localScale = Vector3.one * Mathf.Lerp(1.14f, 1f, claimIn);
+            }
+
             if (controlFade != null)
             {
-                controlFade.alpha = Ease((motionTime - 0.32f) / 0.45f);
+                controlFade.alpha = Ease((motionTime - 0.42f) / 0.4f);
                 controlFade.blocksRaycasts = controlFade.alpha > 0.55f;
             }
 
             if (motionTime < EnterDuration)
                 return;
 
+            if (claimSoft != null)
+                SetFade(claimSoft, Ink, 0f);
             beat = Beat.Hold;
             motionTime = 0f;
             ready = true;
@@ -247,13 +264,25 @@ namespace Capstone.Placement
         void PlayLeave()
         {
             float along = Ease(motionTime / LeaveDuration);
+            float morph = along < 0.5f
+                ? Mathf.Lerp(1f, 0.94f, along / 0.5f)
+                : Mathf.Lerp(0.94f, 1f, (along - 0.5f) / 0.5f);
+            if (frameRect != null)
+                frameRect.localScale = new Vector3(morph, morph, 1f);
+
             float copy = along < 0.42f ? 1f - (along / 0.42f) : (along - 0.42f) / 0.58f;
             if (copyFade != null)
                 copyFade.alpha = copy;
+            if (along >= 0.42f && claimSoft != null)
+            {
+                SetFade(claimSoft, Ink, (1f - copy) * 0.22f);
+                claimSoft.rectTransform.localScale = Vector3.one * Mathf.Lerp(1.1f, 1f, copy);
+            }
+
             if (copyRect != null)
             {
                 float rise = along < 0.42f ? along / 0.42f : (along - 0.42f) / 0.58f;
-                float y = along < 0.42f ? Mathf.Lerp(0f, 22f, rise) : Mathf.Lerp(-22f, 0f, rise);
+                float y = along < 0.42f ? Mathf.Lerp(0f, 18f, rise) : Mathf.Lerp(-16f, 0f, rise);
                 copyRect.anchoredPosition = new Vector2(0f, y);
             }
 
@@ -321,6 +350,8 @@ namespace Capstone.Placement
                 kicker.text = step.Kicker;
             if (claim != null)
                 claim.text = step.Claim;
+            if (claimSoft != null)
+                claimSoft.text = step.Claim;
             if (line != null)
                 line.text = step.Line;
         }
@@ -335,7 +366,7 @@ namespace Capstone.Placement
                 if (dots[i] == null)
                     continue;
                 bool current = i == index;
-                dots[i].color = new Color(1f, 1f, 1f, current ? 1f : 0.35f);
+                dots[i].color = new Color(Ink.r, Ink.g, Ink.b, current ? 1f : 0.28f);
                 dots[i].rectTransform.sizeDelta = current ? new Vector2(36f, 10f) : new Vector2(10f, 10f);
             }
         }
@@ -346,6 +377,8 @@ namespace Capstone.Placement
             float top = half - 36f;
             Place(kicker.rectTransform, 0f, top, 920f, 40f);
             Place(claim.rectTransform, 0f, top - 96f, 980f, 100f);
+            if (claimSoft != null)
+                Place(claimSoft.rectTransform, 0f, top - 96f, 980f, 100f);
             Place(line.rectTransform, 0f, top - 186f, 920f, 72f);
 
             float lineBottom = (top - 186f) - 36f;
@@ -432,6 +465,15 @@ namespace Capstone.Placement
             Destroy(gameObject);
             if (done != null)
                 done();
+        }
+
+        static void SetFade(Text text, Color color, float alpha)
+        {
+            if (text == null)
+                return;
+
+            color.a = Mathf.Clamp01(alpha);
+            text.color = color;
         }
 
         static float Ease(float value)
