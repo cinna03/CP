@@ -12,9 +12,9 @@ namespace Capstone.Dialogue
     public static class RuleEngine
     {
         /// <summary>
-        /// Names the six written concerns in priority order. Unmatched text returns this sentence.
+        /// Names the written concerns. Unmatched text returns this sentence.
         /// </summary>
-        public const string FixedPrompt = "I can only answer from the written rules about size, fit, light, colour, meaning, or price.";
+        public const string FixedPrompt = "I can only answer from the written rules about this piece and how it fits: size, fit, light, colour, meaning, price, artist, medium, style, or mood.";
 
         public static DialogueReply Match(string input, IReadOnlyList<DialogueRule> rules)
         {

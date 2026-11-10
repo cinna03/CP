@@ -41,7 +41,7 @@ namespace Capstone.Dialogue.Tests
 
             Assert.IsFalse(reply.Matched);
             Assert.AreEqual(
-                "I can only answer from the written rules about size, fit, light, colour, meaning, or price.",
+                "I can only answer from the written rules about this piece and how it fits: size, fit, light, colour, meaning, price, artist, medium, style, or mood.",
                 reply.Text);
             Assert.AreEqual(RuleEngine.FixedPrompt, reply.Text);
         }
@@ -49,7 +49,7 @@ namespace Capstone.Dialogue.Tests
         [Test]
         public void AnUnknownQuestionDoesNotInventAFact()
         {
-            DialogueReply reply = RuleEngine.Match("What is the artist's dog's name?", StarterRules.All);
+            DialogueReply reply = RuleEngine.Match("What is the dog's name?", StarterRules.All);
 
             Assert.IsFalse(reply.Matched);
             Assert.AreEqual(RuleEngine.FixedPrompt, reply.Text);

@@ -27,14 +27,16 @@ namespace Capstone.Session.Tests
         }
 
         [Test]
-        public void PlaceThenAskOrSkipThenRank()
+        public void PlaceThenAskAgainOrGoOn()
         {
             string placed = BuyerPath.Next(BuyerPath.Wall, BuyerPath.Placed);
             Assert.AreEqual(BuyerPath.Question, placed);
             Assert.IsFalse(BuyerPath.OpensCamera(placed));
 
-            Assert.AreEqual(BuyerPath.Rank, BuyerPath.Next(placed, BuyerPath.Send));
-            Assert.AreEqual(BuyerPath.Rank, BuyerPath.Next(placed, BuyerPath.Skip));
+            string asked = BuyerPath.Next(placed, BuyerPath.Send);
+            Assert.AreEqual(BuyerPath.Question, asked);
+            Assert.AreEqual(BuyerPath.Question, BuyerPath.Next(asked, BuyerPath.Send));
+            Assert.AreEqual(BuyerPath.Rank, BuyerPath.Next(asked, BuyerPath.Skip));
         }
 
         [Test]

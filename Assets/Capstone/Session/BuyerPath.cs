@@ -2,7 +2,7 @@ namespace Capstone.Session
 {
     /// <summary>
     /// The buyer order for one session. The camera opens only when a chosen work is placed.
-    /// A question comes after that placement. Keep, save, or dismiss is the rank step.
+    /// After placement the buyer can ask again about the piece and the wall. Go on reaches the rank step.
     /// A chosen recommendation returns to the wall. The buyer can set tags again or end.
     /// The five uncertainty questions are not a step.
     /// </summary>
@@ -36,7 +36,9 @@ namespace Capstone.Session
                 return Wall;
             if (step == Wall && action == Placed)
                 return Question;
-            if (step == Question && (action == Send || action == Skip))
+            if (step == Question && action == Send)
+                return Question;
+            if (step == Question && action == Skip)
                 return Rank;
             if (step == Rank && action == Place)
                 return Wall;
