@@ -220,22 +220,7 @@ namespace Capstone.Placement
         Text recommendTitle;
         Text themeLabel;
         GameObject consentGate;
-        GameObject homePanel;
-        Image homeCover;
-        Text homeLead;
-        Text homeHeadline;
-        Text homeBegin;
-        RectTransform homeArt;
-        bool homeMorphing;
-        bool homeReleased;
-        float homeClock;
-        Vector2 homeFullPosition;
-        Vector2 homeFullSize;
-        Vector2 homeRestPosition;
-        Vector2 homeRestSize;
-        Text[] homeLines = new Text[0];
-        Vector2[] homeLineRest = new Vector2[0];
-        Button homeBeginButton;
+        IntroPanel intro;
         InputField consentField;
         Text consentHint;
         Text consentHeading;
@@ -265,7 +250,6 @@ namespace Capstone.Placement
         static Color PageOnBar = new Color(0.965f, 0.945f, 0.918f, 0.78f);
         static Color StepOn = new Color(0.086f, 0.086f, 0.086f, 1f);
         static Color StepOff = new Color(0.086f, 0.086f, 0.086f, 0.08f);
-        static readonly Color HomePink = new Color(0.878f, 0.082f, 0.384f, 1f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureInScene()
@@ -370,7 +354,8 @@ namespace Capstone.Placement
 
         void Update()
         {
-            StepHomeMorph();
+            if (intro != null)
+                intro.Tick();
             TypeIntoSelectedMeasure();
             if (!scanning || status == null || step != PrototypeScreen.Wall)
                 return;
@@ -2997,226 +2982,28 @@ namespace Capstone.Placement
 
         void BuildHome(Transform parent)
         {
-            homePanel = CreatePanel(parent, "Homepage");
-            GameObject shade = new GameObject("Cover", typeof(RectTransform));
-            shade.transform.SetParent(homePanel.transform, false);
-            homeCover = shade.AddComponent<Image>();
-            homeCover.color = Color.white;
-            homeCover.raycastTarget = true;
-            RectTransform shadeRect = shade.GetComponent<RectTransform>();
-            shadeRect.anchorMin = Vector2.zero;
-            shadeRect.anchorMax = Vector2.one;
-            shadeRect.offsetMin = Vector2.zero;
-            shadeRect.offsetMax = Vector2.zero;
-
-            GameObject artObject = new GameObject("Work", typeof(RectTransform));
-            artObject.transform.SetParent(homePanel.transform, false);
-            RawImage art = artObject.AddComponent<RawImage>();
-            art.texture = Resources.Load<Texture2D>("Home/flowers");
-            art.raycastTarget = false;
-            RectTransform artRect = art.rectTransform;
-            artRect.anchorMin = new Vector2(0f, 1f);
-            artRect.anchorMax = new Vector2(0f, 1f);
-            artRect.pivot = new Vector2(0f, 1f);
-            homeArt = artRect;
-
-            homeHeadline = HomeLine(homePanel.transform, "CINNARIOS", 84);
-            homeLead = HomeLine(homePanel.transform, "AR visualization of a work on your wall, at its real size.", 28);
-            homeLead.font = uiFont;
-            homeBegin = HomeLine(homePanel.transform, "Begin", 36);
-            Button begin = homeBegin.gameObject.AddComponent<Button>();
-            begin.targetGraphic = homeBegin;
-            begin.transition = Selectable.Transition.None;
-            begin.onClick.AddListener(OpenTestingSession);
-            homeBeginButton = begin;
-
-            PaintHome();
-            BeginHomeMorph();
-        }
-
-        void BeginHomeMorph()
-        {
-            homeLines = new[] { homeHeadline, homeLead, homeBegin };
-            homeLineRest = new Vector2[homeLines.Length];
-            for (int i = 0; i < homeLines.Length; i++)
-                SetHomeAlpha(homeLines[i], 0f);
-
-            if (homeBeginButton != null)
-                homeBeginButton.interactable = false;
-            if (homeBegin != null)
-                homeBegin.raycastTarget = false;
-            if (homeCover != null)
-            {
-                Button coverTap = homeCover.gameObject.AddComponent<Button>();
-                coverTap.targetGraphic = homeCover;
-                coverTap.transition = Selectable.Transition.None;
-                coverTap.onClick.AddListener(ReleaseHome);
-            }
-
-            homeClock = 0f;
-            homeReleased = false;
-            homeMorphing = true;
-            PoseHomeCover();
-        }
-
-        void ReleaseHome()
-        {
-            if (!homeMorphing || homeReleased || homeArt == null)
-                return;
-
-            PoseHomeCover();
-            LayoutHomeRest();
-            homeClock = 0f;
-            homeReleased = true;
-        }
-
-        void StepHomeMorph()
-        {
-            if (!homeMorphing || homeArt == null || homePanel == null || !homePanel.activeInHierarchy)
-                return;
-
-            if (!homeReleased)
-            {
-                PoseHomeCover();
-                return;
-            }
-
-            float delta = Time.unscaledDeltaTime;
-            if (delta > 0.2f)
-                return;
-
-            const float morph = 1.6f;
-            homeClock += Mathf.Min(delta, 0.033f);
-            float move = Smooth(homeClock / morph);
-            LayoutHomeRest();
-            homeArt.anchoredPosition = Vector2.LerpUnclamped(homeFullPosition, homeRestPosition, move);
-            homeArt.sizeDelta = Vector2.LerpUnclamped(homeFullSize, homeRestSize, move);
-            float word = Smooth((homeClock - 0.7f) / 0.9f);
-            for (int i = 0; i < homeLines.Length; i++)
-            {
-                if (homeLines[i] == null)
-                    continue;
-                Vector2 rest = homeLineRest[i];
-                homeLines[i].rectTransform.anchoredPosition = Vector2.LerpUnclamped(rest + new Vector2(0f, -12f), rest, word);
-                SetHomeAlpha(homeLines[i], word);
-            }
-
-            if (homeClock < morph)
-                return;
-
-            homeArt.anchoredPosition = homeRestPosition;
-            homeArt.sizeDelta = homeRestSize;
-            for (int i = 0; i < homeLines.Length; i++)
-            {
-                if (homeLines[i] == null)
-                    continue;
-                homeLines[i].rectTransform.anchoredPosition = homeLineRest[i];
-                SetHomeAlpha(homeLines[i], 1f);
-            }
-
-            if (homeBegin != null)
-                homeBegin.raycastTarget = true;
-            if (homeBeginButton != null)
-                homeBeginButton.interactable = true;
-            homeMorphing = false;
-        }
-
-        void PoseHomeCover()
-        {
-            Rect page = homePanel.GetComponent<RectTransform>().rect;
-            float pageW = page.width > 2f ? page.width : 1080f;
-            float pageH = page.height > 2f ? page.height : 1920f;
-            const float aspect = 736f / 981f;
-            float coverW = pageH * aspect;
-            float coverH = pageH;
-            if (coverW < pageW)
-            {
-                coverW = pageW;
-                coverH = pageW / aspect;
-            }
-
-            homeFullSize = new Vector2(coverW, coverH);
-            homeFullPosition = new Vector2((pageW - coverW) * 0.5f, (coverH - pageH) * 0.5f);
-            homeArt.anchoredPosition = homeFullPosition;
-            homeArt.sizeDelta = homeFullSize;
-        }
-
-        void LayoutHomeRest()
-        {
-            Rect page = homePanel.GetComponent<RectTransform>().rect;
-            float pageW = page.width > 2f ? page.width : 1080f;
-            float pageH = page.height > 2f ? page.height : 1920f;
-            homeRestSize = new Vector2(600f, 800f);
-            float artTop = -((pageH * 0.5f) - 480f);
-            homeRestPosition = new Vector2((pageW - homeRestSize.x) * 0.5f, artTop);
-            PlaceHomeLine(homeHeadline, new Vector2((pageW - 980f) * 0.5f, artTop + 146f), new Vector2(980f, 110f));
-            PlaceHomeLine(homeLead, new Vector2((pageW - 860f) * 0.5f, artTop - 828f), new Vector2(860f, 100f));
-            PlaceHomeLine(homeBegin, new Vector2((pageW - 360f) * 0.5f, artTop - 960f), new Vector2(360f, 72f));
-            for (int i = 0; i < homeLines.Length; i++)
-            {
-                if (homeLines[i] != null)
-                    homeLineRest[i] = homeLines[i].rectTransform.anchoredPosition;
-            }
-        }
-
-        static float Smooth(float amount)
-        {
-            float t = Mathf.Clamp01(amount);
-            return t * t * t * (t * (t * 6f - 15f) + 10f);
-        }
-
-        static void SetHomeAlpha(Text line, float alpha)
-        {
-            if (line == null)
-                return;
-            Color color = line.color;
-            color.a = alpha;
-            line.color = color;
-        }
-
-        Text HomeLine(Transform parent, string message, int size)
-        {
-            Text line = CreateLabel(parent, displayFont, message, new Vector2(0f, 1f), new Vector2(0f, 1f), Vector2.zero, size);
-            line.alignment = TextAnchor.MiddleCenter;
-            line.color = HomePink;
-            line.raycastTarget = false;
-            line.rectTransform.pivot = new Vector2(0f, 1f);
-            return line;
-        }
-
-        static void PlaceHomeLine(Text line, Vector2 position, Vector2 size)
-        {
-            if (line == null)
-                return;
-            RectTransform rect = line.rectTransform;
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = position;
-            rect.sizeDelta = size;
+            IntroPanel source = Resources.Load<IntroPanel>("Home/Intro");
+            intro = source != null
+                ? Instantiate(source, parent, false)
+                : IntroPanel.BuildFallback(parent, displayFont, uiFont);
+            RectTransform page = intro.GetComponent<RectTransform>();
+            page.anchorMin = Vector2.zero;
+            page.anchorMax = Vector2.one;
+            page.offsetMin = Vector2.zero;
+            page.offsetMax = Vector2.zero;
+            intro.Open(OpenTestingSession, night, displayFont, uiFont);
         }
 
         void PaintHome()
         {
-            if (homeCover != null)
-                homeCover.color = night ? Color.black : Color.white;
-            TintHome(homeLead);
-            TintHome(homeHeadline);
-            TintHome(homeBegin);
-        }
-
-        static void TintHome(Text line)
-        {
-            if (line == null)
-                return;
-            line.color = new Color(HomePink.r, HomePink.g, HomePink.b, line.color.a);
+            if (intro != null)
+                intro.ApplyField(night);
         }
 
         void OpenTestingSession()
         {
-            homeMorphing = false;
-            if (homePanel != null)
-                homePanel.SetActive(false);
+            if (intro != null)
+                intro.Close();
             if (screenColumn != null)
                 screenColumn.gameObject.SetActive(true);
             if (consentGate != null)
