@@ -4,16 +4,19 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-// Plays the opening on the two panels already under the canvas.
-// The first Cinnarios is the start pose. The second is the pose it lands in.
-// The ball carries the painting, rests at the end of the word, then fills the screen.
+// Plays the opening on the panels already under the canvas.
+// The ball paints Cinnarios, rests as a period, and the word turns upright.
+// A tap then opens the first intro panel from inside the ball.
+// Another tap slides to the next intro panel from the right. Each later panel uses that same slide.
 [AddComponentMenu("Intro/Intro Reveal")]
 public class IntroReveal : MonoBehaviour
 {
     [SerializeField] RectTransform beginningPanel;
     [SerializeField] TMP_Text beginningName;
     [SerializeField] RectTransform paintingPanel;
+    [SerializeField] RectTransform nextPanel;
     [SerializeField] TMP_Text paintingName;
+    [SerializeField] Image bubble;
     [SerializeField] float hopSeconds = 0.34f;
     [SerializeField] float morphSeconds = 1.05f;
 
@@ -21,19 +24,10 @@ public class IntroReveal : MonoBehaviour
     RectTransform canvasRect;
     RectTransform wordRect;
     Image ball;
-    Image pink;
-    RawImage fill;
-    Texture paintingTexture;
     CanvasGroup paintingGroup;
-    float restDiameter;
-    float coverDiameter;
-    Vector2 restPoint;
 
     Color hidden;
     Color ink;
-    Color ballPink;
-    Pose startPose;
-    Pose endPose;
     readonly List<int> letters = new List<int>();
     float[] shown;
 
@@ -46,21 +40,56 @@ public class IntroReveal : MonoBehaviour
     float arc;
     bool firstDrop = true;
 
-    const float WaitSeconds = 0.22f;
+    const float OpenSeconds = 0.08f;
     const float HoldSeconds = 0.06f;
     const float SettleSeconds = 0.36f;
-    const float RestSeconds = 0.28f;
+    const float RestSeconds = 0.18f;
+    const float PeriodSeconds = 0.34f;
+    const float TiltSeconds = 0.9f;
+    const float PeriodScale = 0.16f;
+    const float FillSeconds = 0.9f;
+    const float SlideSeconds = 1.15f;
 
-    enum Beat { Wait, Drop, Hold, Settle, Rest, Morph, Done }
+    float fillScale = 1f;
+    float fillFrom = 1f;
+    float tiltFrom;
+    float slideWidth;
+    RectTransform window;
+    RectTransform leavingSlot;
+    RectTransform arrivingSlot;
+    Vector2 revealedSize;
+    Vector3 revealedCenter;
+    Vector3 revealedScale;
+    Quaternion revealedRotation;
+    PanelPlace savedPanel;
+    PanelPlace savedNext;
+    RectTransform revealTarget;
+    RectTransform returnPanel;
+    CanvasGroup revealGroup;
+    bool returnTrip;
+    bool closing;
+    bool copyOpening;
+    readonly List<RectTransform> intros = new List<RectTransform>();
+    int introIndex;
+    RectTransform leavingPanel;
 
-    struct Pose
+    enum Beat { Wait, Drop, Hold, Settle, Rest, Period, Tilt, Ready, Fill, Shown, Slide, ReturnReady, Done }
+
+    struct PanelPlace
     {
-        public Vector3 center;
-        public Quaternion rotation;
-        public Vector2 size;
+        public Transform parent;
+        public Vector2 anchorMin;
+        public Vector2 anchorMax;
+        public Vector2 pivot;
+        public Vector2 anchoredPosition;
+        public Vector2 sizeDelta;
         public Vector3 localScale;
-        public float fontSize;
-        public float spacing;
+        public Quaternion localRotation;
+    }
+
+    public static void OpenMenu()
+    {
+        MainMenu.TakeOver();
     }
 
     void Awake()
@@ -80,6 +109,7 @@ public class IntroReveal : MonoBehaviour
         canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1
             | AdditionalCanvasShaderChannels.Normal
             | AdditionalCanvasShaderChannels.Tangent;
+        MainMenu.Hide();
 
         Resolve();
         if (beginningPanel == null || beginningName == null || paintingPanel == null || paintingName == null)
@@ -89,18 +119,18 @@ public class IntroReveal : MonoBehaviour
             return;
         }
 
+        paintingPanel.gameObject.SetActive(true);
+        for (int i = 0; i < paintingPanel.childCount; i++)
+            paintingPanel.GetChild(i).gameObject.SetActive(true);
+        CollectIntros();
+
+        PaintWhite(beginningPanel, PhotoWhite);
+        PaintWhite(paintingPanel, PhotoWhite);
+        CopyObjectSizes();
         hidden = PanelColor(beginningPanel);
         ink = paintingName.color;
-        if (SameColor(hidden, ink))
-            ink = new Color(0.878f, 0.082f, 0.384f, 1f);
-        ballPink = Colorful(ink) ? ink : new Color(0.89f, 0.29f, 0.48f, 1f);
-
-        CenterInPanel(paintingName, paintingPanel, FlatAngle(paintingName));
-        CenterInPanel(beginningName, beginningPanel, FlatAngle(beginningName));
-
-        endPose = ReadPose(paintingName);
-        endPose.localScale = ScaleOnCanvas(paintingName.rectTransform);
-        paintingName.gameObject.SetActive(false);
+        if (ink.a < 0.2f || (ink.r > 0.97f && ink.g > 0.97f && ink.b > 0.97f))
+            ink = BrushPink;
 
         paintingGroup = paintingPanel.GetComponent<CanvasGroup>();
         if (paintingGroup == null)
@@ -125,15 +155,19 @@ public class IntroReveal : MonoBehaviour
         }
 
         shown = new float[letters.Count];
+        if (shown.Length > 0)
+            shown[0] = 0.45f;
         ApplyInk();
 
-        paintingTexture = PaintingTexture();
         ball = MakeBall();
-        float openingHeight = LetterHeight(0);
-        ball.rectTransform.anchoredPosition = Rest(0) + new Vector2(0f, openingHeight * 2.6f);
-        PosePainting();
+        ball.rectTransform.localScale = Vector3.one * PeriodScale;
+        ball.rectTransform.anchoredPosition = StartOfWord();
         wordRect.SetAsLastSibling();
         ball.rectTransform.SetAsLastSibling();
+        WarmWindow();
+        BeginDrop();
+        time = 0.05f;
+        StepDrop();
     }
 
     void Update()
@@ -142,7 +176,7 @@ public class IntroReveal : MonoBehaviour
         time += step;
         AdvanceShows(step);
 
-        if (beat == Beat.Wait && time >= WaitSeconds)
+        if (beat == Beat.Wait && time >= OpenSeconds)
             BeginDrop();
         else if (beat == Beat.Drop)
             StepDrop();
@@ -151,16 +185,41 @@ public class IntroReveal : MonoBehaviour
         else if (beat == Beat.Settle)
             StepSettle();
         else if (beat == Beat.Rest && time >= RestSeconds)
-            BeginMorph();
-        else if (beat == Beat.Morph)
-            StepMorph();
+            BeginPeriod();
+        else if (beat == Beat.Period)
+            StepPeriod();
+        else if (beat == Beat.Tilt)
+            StepTilt();
+        else if (beat == Beat.Ready)
+        {
+            if (ScreenAdvance.Tapped())
+            {
+                if (returnTrip)
+                    AskForEntrance();
+                else
+                    BeginFill();
+            }
+        }
+        else if (beat == Beat.Fill)
+            StepFill();
+        else if (beat == Beat.Shown)
+        {
+            if (ScreenAdvance.Tapped())
+            {
+                if (introIndex + 1 < intros.Count)
+                    BeginSlide();
+                else
+                    BeginReturn();
+            }
+        }
+        else if (beat == Beat.Slide)
+            StepSlide();
+        else if (beat == Beat.ReturnReady)
+        {
+            if (ScreenAdvance.Tapped())
+                BeginReturn();
+        }
 
-        if (ball == null || !ball.gameObject.activeSelf)
-            return;
-
-        if (beat != Beat.Morph)
-            ball.rectTransform.SetAsLastSibling();
-        PosePainting();
     }
 
     void BeginDrop()
@@ -168,26 +227,35 @@ public class IntroReveal : MonoBehaviour
         Vector2 land = Rest(letter);
         float height = LetterHeight(letter);
         hopUp = LetterUp(letter);
-        ballFrom = firstDrop ? land + hopUp * (height * 2.6f) : ball.rectTransform.anchoredPosition;
+        ballFrom = ball.rectTransform.anchoredPosition;
         ballTo = land;
-        arc = firstDrop ? 0f : height * 1.15f;
+        arc = firstDrop ? height * 0.28f : height * 1.15f;
         time = 0f;
         beat = Beat.Drop;
+        if (!copyOpening)
+            return;
+
+        copyOpening = false;
+        time = 0.02f;
+        if (shown != null && letter < shown.Length && shown[letter] <= 0f)
+            shown[letter] = 0.01f;
+        StepDrop();
     }
 
     void StepDrop()
     {
-        float duration = firstDrop ? 0.46f : hopSeconds;
+        float duration = firstDrop ? 0.26f : hopSeconds;
         float t = Mathf.Clamp01(time / duration);
-        float along = firstDrop ? t * t : t;
+        float along = firstDrop ? EaseOut(t) : t;
         Vector2 pos = Vector2.Lerp(ballFrom, ballTo, along);
         pos += hopUp * (Mathf.Sin(t * Mathf.PI) * arc);
         ball.rectTransform.anchoredPosition = pos;
 
         float squash = Mathf.Clamp01((t - 0.78f) / 0.22f);
         squash = Mathf.Sin(squash * Mathf.PI);
-        FaceBall(hopUp, squash);
-        if (t > 0.8f && shown[letter] <= 0f)
+        float size = firstDrop ? Mathf.Lerp(PeriodScale, 1f, EaseOut(t)) : 1f;
+        FaceBall(hopUp, squash, size);
+        if (t > 0.28f && shown[letter] <= 0f)
             shown[letter] = 0.01f;
 
         if (t < 1f)
@@ -235,72 +303,544 @@ public class IntroReveal : MonoBehaviour
         beat = Beat.Rest;
     }
 
-    void BeginMorph()
+    void BeginPeriod()
     {
         ball.rectTransform.localRotation = Quaternion.identity;
-        ball.rectTransform.localScale = Vector3.one;
-        restPoint = ball.rectTransform.anchoredPosition;
-        restDiameter = ball.rectTransform.sizeDelta.x;
-        coverDiameter = CoverDiameter(restPoint);
-
-        beginningName.color = ink;
-        beginningName.ForceMeshUpdate();
-        startPose = ReadPose(beginningName);
-        PlaceFree(wordRect);
-        startPose.center = WorldCenter(wordRect);
-        startPose.localScale = wordRect.localScale;
-
-        fill.enabled = paintingTexture != null;
-        ball.rectTransform.SetAsLastSibling();
-        wordRect.SetAsLastSibling();
         time = 0f;
-        beat = Beat.Morph;
+        beat = Beat.Period;
     }
 
-    void StepMorph()
+    void StepPeriod()
     {
-        float u = Ease(Mathf.Clamp01(time / morphSeconds));
-        wordRect.localScale = Vector3.LerpUnclamped(startPose.localScale, endPose.localScale, u);
-        wordRect.sizeDelta = Vector2.LerpUnclamped(startPose.size, endPose.size, u);
-        wordRect.rotation = Quaternion.Slerp(startPose.rotation, endPose.rotation, u);
-        beginningName.fontSize = Mathf.LerpUnclamped(startPose.fontSize, endPose.fontSize, u);
-        beginningName.characterSpacing = Mathf.LerpUnclamped(startPose.spacing, endPose.spacing, u);
+        float u = Ease(Mathf.Clamp01(time / PeriodSeconds));
+        float size = Mathf.Lerp(1f, PeriodScale, u);
+        ball.rectTransform.localScale = Vector3.one * size;
+        ball.rectTransform.localRotation = Quaternion.identity;
+        if (u < 1f)
+            return;
 
-        Vector3 center = Vector3.LerpUnclamped(startPose.center, endPose.center, u);
-        wordRect.position += center - WorldCenter(wordRect);
+        ball.rectTransform.localScale = Vector3.one * PeriodScale;
+        BeginTilt();
+    }
 
-        float diameter = Mathf.LerpUnclamped(restDiameter, coverDiameter, u);
-        ball.rectTransform.localScale = Vector3.one;
-        ball.rectTransform.anchoredPosition = restPoint;
-        ball.rectTransform.sizeDelta = Vector2.one * diameter;
-        float reveal = Mathf.InverseLerp(0.18f, 0.5f, u);
-        Color cap = ballPink;
-        cap.a = 1f - reveal;
-        pink.color = cap;
-        wordRect.SetAsLastSibling();
+    void BeginTilt()
+    {
+        tiltFrom = wordRect.localEulerAngles.z;
+        ball.rectTransform.SetParent(wordRect, true);
+        ball.rectTransform.SetAsLastSibling();
+        time = 0f;
+        beat = Beat.Tilt;
+    }
+
+    void StepTilt()
+    {
+        float u = Smoother(Mathf.Clamp01(time / TiltSeconds));
+        float z = Mathf.LerpAngle(tiltFrom, 0f, u);
+        wordRect.localRotation = Quaternion.Euler(0f, 0f, z);
+        if (u < 1f)
+            return;
+
+        wordRect.localRotation = Quaternion.identity;
+        ReleaseBall();
+        time = 0f;
+        beat = Beat.Ready;
+    }
+
+    void ReleaseBall()
+    {
+        Vector3 world = ball.rectTransform.position;
+        ball.rectTransform.SetParent(canvasRect, false);
+        ball.rectTransform.anchorMin = ball.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        ball.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        ball.rectTransform.localRotation = Quaternion.identity;
+        ball.rectTransform.localScale = Vector3.one * PeriodScale;
+        ball.rectTransform.position = world;
+    }
+
+    void AskForEntrance()
+    {
+        enabled = false;
+        AccessGate.Present(null, beginningName != null ? beginningName.font : null);
+    }
+
+    void BeginFill()
+    {
+        returnTrip = false;
+        ball.rectTransform.localRotation = Quaternion.identity;
+        fillFrom = Mathf.Max(0.05f, ball.rectTransform.localScale.x);
+        beginningName.color = ink;
+        OpenPanel(paintingPanel);
+    }
+
+    void BeginReturn()
+    {
+        if (returnPanel == null)
+            returnPanel = FindBeginningCopy();
+        if (returnPanel == null)
+            return;
+
+        MatchBeginningWhite(returnPanel);
+        beginningPanel.gameObject.SetActive(false);
+        returnPanel.gameObject.SetActive(true);
+        HideCopyLetters();
+        returnTrip = true;
+        closing = true;
+
+        RectTransform leaving = introIndex >= 0 && introIndex < intros.Count ? intros[introIndex] : null;
+        if (leaving == null)
+            return;
+
+        ClosePanel(leaving);
+    }
+
+    void OpenPanel(RectTransform panel)
+    {
+        revealTarget = panel;
+        revealTarget.gameObject.SetActive(true);
+        Canvas.ForceUpdateCanvases();
+        revealGroup = GroupOn(revealTarget);
+
+        savedPanel = new PanelPlace
+        {
+            parent = revealTarget.parent,
+            anchorMin = revealTarget.anchorMin,
+            anchorMax = revealTarget.anchorMax,
+            pivot = revealTarget.pivot,
+            anchoredPosition = revealTarget.anchoredPosition,
+            sizeDelta = revealTarget.sizeDelta,
+            localScale = revealTarget.localScale,
+            localRotation = revealTarget.localRotation
+        };
+        revealedSize = revealTarget.rect.size;
+        revealedCenter = revealTarget.TransformPoint(revealTarget.rect.center);
+        revealedScale = revealTarget.localScale;
+        revealedRotation = revealTarget.localRotation;
+
+        WarmWindow();
+        window.gameObject.SetActive(true);
+        window.SetParent(canvasRect, false);
+        window.sizeDelta = ball.rectTransform.sizeDelta;
+        window.anchoredPosition = ball.rectTransform.anchoredPosition;
+        window.localRotation = Quaternion.identity;
+        window.localScale = new Vector3(fillFrom, fillFrom, 1f);
+
+        revealGroup.alpha = 1f;
+        revealGroup.blocksRaycasts = false;
+        revealTarget.SetParent(window, false);
+        revealTarget.anchorMin = revealTarget.anchorMax = new Vector2(0.5f, 0.5f);
+        revealTarget.pivot = new Vector2(0.5f, 0.5f);
+        revealTarget.sizeDelta = revealedSize;
+        revealTarget.localRotation = revealedRotation;
+        HoldPanelStill(fillFrom);
+
+        fillScale = CoverScale(window.anchoredPosition);
+        ball.rectTransform.SetAsLastSibling();
+        time = 0.16f;
+        beat = Beat.Fill;
+        StepFill();
+    }
+
+    void WarmWindow()
+    {
+        if (window != null)
+            return;
+
+        var host = new GameObject("PanelWindow", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Mask));
+        host.transform.SetParent(canvasRect, false);
+        Image opening = host.GetComponent<Image>();
+        opening.sprite = CircleSprite();
+        opening.color = Color.white;
+        opening.raycastTarget = false;
+        opening.preserveAspect = true;
+        host.GetComponent<Mask>().showMaskGraphic = false;
+
+        window = host.GetComponent<RectTransform>();
+        window.anchorMin = window.anchorMax = new Vector2(0.5f, 0.5f);
+        window.pivot = new Vector2(0.5f, 0.5f);
+        window.sizeDelta = Vector2.one * 32f;
+        window.anchoredPosition = new Vector2(8000f, 8000f);
+        window.localScale = Vector3.one;
+        host.SetActive(false);
+    }
+
+    void ClosePanel(RectTransform panel)
+    {
+        revealTarget = panel;
+        revealTarget.gameObject.SetActive(true);
+        revealGroup = GroupOn(revealTarget);
+        savedPanel = new PanelPlace
+        {
+            parent = revealTarget.parent,
+            anchorMin = revealTarget.anchorMin,
+            anchorMax = revealTarget.anchorMax,
+            pivot = revealTarget.pivot,
+            anchoredPosition = revealTarget.anchoredPosition,
+            sizeDelta = revealTarget.sizeDelta,
+            localScale = revealTarget.localScale,
+            localRotation = revealTarget.localRotation
+        };
+        revealedSize = revealTarget.rect.size;
+        revealedCenter = revealTarget.TransformPoint(revealTarget.rect.center);
+        revealedScale = revealTarget.localScale;
+        revealedRotation = revealTarget.localRotation;
+
+        WarmWindow();
+        window.gameObject.SetActive(true);
+        window.SetParent(canvasRect, false);
+        window.anchorMin = window.anchorMax = new Vector2(0.5f, 0.5f);
+        window.pivot = new Vector2(0.5f, 0.5f);
+        window.sizeDelta = ball != null ? ball.rectTransform.sizeDelta : Vector2.one * 220f;
+        window.anchoredPosition = Vector2.zero;
+        window.localRotation = Quaternion.identity;
+
+        fillFrom = CoverScale(Vector2.zero);
+        fillScale = 0.18f;
+        window.localScale = new Vector3(fillFrom, fillFrom, 1f);
+
+        revealGroup.alpha = 1f;
+        revealGroup.blocksRaycasts = false;
+        revealTarget.SetParent(window, false);
+        revealTarget.anchorMin = revealTarget.anchorMax = new Vector2(0.5f, 0.5f);
+        revealTarget.pivot = new Vector2(0.5f, 0.5f);
+        revealTarget.sizeDelta = revealedSize;
+        revealTarget.localRotation = revealedRotation;
+        HoldPanelStill(fillFrom);
+
+        returnPanel.SetSiblingIndex(window.GetSiblingIndex());
+        window.SetAsLastSibling();
+        if (ball != null)
+            ball.gameObject.SetActive(false);
+
+        time = 0f;
+        beat = Beat.Fill;
+    }
+
+    void StepFill()
+    {
+        float duration = FillSeconds;
+        float u = EaseOut(Mathf.Clamp01(time / duration));
+        float scale = Mathf.Lerp(fillFrom, fillScale, u);
+        window.localScale = new Vector3(scale, scale, 1f);
+        HoldPanelStill(scale);
+
+        if (!closing && ball != null && ball.gameObject.activeSelf)
+        {
+            ball.rectTransform.anchoredPosition = window.anchoredPosition;
+            ball.rectTransform.localRotation = Quaternion.identity;
+            ball.rectTransform.localScale = new Vector3(scale, scale, 1f);
+            Color bubble = Color.white;
+            bubble.a = 1f - Ease(Mathf.Clamp01(time / 0.32f));
+            ball.color = bubble;
+            if (bubble.a <= 0.001f)
+                ball.gameObject.SetActive(false);
+        }
 
         if (u < 1f)
             return;
 
-        paintingPanel.localScale = endPanelScale;
-        paintingGroup.alpha = 1f;
-        ball.gameObject.SetActive(false);
-        wordRect.SetAsLastSibling();
+        HoldPainting();
+        time = 0f;
+        closing = false;
+        if (returnTrip)
+        {
+            if (introIndex >= 0 && introIndex < intros.Count)
+                intros[introIndex].gameObject.SetActive(false);
+            PlayCopy();
+            return;
+        }
+
+        beat = Beat.Shown;
+    }
+
+    void CopyObjectSizes()
+    {
+        if (returnPanel == null || beginningPanel == null)
+            return;
+
+        beginningPanel.localScale = returnPanel.localScale;
+        CopyChildSizes(returnPanel, beginningPanel);
+    }
+
+    static void CopyChildSizes(RectTransform from, RectTransform to)
+    {
+        for (int i = 0; i < from.childCount; i++)
+        {
+            RectTransform source = from.GetChild(i) as RectTransform;
+            if (source == null)
+                continue;
+
+            RectTransform dest = to.Find(source.name) as RectTransform;
+            if (dest == null)
+                continue;
+
+            dest.localScale = source.localScale;
+            dest.sizeDelta = source.sizeDelta;
+            TMP_Text sourceText = source.GetComponent<TMP_Text>();
+            TMP_Text destText = dest.GetComponent<TMP_Text>();
+            if (sourceText != null && destText != null)
+            {
+                destText.enableAutoSizing = false;
+                destText.fontSize = sourceText.fontSize;
+            }
+
+            CopyChildSizes(source, dest);
+        }
+    }
+
+    void HideCopyLetters()
+    {
+        TMP_Text title = NameOn(returnPanel);
+        if (title == null)
+            return;
+
+        beginningName = title;
+        wordRect = title.rectTransform;
+        hidden = PanelColor(returnPanel);
+        title.color = Color.white;
+        title.ForceMeshUpdate();
+        letters.Clear();
+        CollectLetters();
+        if (letters.Count == 0)
+            return;
+
+        shown = new float[letters.Count];
+        ApplyInk();
+    }
+
+    void PlayCopy()
+    {
+        if (returnPanel == null)
+            returnPanel = FindBeginningCopy();
+        if (returnPanel == null)
+        {
+            beat = Beat.Done;
+            enabled = false;
+            return;
+        }
+
+        returnPanel.gameObject.SetActive(true);
+        returnPanel.SetAsLastSibling();
+        MatchBeginningWhite(returnPanel);
+        TMP_Text title = NameOn(returnPanel);
+        if (title == null)
+        {
+            beat = Beat.Done;
+            enabled = false;
+            return;
+        }
+
+        Transform dot = returnPanel.Find("Ball");
+        if (dot != null && (ball == null || dot.gameObject != ball.gameObject))
+            dot.gameObject.SetActive(false);
+
+        beginningName = title;
+        wordRect = title.rectTransform;
+        hidden = PanelColor(returnPanel);
+        title.color = Color.white;
+        title.ForceMeshUpdate();
+        letters.Clear();
+        CollectLetters();
+        if (letters.Count == 0)
+        {
+            beat = Beat.Done;
+            enabled = false;
+            return;
+        }
+
+        shown = new float[letters.Count];
+        shown[0] = 0.01f;
+        ApplyInk();
+        letter = 0;
+        firstDrop = true;
+        copyOpening = true;
+        if (ball != null)
+        {
+            ball.gameObject.SetActive(true);
+            ball.color = Color.white;
+            ball.rectTransform.SetParent(canvasRect, false);
+            ball.rectTransform.anchorMin = ball.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            ball.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            ball.rectTransform.localRotation = Quaternion.identity;
+            float height = letters.Count > 0 ? LetterHeight(0) : 48f;
+            ball.rectTransform.sizeDelta = Vector2.one * height * 1.35f;
+            ball.rectTransform.localScale = Vector3.one * PeriodScale;
+            ball.rectTransform.anchoredPosition = StartOfWord();
+            wordRect.SetAsLastSibling();
+            ball.rectTransform.SetAsLastSibling();
+        }
+
+        time = 0f;
+        BeginDrop();
+    }
+
+    void HoldPanelStill(float scale)
+    {
+        float inv = 1f / Mathf.Max(0.001f, scale);
+        revealTarget.localScale = new Vector3(revealedScale.x * inv, revealedScale.y * inv, revealedScale.z);
+        revealTarget.position = revealedCenter;
+    }
+
+    void HoldPainting()
+    {
+        revealTarget.SetParent(savedPanel.parent, false);
+        revealTarget.anchorMin = savedPanel.anchorMin;
+        revealTarget.anchorMax = savedPanel.anchorMax;
+        revealTarget.pivot = savedPanel.pivot;
+        revealTarget.anchoredPosition = savedPanel.anchoredPosition;
+        revealTarget.sizeDelta = savedPanel.sizeDelta;
+        revealTarget.localRotation = savedPanel.localRotation;
+        revealTarget.localScale = savedPanel.localScale;
+        revealTarget.SetAsLastSibling();
+        revealGroup.alpha = 1f;
+        revealGroup.blocksRaycasts = false;
+
+        if (window != null)
+            window.gameObject.SetActive(false);
+        if (ball != null)
+            ball.gameObject.SetActive(false);
+    }
+
+    void BeginSlide()
+    {
+        if (introIndex + 1 >= intros.Count)
+            return;
+
+        leavingPanel = intros[introIndex];
+        RectTransform arriving = intros[introIndex + 1];
+        savedNext = Capture(arriving);
+        Canvas.ForceUpdateCanvases();
+        slideWidth = canvasRect.rect.width;
+        if (slideWidth < 2f)
+        {
+            CanvasScaler scaler = canvas.GetComponent<CanvasScaler>();
+            slideWidth = scaler != null ? scaler.referenceResolution.x : Screen.width;
+        }
+
+        leavingSlot = MakeSlot(0f);
+        arrivingSlot = MakeSlot(slideWidth);
+        arriving.gameObject.SetActive(true);
+        leavingPanel.SetParent(leavingSlot, false);
+        arriving.SetParent(arrivingSlot, false);
+        arrivingSlot.SetAsLastSibling();
+        time = 0f;
+        beat = Beat.Slide;
+    }
+
+    void StepSlide()
+    {
+        float u = Smoother(Mathf.Clamp01(time / SlideSeconds));
+        float x = Mathf.Lerp(0f, -slideWidth, u);
+        SetSlotX(leavingSlot, x);
+        SetSlotX(arrivingSlot, x + slideWidth);
+        if (u < 1f)
+            return;
+
+        RectTransform arriving = intros[introIndex + 1];
+        Apply(arriving, savedNext);
+        arriving.SetAsLastSibling();
+        leavingPanel.SetParent(canvasRect, false);
+        leavingPanel.gameObject.SetActive(false);
+        if (leavingSlot != null)
+            Destroy(leavingSlot.gameObject);
+        if (arrivingSlot != null)
+            Destroy(arrivingSlot.gameObject);
+        introIndex++;
+        if (introIndex + 1 < intros.Count)
+        {
+            time = 0f;
+            beat = Beat.Shown;
+            return;
+        }
+
+        if (returnPanel != null)
+        {
+            time = 0f;
+            beat = Beat.ReturnReady;
+            return;
+        }
+
         beat = Beat.Done;
         enabled = false;
     }
 
-    Vector3 endPanelScale;
-
-    Vector3 ScaleOnCanvas(RectTransform rect)
+    RectTransform MakeSlot(float x)
     {
-        Vector3 canvasScale = canvasRect.lossyScale;
-        Vector3 scale = rect.lossyScale;
-        return new Vector3(
-            canvasScale.x == 0f ? 1f : scale.x / canvasScale.x,
-            canvasScale.y == 0f ? 1f : scale.y / canvasScale.y,
-            1f);
+        var rect = new GameObject("SlideSlot", typeof(RectTransform)).GetComponent<RectTransform>();
+        rect.SetParent(canvasRect, false);
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.localScale = Vector3.one;
+        rect.localRotation = Quaternion.identity;
+        SetSlotX(rect, x);
+        return rect;
     }
+
+    static void SetSlotX(RectTransform slot, float x)
+    {
+        slot.offsetMin = new Vector2(x, 0f);
+        slot.offsetMax = new Vector2(x, 0f);
+    }
+
+    static PanelPlace Capture(RectTransform rect)
+    {
+        return new PanelPlace
+        {
+            parent = rect.parent,
+            anchorMin = rect.anchorMin,
+            anchorMax = rect.anchorMax,
+            pivot = rect.pivot,
+            anchoredPosition = rect.anchoredPosition,
+            sizeDelta = rect.sizeDelta,
+            localScale = rect.localScale,
+            localRotation = rect.localRotation
+        };
+    }
+
+    static void Apply(RectTransform rect, PanelPlace place)
+    {
+        rect.SetParent(place.parent, false);
+        rect.anchorMin = place.anchorMin;
+        rect.anchorMax = place.anchorMax;
+        rect.pivot = place.pivot;
+        rect.anchoredPosition = place.anchoredPosition;
+        rect.sizeDelta = place.sizeDelta;
+        rect.localRotation = place.localRotation;
+        rect.localScale = place.localScale;
+    }
+
+    Vector2 StartOfWord()
+    {
+        Vector2 start = GlyphCenter(0);
+        Vector2 next = letters.Count > 1 ? GlyphCenter(1) : start + Vector2.right;
+        Vector2 dir = start - next;
+        if (dir.sqrMagnitude < 1f)
+            dir = -Vector2.right;
+        dir.Normalize();
+
+        float reach = 0f;
+        Vector2[] corners = GlyphCorners(0);
+        for (int i = 0; i < corners.Length; i++)
+            reach = Mathf.Max(reach, Vector2.Dot(corners[i] - start, dir));
+
+        float radius = ball.rectTransform.sizeDelta.x * 0.5f * PeriodScale;
+        return start + dir * (reach + radius + LetterHeight(0) * 0.2f);
+    }
+
+    float CoverScale(Vector2 center)
+    {
+        Vector3[] corners = new Vector3[4];
+        canvasRect.GetWorldCorners(corners);
+        float reach = 0f;
+        for (int i = 0; i < corners.Length; i++)
+            reach = Mathf.Max(reach, Vector2.Distance(center, ToCanvas(corners[i])));
+
+        float radius = ball.rectTransform.sizeDelta.x * 0.5f;
+        return reach * 1.08f / Mathf.Max(1f, radius);
+    }
+
+    static readonly Color32 PhotoWhite = new Color32(255, 255, 255, 255);
+    static readonly Color BrushPink = new Color32(255, 183, 208, 255);
 
     void Resolve()
     {
@@ -330,73 +870,107 @@ public class IntroReveal : MonoBehaviour
             beginningName = NameOn(beginningPanel);
         if (paintingName == null && paintingPanel != null)
             paintingName = NameOn(paintingPanel);
+        CollectIntros();
+    }
 
+    void CollectIntros()
+    {
+        intros.Clear();
         if (paintingPanel != null)
-            endPanelScale = paintingPanel.localScale;
+            intros.Add(paintingPanel);
+        if (nextPanel == null)
+            nextPanel = FindIntro("2");
+        if (nextPanel != null && !intros.Contains(nextPanel))
+            intros.Add(nextPanel);
+        RectTransform third = FindIntro("3");
+        if (third != null && !intros.Contains(third))
+            intros.Add(third);
+        RectTransform fourth = FindIntro("4");
+        if (fourth != null && !intros.Contains(fourth))
+            intros.Add(fourth);
+        returnPanel = FindBeginningCopy();
+        for (int i = 1; i < intros.Count; i++)
+            intros[i].gameObject.SetActive(false);
+        if (returnPanel != null)
+        {
+            MatchBeginningWhite(returnPanel);
+            returnPanel.gameObject.SetActive(false);
+        }
+        introIndex = 0;
     }
 
-    void CenterInPanel(TMP_Text text, RectTransform panel, float tilt)
+    RectTransform FindBeginningCopy()
     {
-        RectTransform rect = text.rectTransform;
-        Quaternion rotation = rect.localRotation;
-        rect.SetParent(panel, false);
-        rect.localRotation = rotation;
-        rect.localScale = Vector3.one;
-        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.anchoredPosition = Vector2.zero;
-        text.alignment = TextAlignmentOptions.Center;
-        text.enableAutoSizing = false;
-        text.enableWordWrapping = false;
-        text.overflowMode = TextOverflowModes.Overflow;
+        RectTransform found = MatchCopy(canvas.GetComponentsInChildren<RectTransform>(true));
+        if (found != null)
+            return found;
 
-        Vector2 room = FitRoom(panel);
-        text.ForceMeshUpdate();
-        float factor = FitFactor(text.GetPreferredValues(text.text), tilt, room);
-        text.fontSize = Mathf.Max(12f, text.fontSize * factor);
-
-        text.ForceMeshUpdate();
-        rect.sizeDelta = text.GetPreferredValues(text.text);
-        rect.anchoredPosition = Vector2.zero;
+        return MatchCopy(FindObjectsByType<RectTransform>(FindObjectsInactive.Include, FindObjectsSortMode.None));
     }
 
-    Vector2 FitRoom(RectTransform panel)
+    RectTransform MatchCopy(RectTransform[] rects)
     {
-        Vector2 panelSize = panel.rect.size;
-        Vector2 screen = canvasRect.rect.size;
-        return new Vector2(
-            Mathf.Max(40f, Mathf.Min(panelSize.x, screen.x) * 0.9f),
-            Mathf.Max(40f, Mathf.Min(panelSize.y, screen.y) * 0.5f));
+        RectTransform found = null;
+        for (int i = 0; i < rects.Length; i++)
+        {
+            RectTransform rect = rects[i];
+            if (rect == null || rect == canvasRect || rect == beginningPanel)
+                continue;
+            string compact = rect.name.Replace(" ", "").Replace("(", "").Replace(")", "");
+            if (compact.IndexOf("BeginningPanel", StringComparison.OrdinalIgnoreCase) >= 0)
+                found = rect;
+        }
+
+        return found;
     }
 
-    static float FitFactor(Vector2 size, float tilt, Vector2 room)
+    CanvasGroup GroupOn(RectTransform panel)
     {
-        float z = tilt * Mathf.Deg2Rad;
-        float cos = Mathf.Abs(Mathf.Cos(z));
-        float sin = Mathf.Abs(Mathf.Sin(z));
-        float width = Mathf.Max(1f, size.x * cos + size.y * sin);
-        float height = Mathf.Max(1f, size.x * sin + size.y * cos);
-        return Mathf.Min(room.x / width, room.y / height);
+        if (panel == paintingPanel && paintingGroup != null)
+            return paintingGroup;
+
+        CanvasGroup group = panel.GetComponent<CanvasGroup>();
+        if (group == null)
+            group = panel.gameObject.AddComponent<CanvasGroup>();
+        group.alpha = 0f;
+        group.blocksRaycasts = false;
+        return group;
     }
 
-    static float FlatAngle(TMP_Text text)
+    RectTransform FindIntro(string number)
     {
-        return Mathf.Abs(Mathf.DeltaAngle(0f, text.rectTransform.localEulerAngles.z));
+        RectTransform[] rects = canvas.GetComponentsInChildren<RectTransform>(true);
+        for (int i = 0; i < rects.Length; i++)
+        {
+            RectTransform rect = rects[i];
+            if (rect == canvasRect || rect == beginningPanel)
+                continue;
+            string compact = rect.name.Replace(" ", "");
+            if (compact.Equals("IntroPanel" + number, StringComparison.OrdinalIgnoreCase))
+                return rect;
+        }
+
+        return null;
     }
 
     static TMP_Text NameOn(RectTransform panel)
     {
         TMP_Text[] texts = panel.GetComponentsInChildren<TMP_Text>(true);
+        TMP_Text named = null;
         TMP_Text largest = null;
         foreach (TMP_Text text in texts)
         {
-            if (text.text.IndexOf("cinnario", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (text.gameObject.name == "Slogan")
+                continue;
+            if (text.gameObject.name == "App Name")
                 return text;
+            if (named == null && text.text.IndexOf("cinnario", StringComparison.OrdinalIgnoreCase) >= 0)
+                named = text;
             if (largest == null || text.fontSize > largest.fontSize)
                 largest = text;
         }
 
-        return largest;
+        return named != null ? named : largest;
     }
 
     void CollectLetters()
@@ -411,7 +985,7 @@ public class IntroReveal : MonoBehaviour
 
     void AdvanceShows(float step)
     {
-        if (beat == Beat.Morph || beat == Beat.Done || shown == null)
+        if (beat == Beat.Fill || beat == Beat.Done || beat == Beat.Ready || shown == null)
             return;
 
         bool moving = false;
@@ -423,7 +997,7 @@ public class IntroReveal : MonoBehaviour
             moving = true;
         }
 
-        if (moving || beat == Beat.Wait)
+        if (moving)
             ApplyInk();
     }
 
@@ -470,48 +1044,42 @@ public class IntroReveal : MonoBehaviour
         return end + dir * (reach + radius + LetterHeight(index) * 0.12f);
     }
 
-    float CoverDiameter(Vector2 center)
+    static Sprite solidWhite;
+
+    static void MatchBeginningWhite(RectTransform panel)
     {
-        Vector3[] corners = new Vector3[4];
-        canvasRect.GetWorldCorners(corners);
-        float reach = 0f;
-        for (int i = 0; i < corners.Length; i++)
-            reach = Mathf.Max(reach, Vector2.Distance(center, ToCanvas(corners[i])));
-        return reach * 2f + 12f;
+        Image image = panel.GetComponent<Image>();
+        if (image != null && image.sprite != null && image.sprite != solidWhite && image.sprite.name != "Background")
+            image.sprite = null;
+        PaintWhite(panel, PhotoWhite);
     }
 
-    void PosePainting()
+    static void PaintWhite(RectTransform panel, Color32 color)
     {
-        if (fill == null)
+        if (panel.GetComponent<RawImage>() != null)
             return;
 
-        Vector2 scale = ball.rectTransform.localScale;
-        scale.x = Mathf.Abs(scale.x) < 0.001f ? 1f : scale.x;
-        scale.y = Mathf.Abs(scale.y) < 0.001f ? 1f : scale.y;
-        Vector2 cover = PaintingCover();
-        RectTransform picture = fill.rectTransform;
-        picture.anchorMin = picture.anchorMax = new Vector2(0.5f, 0.5f);
-        picture.pivot = new Vector2(0.5f, 0.5f);
-        picture.anchoredPosition = new Vector2(
-            -ball.rectTransform.anchoredPosition.x / scale.x,
-            -ball.rectTransform.anchoredPosition.y / scale.y);
-        picture.sizeDelta = new Vector2(cover.x / scale.x, cover.y / scale.y);
-    }
+        Image image = panel.GetComponent<Image>();
+        if (image != null && image.sprite != null && image.sprite.name != "Background")
+            return;
+        if (image == null)
+            image = panel.gameObject.AddComponent<Image>();
 
-    Vector2 PaintingCover()
-    {
-        Rect screen = canvasRect.rect;
-        if (paintingTexture == null || paintingTexture.width < 1 || paintingTexture.height < 1)
-            return screen.size;
+        if (solidWhite == null)
+        {
+            var tex = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+            var pixels = new Color32[16];
+            for (int i = 0; i < pixels.Length; i++)
+                pixels[i] = new Color32(255, 255, 255, 255);
+            tex.SetPixels32(pixels);
+            tex.Apply();
+            solidWhite = Sprite.Create(tex, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f), 4f);
+        }
 
-        float scale = Mathf.Max(screen.width / paintingTexture.width, screen.height / paintingTexture.height);
-        return new Vector2(paintingTexture.width * scale, paintingTexture.height * scale);
-    }
-
-    Texture PaintingTexture()
-    {
-        RawImage image = paintingPanel.GetComponentInChildren<RawImage>(true);
-        return image != null ? image.texture : null;
+        image.sprite = solidWhite;
+        image.type = Image.Type.Simple;
+        image.color = color;
+        image.preserveAspect = false;
     }
 
     Vector2 LetterTop(int index)
@@ -527,11 +1095,11 @@ public class IntroReveal : MonoBehaviour
         return up.sqrMagnitude < 1f ? Vector2.up : up.normalized;
     }
 
-    void FaceBall(Vector2 up, float squash)
+    void FaceBall(Vector2 up, float squash, float size = 1f)
     {
         float angle = Mathf.Atan2(up.y, up.x) * Mathf.Rad2Deg - 90f;
         ball.rectTransform.localEulerAngles = new Vector3(0f, 0f, angle);
-        ball.rectTransform.localScale = new Vector3(1f + 0.16f * squash, 1f - 0.2f * squash, 1f);
+        ball.rectTransform.localScale = new Vector3(1f + 0.16f * squash, 1f - 0.2f * squash, 1f) * size;
     }
 
     Vector2 GlyphCenter(int index)
@@ -577,111 +1145,49 @@ public class IntroReveal : MonoBehaviour
 
     Image MakeBall()
     {
-        var obj = new GameObject("Ball", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        obj.transform.SetParent(canvasRect, false);
-        RectTransform rect = obj.GetComponent<RectTransform>();
+        Image image = bubble;
+        if (image == null && beginningPanel != null)
+        {
+            Transform found = beginningPanel.Find("Ball");
+            if (found != null)
+                image = found.GetComponent<Image>();
+        }
+
+        GameObject obj;
+        if (image == null)
+        {
+            obj = new GameObject("Ball", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            obj.transform.SetParent(canvasRect, false);
+            image = obj.GetComponent<Image>();
+            image.sprite = Resources.Load<Sprite>("Bubble");
+            image.color = Color.white;
+        }
+        else
+        {
+            obj = image.gameObject;
+            obj.transform.SetParent(canvasRect, true);
+            if (image.sprite == null)
+                image.sprite = Resources.Load<Sprite>("Bubble");
+        }
+
+        RectTransform rect = image.rectTransform;
         rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
         rect.pivot = new Vector2(0.5f, 0.5f);
         float height = letters.Count > 0 ? LetterHeight(0) : 48f;
-        rect.sizeDelta = Vector2.one * height * 0.72f;
-        Image image = obj.GetComponent<Image>();
-        image.sprite = Circle();
-        image.color = Color.white;
+        rect.sizeDelta = Vector2.one * height * 1.35f;
+        image.preserveAspect = true;
         image.raycastTarget = false;
-        Mask mask = obj.AddComponent<Mask>();
-        mask.showMaskGraphic = false;
+        image.color = Color.white;
 
-        var picture = new GameObject("Painting", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
-        picture.transform.SetParent(obj.transform, false);
-        fill = picture.GetComponent<RawImage>();
-        fill.texture = paintingTexture;
-        fill.color = Color.white;
-        fill.raycastTarget = false;
-        fill.enabled = false;
+        Transform cover = obj.transform.Find("Reveal");
+        if (cover != null)
+            Destroy(cover.gameObject);
 
-        var cap = new GameObject("Pink", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        cap.transform.SetParent(obj.transform, false);
-        RectTransform capRect = cap.GetComponent<RectTransform>();
-        capRect.anchorMin = Vector2.zero;
-        capRect.anchorMax = Vector2.one;
-        capRect.offsetMin = Vector2.zero;
-        capRect.offsetMax = Vector2.zero;
-        pink = cap.GetComponent<Image>();
-        pink.sprite = Circle();
-        pink.color = ballPink;
-        pink.raycastTarget = false;
-        if (paintingTexture == null)
+        Mask mask = image.GetComponent<Mask>();
+        if (mask != null)
             mask.enabled = false;
 
         return image;
-    }
-
-    static Sprite circle;
-
-    static Sprite Circle()
-    {
-        if (circle != null)
-            return circle;
-
-        const int size = 64;
-        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        texture.wrapMode = TextureWrapMode.Clamp;
-        float radius = (size - 1) * 0.5f;
-        var pixels = new Color[size * size];
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float dx = x - radius;
-                float dy = y - radius;
-                float edge = radius - Mathf.Sqrt(dx * dx + dy * dy);
-                pixels[y * size + x] = new Color(1f, 1f, 1f, Mathf.Clamp01(edge));
-            }
-        }
-
-        texture.SetPixels(pixels);
-        texture.Apply();
-        circle = Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f);
-        return circle;
-    }
-
-    static Pose ReadPose(TMP_Text text)
-    {
-        RectTransform rect = text.rectTransform;
-        return new Pose
-        {
-            center = WorldCenter(rect),
-            rotation = rect.rotation,
-            size = rect.rect.size,
-            localScale = rect.localScale,
-            fontSize = text.fontSize,
-            spacing = text.characterSpacing
-        };
-    }
-
-    void PlaceFree(RectTransform rect)
-    {
-        Vector2 size = rect.rect.size;
-        Vector3 center = WorldCenter(rect);
-        Quaternion rotation = rect.rotation;
-        Vector3 scale = rect.lossyScale;
-        rect.SetParent(canvasRect, true);
-        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.localScale = new Vector3(
-            scale.x / canvasRect.lossyScale.x,
-            scale.y / canvasRect.lossyScale.y,
-            1f);
-        rect.sizeDelta = size;
-        rect.rotation = rotation;
-        rect.position += center - WorldCenter(rect);
-    }
-
-    static Vector3 WorldCenter(RectTransform rect)
-    {
-        Vector3[] corners = new Vector3[4];
-        rect.GetWorldCorners(corners);
-        return (corners[0] + corners[2]) * 0.5f;
     }
 
     static Color PanelColor(RectTransform panel)
@@ -694,22 +1200,49 @@ public class IntroReveal : MonoBehaviour
         return color;
     }
 
-    static bool SameColor(Color a, Color b)
-    {
-        return Mathf.Abs(a.r - b.r) < 0.04f
-            && Mathf.Abs(a.g - b.g) < 0.04f
-            && Mathf.Abs(a.b - b.b) < 0.04f;
-    }
-
-    static bool Colorful(Color color)
-    {
-        float max = Mathf.Max(color.r, Mathf.Max(color.g, color.b));
-        float min = Mathf.Min(color.r, Mathf.Min(color.g, color.b));
-        return max - min > 0.18f;
-    }
-
     static float Ease(float t)
     {
         return t * t * (3f - 2f * t);
+    }
+
+    static float EaseOut(float t)
+    {
+        float u = 1f - Mathf.Clamp01(t);
+        return 1f - u * u * u;
+    }
+
+    static float Smoother(float t)
+    {
+        return t * t * t * (t * (t * 6f - 15f) + 10f);
+    }
+
+    static Sprite circleSprite;
+
+    static Sprite CircleSprite()
+    {
+        if (circleSprite != null)
+            return circleSprite;
+
+        const int size = 128;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        var pixels = new Color32[size * size];
+        float radius = (size - 2) * 0.5f;
+        var center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float distance = Vector2.Distance(new Vector2(x, y), center);
+                byte alpha = (byte)(Mathf.Clamp01(radius - distance) * 255f);
+                pixels[y * size + x] = new Color32(255, 255, 255, alpha);
+            }
+        }
+
+        tex.SetPixels32(pixels);
+        tex.Apply();
+        circleSprite = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), size);
+        return circleSprite;
     }
 }
