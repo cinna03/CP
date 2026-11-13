@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using Capstone.Session;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -13,22 +13,12 @@ public class AccessGate : MonoBehaviour
 {
     public static bool Granted { get; private set; }
 
-    static readonly string[] Codes =
-    {
-        "AZURE", "LINEN", "OCHRE", "IVORY", "CEDAR",
-        "MAPLE", "TERRA", "PEARL", "SLATE", "CORAL",
-        "AMBER", "ATLAS", "QUILL", "MURAL", "BLUSH",
-        "CREAM", "EBONY", "FRAME", "GLAZE", "HONEY",
-        "LILAC", "OLIVE", "ROUGE", "SEPIA", "UMBER"
-    };
-
     const int Length = 5;
     static readonly Color Paper = new Color32(247, 246, 243, 255);
     static readonly Color LabelInk = new Color32(155, 155, 155, 255);
     static readonly Color LineInk = new Color32(198, 198, 198, 255);
     static readonly Color MarkInk = new Color32(28, 28, 30, 255);
 
-    readonly HashSet<string> valid = new HashSet<string>(Codes);
     readonly Image[] lines = new Image[Length];
     readonly TMP_Text[] glyphs = new TMP_Text[Length];
 
@@ -358,7 +348,7 @@ public class AccessGate : MonoBehaviour
         if (entered.Length < Length)
             return;
 
-        if (valid.Contains(entered))
+        if (EntranceCodes.Accepts(entered))
         {
             focused = false;
             thanks = true;
