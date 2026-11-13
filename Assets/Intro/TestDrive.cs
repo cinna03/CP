@@ -1,6 +1,9 @@
 using System.Collections.Generic;
+using Capstone.Catalogue;
+using Capstone.Placement;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using UnityEngine.XR.ARFoundation;
@@ -9,24 +12,27 @@ using UnityEngine.XR.ARSubsystems;
 // The live camera looks for walls. A tap puts the painting on one, and a drag slides it.
 public class TestDrive : MonoBehaviour
 {
-    const float Width = 0.5f;
-    const float Height = 0.64f;
+    static readonly Artwork SessionPiece = new Artwork(
+        "session", "Session piece", "", 0, "", 64f, 50f, "", "", "", "", "", "");
 
     ARPlaneManager planes;
     ARRaycastManager rays;
     readonly List<ARRaycastHit> hits = new List<ARRaycastHit>();
     Transform piece;
     TMP_Text hint;
+    GameObject hintHost;
+    readonly List<Canvas> covered = new List<Canvas>();
     Vector2 pressedAt;
     bool wasDown;
     bool dragging;
+    bool onInterface;
 
     public static void Begin()
     {
         if (FindAnyObjectByType<TestDrive>() != null)
             return;
 
-        var host = new GameObject("Test Drive");
+        var host = new GameObject("AR visualization session");
         host.AddComponent<TestDrive>();
     }
 
@@ -43,8 +49,8 @@ public class TestDrive : MonoBehaviour
         if (rays != null)
             rays.enabled = true;
 
-        HideOtherCanvases();
-        hint = Hint();
+        CoverMenu();
+        hint = Hint(out hintHost);
     }
 
     void Update()
@@ -70,6 +76,15 @@ public class TestDrive : MonoBehaviour
         {
             pressedAt = point;
             dragging = false;
+            onInterface = OverInterface();
+        }
+
+        if (onInterface)
+        {
+            if (ended)
+                onInterface = false;
+            wasDown = down;
+            return;
         }
 
         bool moved = down && (point - pressedAt).sqrMagnitude > 18f * 18f;
@@ -148,7 +163,7 @@ public class TestDrive : MonoBehaviour
     {
         var face = GameObject.CreatePrimitive(PrimitiveType.Quad);
         face.name = "Painting";
-        face.transform.localScale = new Vector3(Width, Height, 1f);
+        WorkQuad.Fit(face.transform, SessionPiece);
         Paint(face.GetComponent<Renderer>(), new Color32(247, 236, 232, 255));
 
         var frame = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -180,9 +195,9 @@ public class TestDrive : MonoBehaviour
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
-    static TMP_Text Hint()
+    TMP_Text Hint(out GameObject host)
     {
-        var host = new GameObject("DriveHint", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        host = new GameObject("DriveHint", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         var canvas = host.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.overrideSorting = true;
@@ -195,6 +210,35 @@ public class TestDrive : MonoBehaviour
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1080f, 1920f);
         scaler.matchWidthOrHeight = 0f;
+
+        var backObject = new GameObject("Back", typeof(RectTransform), typeof(UnityEngine.UI.Image), typeof(Button));
+        backObject.transform.SetParent(host.transform, false);
+        var backRect = backObject.GetComponent<RectTransform>();
+        backRect.anchorMin = backRect.anchorMax = new Vector2(0f, 1f);
+        backRect.pivot = new Vector2(0f, 1f);
+        backRect.sizeDelta = new Vector2(180f, 72f);
+        backRect.anchoredPosition = new Vector2(36f, -48f);
+        var backImage = backObject.GetComponent<UnityEngine.UI.Image>();
+        backImage.color = new Color(1f, 1f, 1f, 0.92f);
+        var backButton = backObject.GetComponent<Button>();
+        backButton.targetGraphic = backImage;
+        backButton.onClick.AddListener(Leave);
+
+        var backLabel = new GameObject("Label", typeof(RectTransform));
+        backLabel.transform.SetParent(backObject.transform, false);
+        var backLabelRect = backLabel.GetComponent<RectTransform>();
+        backLabelRect.anchorMin = Vector2.zero;
+        backLabelRect.anchorMax = Vector2.one;
+        backLabelRect.offsetMin = backLabelRect.offsetMax = Vector2.zero;
+        var backText = backLabel.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null)
+            backText.font = TMP_Settings.defaultFontAsset;
+        backText.text = "Back";
+        backText.fontSize = 32f;
+        backText.fontStyle = FontStyles.Bold;
+        backText.alignment = TextAlignmentOptions.Center;
+        backText.color = new Color32(28, 28, 30, 255);
+        backText.raycastTarget = false;
 
         var bar = new GameObject("Bar", typeof(RectTransform), typeof(UnityEngine.UI.Image));
         bar.transform.SetParent(host.transform, false);
@@ -227,16 +271,48 @@ public class TestDrive : MonoBehaviour
         return text;
     }
 
-    static void HideOtherCanvases()
+    void CoverMenu()
     {
         Canvas[] canvases = Resources.FindObjectsOfTypeAll<Canvas>();
         for (int i = 0; i < canvases.Length; i++)
         {
             Canvas canvas = canvases[i];
-            if (canvas == null || !canvas.gameObject.scene.IsValid() || canvas.name == "DriveHint")
+            if (canvas == null || !canvas.gameObject.scene.IsValid() || !canvas.gameObject.activeInHierarchy)
                 continue;
+            if (canvas.name == "DriveHint")
+                continue;
+            covered.Add(canvas);
             canvas.gameObject.SetActive(false);
         }
+    }
+
+    void Leave()
+    {
+        for (int i = 0; i < covered.Count; i++)
+        {
+            Canvas canvas = covered[i];
+            if (canvas != null && canvas.name == "MainMenuOverlay")
+                canvas.gameObject.SetActive(true);
+        }
+
+        if (planes != null)
+            planes.enabled = false;
+        if (piece != null)
+            Destroy(piece.gameObject);
+        if (hintHost != null)
+            Destroy(hintHost);
+        Destroy(gameObject);
+    }
+
+    static bool OverInterface()
+    {
+        if (EventSystem.current == null)
+            return false;
+
+        if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.isPressed)
+            return EventSystem.current.IsPointerOverGameObject(Touchscreen.current.primaryTouch.touchId.ReadValue());
+
+        return EventSystem.current.IsPointerOverGameObject(-1);
     }
 
     static bool Pointer(out Vector2 point)
