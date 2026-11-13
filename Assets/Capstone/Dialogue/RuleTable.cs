@@ -41,7 +41,7 @@ namespace Capstone.Dialogue
 
         static string FrenchSize(Artwork work)
         {
-            return "Cette oeuvre mesure " + Centimetres(work.WidthCentimetres) + " cm de large et " + Centimetres(work.HeightCentimetres) + " cm de haut.";
+            return "Cette oeuvre mesure " + Centimetres(work.WidthCentimetres) + " cm de largeur et " + Centimetres(work.HeightCentimetres) + " cm de hauteur.";
         }
 
         static string KinyarwandaSize(Artwork work)
