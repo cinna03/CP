@@ -1,0 +1,24 @@
+{
+    "name": "Capstone.Dialogue.Tests",
+    "rootNamespace": "Capstone.Dialogue.Tests",
+    "references": [
+        "Capstone.Dialogue",
+        "Capstone.Catalogue"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "noEngineReferences": false
+}
