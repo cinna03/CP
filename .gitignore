@@ -70,6 +70,10 @@ ExportedObj/
 # Unity3D generated file on crash reports
 sysinfo.txt
 
+# Unity scene recovery. Local crash data, not part of the project.
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
+
 # Mono auto generated files
 mono_crash.*
 

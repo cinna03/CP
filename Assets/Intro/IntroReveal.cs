@@ -709,7 +709,7 @@ public class IntroReveal : MonoBehaviour
         RectTransform arriving = intros[introIndex + 1];
         savedNext = Capture(arriving);
         Canvas.ForceUpdateCanvases();
-        slideWidth = canvasRect.rect.width;
+        slideWidth = Mathf.Round(canvasRect.rect.width);
         if (slideWidth < 2f)
         {
             CanvasScaler scaler = canvas.GetComponent<CanvasScaler>();
@@ -729,7 +729,7 @@ public class IntroReveal : MonoBehaviour
     void StepSlide()
     {
         float u = Smoother(Mathf.Clamp01(time / SlideSeconds));
-        float x = Mathf.Lerp(0f, -slideWidth, u);
+        float x = Mathf.Round(Mathf.Lerp(0f, -slideWidth, u));
         SetSlotX(leavingSlot, x);
         SetSlotX(arrivingSlot, x + slideWidth);
         if (u < 1f)
@@ -765,7 +765,7 @@ public class IntroReveal : MonoBehaviour
 
     RectTransform MakeSlot(float x)
     {
-        var rect = new GameObject("SlideSlot", typeof(RectTransform)).GetComponent<RectTransform>();
+        var rect = new GameObject("SlideSlot", typeof(RectTransform), typeof(RectMask2D)).GetComponent<RectTransform>();
         rect.SetParent(canvasRect, false);
         rect.anchorMin = Vector2.zero;
         rect.anchorMax = Vector2.one;

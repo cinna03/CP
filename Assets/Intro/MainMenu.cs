@@ -88,7 +88,7 @@ public class MainMenu : MonoBehaviour
         for (int i = 0; i < node.childCount; i++)
         {
             string compact = Compact(node.GetChild(i).name);
-            if (compact == "testdrive")
+            if (compact == "testdrive" || compact == "arvisualizationsession")
                 drive = true;
             if (compact == "catalogue")
                 catalogue = true;
@@ -161,25 +161,210 @@ public class MainMenu : MonoBehaviour
     public static void Ensure(RectTransform panel)
     {
         Ground(panel);
+        Board(panel);
+        Canvas.ForceUpdateCanvases();
 
-        Card(panel, "Test Drive", new Vector2(-150f, 240f), new Vector2(640f, 760f),
-            new Color32(247, 236, 232, 245), new Color32(28, 28, 30, 255), 52f);
-        Card(panel, "Catalogue", new Vector2(230f, 60f), new Vector2(470f, 980f),
-            new Color32(255, 255, 255, 255), new Color32(28, 28, 30, 255), 48f);
-        Card(panel, "Favorites", new Vector2(-210f, -560f), new Vector2(500f, 230f),
-            new Color32(22, 22, 24, 255), Color.white, 36f);
-        Card(panel, "Gallery", new Vector2(230f, -590f), new Vector2(420f, 190f),
-            new Color32(22, 22, 24, 255), Color.white, 34f);
+        float width;
+        float height;
+        Measure(panel, out width, out height);
 
-        Transform catalogue = panel.Find("Catalogue");
-        if (catalogue != null)
-            catalogue.SetAsLastSibling();
-        Transform favorites = panel.Find("Favorites");
-        if (favorites != null)
-            favorites.SetAsLastSibling();
-        Transform gallery = panel.Find("Gallery");
-        if (gallery != null)
-            gallery.SetAsLastSibling();
+        float margin = Mathf.Clamp(Mathf.Min(width, height) * 0.05f, 44f, 64f);
+        float gap = Mathf.Clamp(margin * 0.42f, 12f, 18f);
+        float left = -width * 0.5f + margin;
+        float right = width * 0.5f - margin;
+        float top = height * 0.5f - margin;
+        float innerW = right - left;
+        float free = height - margin * 2f - gap * 2f;
+        float topH = free * 0.30f;
+        float midH = free * 0.40f;
+        float botH = free - topH - midH;
+        float topY = top - topH * 0.5f;
+        float midY = top - topH - gap - midH * 0.5f;
+        float botY = top - topH - gap - midH - gap - botH * 0.5f;
+        float half = (innerW - gap) * 0.5f;
+        float type = Mathf.Clamp(innerW * 0.034f, 22f, 32f);
+
+        Masthead(panel, new Vector2(left + half * 0.5f, topY), new Vector2(half, topH));
+        Card(panel, "Catalogue", new Vector2(right - half * 0.5f, topY), new Vector2(half, topH),
+            new Color32(214, 224, 198, 255), new Color32(28, 28, 30, 255), type);
+
+        float sessionW = (innerW - gap) * 0.62f;
+        float helpW = innerW - gap - sessionW;
+        Card(panel, "AR visualization session", new Vector2(left + sessionW * 0.5f, midY), new Vector2(sessionW, midH),
+            new Color32(188, 206, 164, 255), new Color32(28, 28, 30, 255), type);
+        Card(panel, "Help", new Vector2(right - helpW * 0.5f, midY), new Vector2(helpW, midH),
+            new Color32(214, 220, 206, 255), new Color32(28, 28, 30, 255), type);
+        FolderCard(panel, "Favorites", new Vector2(left + half * 0.5f, botY), new Vector2(half, botH));
+        FolderCard(panel, "Gallery", new Vector2(right - half * 0.5f, botY), new Vector2(half, botH));
+
+        Transform board = panel.Find("Board");
+        if (board != null)
+            board.SetSiblingIndex(1);
+
+        string[] front = { "AR visualization session", "Catalogue", "Help", "Favorites", "Gallery", "Masthead", "Slogan", "Open" };
+        for (int i = 0; i < front.Length; i++)
+        {
+            Transform piece = panel.Find(front[i]);
+            if (piece != null)
+                piece.SetAsLastSibling();
+        }
+    }
+
+    static void Measure(RectTransform panel, out float width, out float height)
+    {
+        Rect area = panel.rect;
+        width = area.width;
+        height = area.height;
+        if (width > 8f && height > 8f)
+            return;
+
+        var canvas = panel.GetComponentInParent<Canvas>();
+        if (canvas != null)
+        {
+            var canvasRect = canvas.transform as RectTransform;
+            if (canvasRect != null && canvasRect.rect.width > 8f && canvasRect.rect.height > 8f)
+            {
+                width = canvasRect.rect.width;
+                height = canvasRect.rect.height;
+                return;
+            }
+        }
+
+        width = 1080f;
+        height = 1920f;
+    }
+
+    static void Board(RectTransform panel)
+    {
+        Transform existing = panel.Find("Board");
+        GameObject board = existing != null ? existing.gameObject : new GameObject("Board", typeof(RectTransform), typeof(Image));
+        if (existing == null)
+        {
+            board.transform.SetParent(panel, false);
+            Record(board);
+        }
+
+        var rect = board.GetComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = new Vector2(16f, 16f);
+        rect.offsetMax = new Vector2(-16f, -16f);
+        var image = board.GetComponent<Image>();
+        image.sprite = Rounded();
+        image.type = Image.Type.Sliced;
+        image.color = Color.white;
+        image.raycastTarget = false;
+        board.transform.SetSiblingIndex(1);
+    }
+
+    static void Masthead(RectTransform panel, Vector2 center, Vector2 size)
+    {
+        float titleSize = Mathf.Clamp(size.x * 0.16f, 32f, 56f);
+        float sloganSize = Mathf.Clamp(size.x * 0.058f, 16f, 24f);
+        float titleH = titleSize * 1.2f;
+        float sloganH = sloganSize * 2.6f;
+        float pillH = Mathf.Clamp(size.y * 0.2f, 44f, 60f);
+        float pillW = Mathf.Min(size.x * 0.46f, 160f);
+        float block = titleH + sloganH + pillH + 20f;
+        if (block > size.y && size.y > 1f)
+        {
+            float fit = size.y / block;
+            titleSize *= fit;
+            sloganSize *= fit;
+            titleH *= fit;
+            sloganH *= fit;
+            pillH *= fit;
+            pillW *= fit;
+        }
+
+        float left = center.x - size.x * 0.5f;
+        float cursor = center.y + size.y * 0.5f;
+        float titleY = cursor - titleH * 0.5f;
+        cursor -= titleH + 4f;
+        float sloganY = cursor - sloganH * 0.5f;
+        cursor -= sloganH + 12f;
+        float pillY = cursor - pillH * 0.5f;
+
+        Line(panel, "Masthead", "Cinnarios", titleSize, new Vector2(center.x, titleY), new Vector2(size.x, titleH), TextAlignmentOptions.Left, FontStyles.Bold);
+        Line(panel, "Slogan", "At its size, in your space.", sloganSize, new Vector2(center.x, sloganY), new Vector2(size.x, sloganH), TextAlignmentOptions.TopLeft, FontStyles.Normal);
+
+        Transform found = panel.Find("Open");
+        GameObject pill = found != null ? found.gameObject : new GameObject("Open", typeof(RectTransform), typeof(Image), typeof(Button));
+        if (found == null)
+        {
+            pill.transform.SetParent(panel, false);
+            Record(pill);
+        }
+
+        var rect = pill.GetComponent<RectTransform>();
+        Place(rect, new Vector2(left + pillW * 0.5f, pillY), new Vector2(pillW, pillH));
+        var image = pill.GetComponent<Image>();
+        image.sprite = Rounded();
+        image.type = Image.Type.Sliced;
+        image.color = new Color32(28, 28, 30, 255);
+        image.raycastTarget = true;
+
+        Transform label = pill.transform.Find("Label");
+        if (label == null)
+        {
+            var labelObject = new GameObject("Label", typeof(RectTransform));
+            labelObject.transform.SetParent(pill.transform, false);
+            var labelRect = labelObject.GetComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
+            var text = labelObject.AddComponent<TextMeshProUGUI>();
+            if (TMP_Settings.defaultFontAsset != null)
+                text.font = TMP_Settings.defaultFontAsset;
+            text.text = "Open";
+            text.fontSize = Mathf.Clamp(pillH * 0.42f, 16f, 26f);
+            text.fontStyle = FontStyles.Bold;
+            text.alignment = TextAlignmentOptions.Center;
+            text.color = Color.white;
+            text.raycastTarget = false;
+        }
+        else
+        {
+            var existing = label.GetComponent<TMP_Text>();
+            if (existing != null)
+                existing.fontSize = Mathf.Clamp(pillH * 0.42f, 16f, 26f);
+        }
+
+        if (Application.isPlaying)
+        {
+            var button = pill.GetComponent<Button>();
+            button.targetGraphic = image;
+            button.onClick.RemoveListener(TestDrive.Begin);
+            button.onClick.AddListener(TestDrive.Begin);
+        }
+    }
+
+    static void Line(RectTransform panel, string name, string copy, float size, Vector2 position, Vector2 box, TextAlignmentOptions align, FontStyles style)
+    {
+        Transform found = panel.Find(name);
+        GameObject line = found != null ? found.gameObject : new GameObject(name, typeof(RectTransform));
+        if (found == null)
+        {
+            line.transform.SetParent(panel, false);
+            var text = line.AddComponent<TextMeshProUGUI>();
+            if (TMP_Settings.defaultFontAsset != null)
+                text.font = TMP_Settings.defaultFontAsset;
+            text.raycastTarget = false;
+            Record(line);
+        }
+
+        var rect = line.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = box;
+        rect.anchoredPosition = position;
+        var label = line.GetComponent<TMP_Text>();
+        label.text = copy;
+        label.fontSize = size;
+        label.fontStyle = style;
+        label.alignment = align;
+        label.color = new Color32(28, 28, 30, 255);
+        label.textWrappingMode = TextWrappingModes.Normal;
     }
 
     static void Ground(RectTransform panel)
@@ -201,7 +386,7 @@ public class MainMenu : MonoBehaviour
                 image = existing.gameObject.AddComponent<Image>();
             image.sprite = null;
             image.type = Image.Type.Simple;
-            image.color = new Color32(243, 196, 214, 255);
+            image.color = new Color32(228, 228, 226, 255);
             image.enabled = true;
             image.raycastTarget = false;
             existing.gameObject.SetActive(true);
@@ -216,7 +401,7 @@ public class MainMenu : MonoBehaviour
         created.anchorMin = Vector2.zero;
         created.anchorMax = Vector2.one;
         created.offsetMin = created.offsetMax = Vector2.zero;
-        ground.GetComponent<Image>().color = new Color32(243, 196, 214, 255);
+        ground.GetComponent<Image>().color = new Color32(228, 228, 226, 255);
         ground.GetComponent<Image>().raycastTarget = false;
         Record(ground);
     }
@@ -224,12 +409,18 @@ public class MainMenu : MonoBehaviour
     static void Card(RectTransform panel, string name, Vector2 position, Vector2 size, Color fill, Color ink, float typeSize)
     {
         Transform found = panel.Find(name);
+        if (found == null && name == "AR visualization session")
+        {
+            found = panel.Find("Test Drive");
+            if (found != null)
+                found.name = name;
+        }
+
         if (found != null)
         {
             found.gameObject.SetActive(true);
             var rect = found as RectTransform;
-            if (rect != null && rect.localScale.sqrMagnitude < 0.01f)
-                rect.localScale = Vector3.one;
+            Place(rect, position, size);
             var image = found.GetComponent<Image>();
             if (image == null)
                 image = found.gameObject.AddComponent<Image>();
@@ -237,17 +428,7 @@ public class MainMenu : MonoBehaviour
             image.type = Image.Type.Sliced;
             image.color = fill;
             image.enabled = true;
-
-            if (Application.isPlaying && rect != null)
-            {
-                rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-                rect.pivot = new Vector2(0.5f, 0.5f);
-                rect.sizeDelta = size;
-                rect.anchoredPosition = position;
-                rect.localScale = Vector3.one;
-                rect.localRotation = Quaternion.identity;
-            }
-
+            WriteLabel(found, name, typeSize, ink);
             Listen(found.gameObject, name);
             return;
         }
@@ -276,8 +457,8 @@ public class MainMenu : MonoBehaviour
         labelRect.anchorMin = new Vector2(0f, 1f);
         labelRect.anchorMax = new Vector2(1f, 1f);
         labelRect.pivot = new Vector2(0.5f, 1f);
-        labelRect.sizeDelta = new Vector2(-48f, 90f);
-        labelRect.anchoredPosition = new Vector2(0f, -28f);
+        labelRect.sizeDelta = new Vector2(-56f, 140f);
+        labelRect.anchoredPosition = new Vector2(0f, -36f);
 
         var text = labelObject.AddComponent<TextMeshProUGUI>();
         if (TMP_Settings.defaultFontAsset != null)
@@ -287,14 +468,51 @@ public class MainMenu : MonoBehaviour
         text.fontStyle = FontStyles.Bold;
         text.alignment = TextAlignmentOptions.TopLeft;
         text.color = ink;
+        text.textWrappingMode = TextWrappingModes.Normal;
         text.raycastTarget = false;
         Listen(card, name);
         Record(card);
     }
 
+    static void Place(RectTransform rect, Vector2 position, Vector2 size)
+    {
+        if (rect == null)
+            return;
+
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = position;
+        rect.localScale = Vector3.one;
+        rect.localRotation = Quaternion.identity;
+    }
+
+    static void WriteLabel(Transform card, string name, float typeSize, Color ink)
+    {
+        Transform label = card.Find("Label");
+        if (label == null)
+            return;
+
+        var labelRect = label as RectTransform;
+        if (labelRect != null)
+        {
+            labelRect.sizeDelta = new Vector2(-56f, 140f);
+            labelRect.anchoredPosition = new Vector2(0f, -36f);
+        }
+
+        var text = label.GetComponent<TMP_Text>();
+        if (text == null)
+            return;
+
+        text.text = name;
+        text.fontSize = typeSize;
+        text.color = ink;
+        text.textWrappingMode = TextWrappingModes.Normal;
+    }
+
     static void Listen(GameObject card, string name)
     {
-        if (!Application.isPlaying || name != "Test Drive")
+        if (!Application.isPlaying)
             return;
 
         var button = card.GetComponent<Button>();
@@ -303,8 +521,212 @@ public class MainMenu : MonoBehaviour
         var image = card.GetComponent<Image>();
         if (image != null)
             button.targetGraphic = image;
-        button.onClick.RemoveListener(TestDrive.Begin);
-        button.onClick.AddListener(TestDrive.Begin);
+        button.onClick.RemoveAllListeners();
+        if (name == "AR visualization session")
+            button.onClick.AddListener(TestDrive.Begin);
+        else
+            button.onClick.AddListener(() => MenuPage.Open(name));
+    }
+
+    static void FolderCard(RectTransform panel, string name, Vector2 position, Vector2 size)
+    {
+        Transform found = panel.Find(name);
+        GameObject card;
+        if (found == null)
+        {
+            card = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+            card.transform.SetParent(panel, false);
+            var created = card.GetComponent<RectTransform>();
+            created.anchorMin = created.anchorMax = new Vector2(0.5f, 0.5f);
+            created.pivot = new Vector2(0.5f, 0.5f);
+            var image = card.GetComponent<Image>();
+            image.sprite = Rounded();
+            image.type = Image.Type.Sliced;
+            image.color = Color.white;
+            var labelObject = new GameObject("Label", typeof(RectTransform));
+            labelObject.transform.SetParent(card.transform, false);
+            var text = labelObject.AddComponent<TextMeshProUGUI>();
+            if (TMP_Settings.defaultFontAsset != null)
+                text.font = TMP_Settings.defaultFontAsset;
+            text.fontStyle = FontStyles.Bold;
+            text.alignment = TextAlignmentOptions.Center;
+            text.raycastTarget = false;
+            Record(card);
+        }
+        else
+        {
+            card = found.gameObject;
+        }
+
+        var rect = card.GetComponent<RectTransform>();
+        Place(rect, position, size);
+        var hit = card.GetComponent<Image>();
+        if (hit == null)
+            hit = card.AddComponent<Image>();
+        hit.sprite = Rounded();
+        hit.type = Image.Type.Sliced;
+        hit.color = new Color(1f, 1f, 1f, 0f);
+        hit.enabled = true;
+        hit.raycastTarget = true;
+
+        Transform folder = card.transform.Find("Folder");
+        if (folder == null)
+        {
+            var created = new GameObject("Folder", typeof(RectTransform));
+            created.transform.SetParent(card.transform, false);
+            folder = created.transform;
+            Record(created);
+        }
+
+        var folderRect = folder as RectTransform;
+        folderRect.anchorMin = Vector2.zero;
+        folderRect.anchorMax = Vector2.one;
+        folderRect.offsetMin = folderRect.offsetMax = Vector2.zero;
+        folderRect.localScale = Vector3.one;
+
+        Transform label = card.transform.Find("Label");
+        if (label == null)
+            label = folder.Find("Front/Label");
+        if (label != null)
+            label.SetParent(card.transform, false);
+
+        if (folder.Find("Page") == null)
+        {
+            for (int i = folder.childCount - 1; i >= 0; i--)
+                Object.DestroyImmediate(folder.GetChild(i).gameObject);
+
+            BuildFolder(folder);
+        }
+
+        PlaceFolder(folder, size);
+
+        CanvasGroup heading = null;
+        var flap = folder.Find("Front") as RectTransform;
+        if (label != null && flap != null)
+        {
+            label.SetParent(flap, false);
+            var labelRect = label as RectTransform;
+            labelRect.anchorMin = labelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            labelRect.pivot = new Vector2(0f, 1f);
+            float faceW = flap.sizeDelta.x;
+            float faceH = flap.sizeDelta.y;
+            labelRect.sizeDelta = new Vector2(faceW * 0.62f, faceH * 0.16f);
+            labelRect.anchoredPosition = new Vector2(-faceW * 0.34f, faceH * 0.1f);
+            var text = label.GetComponent<TMP_Text>();
+            if (text != null)
+            {
+                text.text = name;
+                text.fontSize = Mathf.Clamp(faceH * 0.075f, 16f, 26f);
+                text.fontStyle = FontStyles.Bold;
+                text.alignment = TextAlignmentOptions.TopLeft;
+                text.color = new Color32(18, 58, 92, 255);
+                text.textWrappingMode = TextWrappingModes.Normal;
+                text.raycastTarget = false;
+            }
+
+            heading = label.GetComponent<CanvasGroup>();
+            if (heading == null)
+                heading = label.gameObject.AddComponent<CanvasGroup>();
+            heading.alpha = 0f;
+            heading.blocksRaycasts = false;
+        }
+
+        var peek = card.GetComponent<FolderPeek>();
+        if (peek == null)
+            peek = card.AddComponent<FolderPeek>();
+        peek.Bind(flap, heading);
+
+        Listen(card, name);
+        var button = card.GetComponent<Button>();
+        var ink = folder.Find("Front");
+        if (button != null && ink != null)
+        {
+            button.targetGraphic = ink.GetComponent<Image>();
+            var colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(0.96f, 0.96f, 0.96f, 1f);
+            colors.pressedColor = new Color(0.86f, 0.88f, 0.96f, 1f);
+            colors.fadeDuration = 0.08f;
+            button.colors = colors;
+        }
+    }
+
+    static void BuildFolder(Transform folder)
+    {
+        var backObject = new GameObject("Back", typeof(RectTransform), typeof(Image));
+        backObject.transform.SetParent(folder, false);
+        var backImage = backObject.GetComponent<Image>();
+        backImage.sprite = FolderBack();
+        backImage.raycastTarget = false;
+
+        var pageObject = new GameObject("Page", typeof(RectTransform), typeof(Image));
+        pageObject.transform.SetParent(folder, false);
+        var pageImage = pageObject.GetComponent<Image>();
+        pageImage.sprite = Rounded();
+        pageImage.type = Image.Type.Sliced;
+        pageImage.color = Color.white;
+        pageImage.raycastTarget = false;
+
+        var frontObject = new GameObject("Front", typeof(RectTransform), typeof(Image));
+        frontObject.transform.SetParent(folder, false);
+        var frontImage = frontObject.GetComponent<Image>();
+        frontImage.sprite = FolderFront();
+        frontImage.raycastTarget = false;
+        Record(backObject);
+        Record(pageObject);
+        Record(frontObject);
+    }
+
+    static void PlaceFolder(Transform folder, Vector2 card)
+    {
+        const float aspect = 480f / 400f;
+        float faceW = card.x * 0.96f;
+        float faceH = faceW / aspect;
+        float limit = card.y * 0.92f;
+        if (faceH > limit)
+        {
+            faceH = limit;
+            faceW = faceH * aspect;
+        }
+
+        var back = folder.Find("Back") as RectTransform;
+        var front = folder.Find("Front") as RectTransform;
+        var page = folder.Find("Page") as RectTransform;
+        FitSprite(back, FolderBack(), faceW, faceH);
+
+        float coverW = faceW * (420f / 480f);
+        float coverH = faceH * (246f / 400f);
+        float coverBottom = -faceH * 0.5f + faceH * (40f / 400f);
+        FitSprite(front, FolderFront(), coverW, coverH);
+        front.pivot = new Vector2(0.5f, 0f);
+        front.anchoredPosition = new Vector2(0f, coverBottom);
+        if (front.GetComponent<FolderBow>() == null)
+            front.gameObject.AddComponent<FolderBow>();
+
+        float coverTop = coverBottom + coverH;
+        float pageW = coverW * 0.86f;
+        float pageH = coverH * 0.42f;
+        page.anchorMin = page.anchorMax = new Vector2(0.5f, 0.5f);
+        page.pivot = new Vector2(0.5f, 0.5f);
+        page.sizeDelta = new Vector2(pageW, pageH);
+        page.anchoredPosition = new Vector2(0f, coverTop - coverH * 0.06f - pageH * 0.5f);
+
+        back.SetAsFirstSibling();
+        page.SetSiblingIndex(1);
+        front.SetAsLastSibling();
+    }
+
+    static void FitSprite(RectTransform rect, Sprite sprite, float width, float height)
+    {
+        var image = rect.GetComponent<Image>();
+        image.sprite = sprite;
+        image.color = Color.white;
+        image.type = Image.Type.Simple;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(width, height);
+        rect.anchoredPosition = Vector2.zero;
+        rect.localScale = Vector3.one;
     }
 
     static void Record(GameObject created)
@@ -386,6 +808,99 @@ public class MainMenu : MonoBehaviour
     }
 
     static Sprite rounded;
+    static Sprite folderBack;
+    static Sprite folderFront;
+
+    static Sprite FolderBack()
+    {
+        if (folderBack != null)
+            return folderBack;
+
+        const int width = 480;
+        const int height = 400;
+        var tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        var pixels = new Color[width * height];
+        var top = new Color(0.36f, 0.7f, 0.9f, 1f);
+        var bottom = new Color(0.2f, 0.55f, 0.8f, 1f);
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                float px = x + 0.5f;
+                float py = y + 0.5f;
+                float shape = FolderShell(px, py);
+                float shadow = FolderShell(px, py + 18f);
+                float cover = Mathf.Clamp01(0.9f - shape);
+                float shade = Mathf.Clamp01(0.5f - shadow / 16f) * 0.18f * (1f - cover);
+                Color ink = Color.Lerp(bottom, top, Mathf.InverseLerp(44f, 368f, py));
+                Color pixel = Color.Lerp(new Color(0.1f, 0.25f, 0.5f, shade), ink, cover);
+                pixel.a = Mathf.Clamp01(cover + shade);
+                pixels[y * width + x] = pixel;
+            }
+        }
+
+        tex.SetPixels(pixels);
+        tex.Apply();
+        folderBack = Sprite.Create(tex, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f), 100f);
+        return folderBack;
+    }
+
+    static Sprite FolderFront()
+    {
+        if (folderFront != null)
+            return folderFront;
+
+        const int width = 420;
+        const int height = 246;
+        var tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        var pixels = new Color[width * height];
+        var lip = new Color(0.78f, 0.91f, 0.99f, 1f);
+        var top = new Color(0.55f, 0.82f, 0.97f, 1f);
+        var bottom = new Color(0.42f, 0.74f, 0.95f, 1f);
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                float px = x + 0.5f;
+                float py = y + 0.5f;
+                float shape = RoundBox(px, py, 8f, 8f, width - 8f, height - 8f, 42f);
+                float cover = Mathf.Clamp01(0.9f - shape);
+                Color ink = Color.Lerp(bottom, top, py / height);
+                if (py > height - 28f && shape < 1f)
+                    ink = Color.Lerp(ink, lip, Mathf.Clamp01((py - (height - 28f)) / 20f));
+                ink.a = cover;
+                pixels[y * width + x] = ink;
+            }
+        }
+
+        tex.SetPixels(pixels);
+        tex.Apply();
+        folderFront = Sprite.Create(tex, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0f), 100f);
+        return folderFront;
+    }
+
+    static float FolderShell(float x, float y)
+    {
+        float body = RoundBox(x, y, 26f, 34f, 454f, 312f, 38f);
+        float tab = RoundBox(x, y, 26f, 270f, 188f, 364f, 30f);
+        float distance = Mathf.Min(body, tab);
+        float dx = x - 228f;
+        float dy = y - 272f;
+        float notch = 40f - Mathf.Sqrt(dx * dx + dy * dy);
+        return Mathf.Max(distance, notch);
+    }
+
+    static float RoundBox(float px, float py, float left, float bottom, float right, float top, float radius)
+    {
+        float halfX = (right - left) * 0.5f - radius;
+        float halfY = (top - bottom) * 0.5f - radius;
+        float qx = Mathf.Abs(px - (left + right) * 0.5f) - halfX;
+        float qy = Mathf.Abs(py - (bottom + top) * 0.5f) - halfY;
+        float outside = Mathf.Sqrt(Mathf.Max(qx, 0f) * Mathf.Max(qx, 0f) + Mathf.Max(qy, 0f) * Mathf.Max(qy, 0f));
+        return outside + Mathf.Min(Mathf.Max(qx, qy), 0f) - radius;
+    }
 
     static Sprite Rounded()
     {
