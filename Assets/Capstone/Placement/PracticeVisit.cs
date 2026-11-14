@@ -16,6 +16,11 @@ namespace Capstone.Placement
     {
         const int SortOrder = 900;
 
+        /// <summary>
+        /// The practice screen stays off during Play. An editor menu turns it on for a check.
+        /// </summary>
+        public static bool ShowOnPlay { get; set; }
+
         Transform quad;
         TMP_Text detail;
         TMP_Text reply;
@@ -28,7 +33,7 @@ namespace Capstone.Placement
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void OpenInEditor()
         {
-            if (!Application.isEditor || FindAnyObjectByType<PracticeVisit>() != null)
+            if (!Application.isEditor || !ShowOnPlay || FindAnyObjectByType<PracticeVisit>() != null)
                 return;
 
             var host = new GameObject("Practice visit");

@@ -141,8 +141,9 @@ public class MenuPage : MonoBehaviour
         root.anchorMax = Vector2.one;
         root.offsetMin = root.offsetMax = Vector2.zero;
 
+        bool catalogue = title == "Catalogue";
         var paper = host.AddComponent<Image>();
-        paper.color = new Color32(232, 230, 227, 255);
+        paper.color = catalogue ? new Color32(251, 249, 250, 255) : new Color32(232, 230, 227, 255);
 
         var backObject = new GameObject("Back", typeof(RectTransform), typeof(Image), typeof(Button));
         backObject.transform.SetParent(host.transform, false);
@@ -176,16 +177,29 @@ public class MenuPage : MonoBehaviour
         var heading = new GameObject("Title", typeof(RectTransform));
         heading.transform.SetParent(host.transform, false);
         var headingRect = heading.GetComponent<RectTransform>();
-        headingRect.anchorMin = headingRect.anchorMax = new Vector2(0.5f, 0.5f);
-        headingRect.sizeDelta = new Vector2(860f, 160f);
         var headingText = heading.AddComponent<TextMeshProUGUI>();
         if (TMP_Settings.defaultFontAsset != null)
             headingText.font = TMP_Settings.defaultFontAsset;
         headingText.text = title;
-        headingText.fontSize = 64f;
         headingText.fontStyle = FontStyles.Bold;
-        headingText.alignment = TextAlignmentOptions.Center;
-        headingText.color = new Color32(28, 28, 30, 255);
+        headingText.color = new Color32(42, 34, 37, 255);
         headingText.raycastTarget = false;
+
+        if (catalogue)
+        {
+            headingRect.anchorMin = headingRect.anchorMax = new Vector2(0f, 1f);
+            headingRect.pivot = new Vector2(0f, 1f);
+            headingRect.anchoredPosition = new Vector2(36f, -148f);
+            headingRect.sizeDelta = new Vector2(900f, 80f);
+            headingText.fontSize = 48f;
+            headingText.alignment = TextAlignmentOptions.MidlineLeft;
+            CataloguePage.Fill(root);
+            return;
+        }
+
+        headingRect.anchorMin = headingRect.anchorMax = new Vector2(0.5f, 0.5f);
+        headingRect.sizeDelta = new Vector2(860f, 160f);
+        headingText.fontSize = 64f;
+        headingText.alignment = TextAlignmentOptions.Center;
     }
 }

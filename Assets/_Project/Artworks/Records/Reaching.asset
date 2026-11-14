@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 59296bba3453c47fca682ad2ed736129, type: 3}
+  m_Name: Reaching
+  m_EditorClassIdentifier: Capstone.App::Capstone.App.Data.ArtworkData
+  identifier: reaching
+  title: Reaching
+  artist: Denis Sarazhin
+  year: 0
+  medium: 
+  availableSizes:
+  - {x: 110, y: 110}
+  style: Bold
+  mood: Still
+  colour: Ochre
+  priceBand: 
+  artworkSprite: {fileID: 21300000, guid: d8c18f94f2a94aea83c9ef468c7b74a2, type: 3}
+  storyNote: 
