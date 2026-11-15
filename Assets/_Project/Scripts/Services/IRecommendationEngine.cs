@@ -17,7 +17,8 @@ namespace Capstone.App.Services
     public interface IRecommendationEngine
     {
         void Apply(ArtworkData current, VisitDecision decision);
-        IReadOnlyList<ArtworkData> Three(IReadOnlyList<ArtworkData> works, ArtworkData current);
+        IReadOnlyList<ArtworkData> Three(IReadOnlyList<ArtworkData> works, ArtworkData current, VisitDecision decision, IReadOnlyList<string> dismissed, UserTasteProfile taste);
+        string Heading(VisitDecision decision);
         void Clear();
     }
 }

@@ -58,6 +58,52 @@ namespace Capstone.App.Services
             return ordered;
         }
 
+        public IReadOnlyList<ArtworkData> Suggested(IReadOnlyList<ArtworkData> works, UserTasteProfile taste)
+        {
+            if (works == null)
+                throw new ArgumentNullException(nameof(works));
+
+            var ranked = new List<ScoredWork>();
+            for (int i = 0; i < works.Count; i++)
+            {
+                ArtworkData work = works[i];
+                if (work == null)
+                    continue;
+                ranked.Add(new ScoredWork { Work = work, Score = TasteScore(work, taste) });
+            }
+
+            ranked.Sort(delegate (ScoredWork a, ScoredWork b)
+            {
+                int byScore = b.Score.CompareTo(a.Score);
+                if (byScore != 0)
+                    return byScore;
+                return string.Compare(a.Work.Identifier, b.Work.Identifier, StringComparison.Ordinal);
+            });
+
+            var ordered = new List<ArtworkData>(ranked.Count);
+            for (int i = 0; i < ranked.Count; i++)
+                ordered.Add(ranked[i].Work);
+            return ordered;
+        }
+
+        static int TasteScore(ArtworkData work, UserTasteProfile taste)
+        {
+            if (taste == null)
+                return 0;
+
+            int score = 0;
+            score += (int)taste.Weight(taste.LikedColours, work.Colour);
+            score += (int)taste.Weight(taste.LikedMoods, work.Mood);
+            score += (int)taste.Weight(taste.LikedStyles, work.Style);
+            if (taste.TargetRoom == UserTasteProfile.Bedroom || taste.TargetRoom == UserTasteProfile.Hallway || taste.TargetRoom == UserTasteProfile.Workspace)
+                score += work.SizeTier == SizeTier.Small ? 2 : work.SizeTier == SizeTier.Large ? -1 : 0;
+            if (taste.TargetRoom == UserTasteProfile.LivingRoom && work.SizeTier != SizeTier.Small)
+                score += 2;
+            if (taste.TargetRoom == UserTasteProfile.Hallway && work.Orientation == Orientation.Portrait)
+                score += 2;
+            return score;
+        }
+
         static string[] Tokens(string search)
         {
             if (string.IsNullOrWhiteSpace(search))

@@ -3,6 +3,7 @@
     "rootNamespace": "Capstone.App",
     "references": [
         "UnityEngine.UI",
+        "UnityEngine.ImageConversionModule",
         "Unity.TextMeshPro"
     ],
     "includePlatforms": [],

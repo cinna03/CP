@@ -23,5 +23,6 @@ namespace Capstone.App.Services
     public interface ICatalogueFilterService
     {
         IReadOnlyList<ArtworkData> Matching(IReadOnlyList<ArtworkData> works, CatalogueQuery query);
+        IReadOnlyList<ArtworkData> Suggested(IReadOnlyList<ArtworkData> works, UserTasteProfile taste);
     }
 }

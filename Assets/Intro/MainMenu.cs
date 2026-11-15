@@ -1,4 +1,7 @@
 using System.Collections.Generic;
+using Capstone.App.Data;
+using Capstone.App.Services;
+using Capstone.App.UI;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -117,6 +120,7 @@ public class MainMenu : MonoBehaviour
             return;
 
         Canvas canvas = Overlay();
+        canvas.gameObject.SetActive(true);
         panel.SetParent(canvas.transform, false);
         panel.anchorMin = Vector2.zero;
         panel.anchorMax = Vector2.one;
@@ -150,12 +154,21 @@ public class MainMenu : MonoBehaviour
         if (mask != null)
             mask.enabled = false;
 
+        SafeAreaFitter fit = panel.GetComponent<SafeAreaFitter>();
+        if (fit == null)
+            fit = panel.gameObject.AddComponent<SafeAreaFitter>();
+        fit.Apply();
         Ensure(panel);
         for (int i = 0; i < panel.childCount; i++)
             panel.GetChild(i).gameObject.SetActive(true);
 
         panel.SetAsLastSibling();
         Canvas.ForceUpdateCanvases();
+        if (Application.isPlaying)
+        {
+            UserProfileFlush.Ensure();
+            AddUserBar(panel);
+        }
     }
 
     public static void Ensure(RectTransform panel)
@@ -208,6 +221,92 @@ public class MainMenu : MonoBehaviour
             if (piece != null)
                 piece.SetAsLastSibling();
         }
+    }
+
+    static void OpenWallOrQuiz()
+    {
+        CatalogueShelf shelf = Resources.Load<CatalogueShelf>("CatalogueShelf");
+        if (shelf == null || shelf.Session == null || shelf.Session.SelectedArtwork == null)
+        {
+            GuidedQuizViewController.Present(delegate { MenuPage.Open("Catalogue"); });
+            return;
+        }
+
+        TestDrive.Begin();
+    }
+
+    static void AddUserBar(RectTransform panel)
+    {
+        Transform existing = panel.Find("User switch");
+        if (existing != null)
+            Destroy(existing.gameObject);
+
+        var profiles = new UserProfileTracker();
+        string code = profiles.CurrentEntranceCode;
+        if (string.IsNullOrEmpty(code))
+            code = "—";
+
+        var bar = new GameObject("User switch", typeof(RectTransform));
+        bar.transform.SetParent(panel, false);
+        var rect = bar.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.sizeDelta = new Vector2(760f, 120f);
+        rect.anchoredPosition = new Vector2(0f, -24f);
+
+        var pill = new GameObject("Switch", typeof(RectTransform), typeof(Image), typeof(Button));
+        pill.transform.SetParent(bar.transform, false);
+        var pillRect = pill.GetComponent<RectTransform>();
+        pillRect.anchorMin = pillRect.anchorMax = new Vector2(0.5f, 1f);
+        pillRect.pivot = new Vector2(0.5f, 1f);
+        pillRect.sizeDelta = new Vector2(640f, 64f);
+        pillRect.anchoredPosition = Vector2.zero;
+        pill.GetComponent<Image>().color = new Color32(249, 235, 240, 255);
+        var label = new GameObject("Label", typeof(RectTransform));
+        label.transform.SetParent(pill.transform, false);
+        var labelRect = label.GetComponent<RectTransform>();
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
+        var text = label.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null)
+            text.font = TMP_Settings.defaultFontAsset;
+        text.text = "User: " + code + " · Switch";
+        text.fontSize = 26f;
+        text.fontStyle = FontStyles.Bold;
+        text.alignment = TextAlignmentOptions.Center;
+        text.color = new Color32(42, 34, 37, 255);
+        text.raycastTarget = false;
+        pill.GetComponent<Button>().onClick.AddListener(SwitchUser);
+
+        var count = new GameObject("Count", typeof(RectTransform));
+        count.transform.SetParent(bar.transform, false);
+        var countRect = count.GetComponent<RectTransform>();
+        countRect.anchorMin = countRect.anchorMax = new Vector2(0.5f, 0f);
+        countRect.pivot = new Vector2(0.5f, 0f);
+        countRect.sizeDelta = new Vector2(640f, 36f);
+        var countText = count.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null)
+            countText.font = TMP_Settings.defaultFontAsset;
+        countText.text = "Total Users Tracked: " + profiles.TotalUniqueUsers;
+        countText.fontSize = 20f;
+        countText.alignment = TextAlignmentOptions.Center;
+        countText.color = new Color32(125, 110, 115, 255);
+        countText.raycastTarget = false;
+        bar.transform.SetAsLastSibling();
+    }
+
+    static void SwitchUser()
+    {
+        new UserProfileTracker().ClearActiveUser();
+        CatalogueShelf shelf = Resources.Load<CatalogueShelf>("CatalogueShelf");
+        if (shelf != null && shelf.Session != null)
+            shelf.Session.ReleaseForNextUser();
+
+        Canvas canvas = Overlay();
+        if (canvas != null)
+            canvas.gameObject.SetActive(false);
+        AccessGate.Reopen();
     }
 
     static void Measure(RectTransform panel, out float width, out float height)
@@ -523,7 +622,7 @@ public class MainMenu : MonoBehaviour
             button.targetGraphic = image;
         button.onClick.RemoveAllListeners();
         if (name == "AR visualization session")
-            button.onClick.AddListener(TestDrive.Begin);
+            button.onClick.AddListener(OpenWallOrQuiz);
         else
             button.onClick.AddListener(() => MenuPage.Open(name));
     }
@@ -737,74 +836,37 @@ public class MainMenu : MonoBehaviour
 #endif
     }
 
+    public static Canvas OverlayCanvas { get; private set; }
+
     static Canvas Overlay()
     {
-        Canvas canvas = null;
-        var canvases = Resources.FindObjectsOfTypeAll<Canvas>();
-        for (int i = 0; i < canvases.Length; i++)
+        if (OverlayCanvas != null)
         {
-            if (canvases[i] != null && canvases[i].name == "MainMenuOverlay" && canvases[i].gameObject.scene.IsValid())
-            {
-                canvas = canvases[i];
-                break;
-            }
+            OverlayCanvas.gameObject.SetActive(true);
+            return OverlayCanvas;
         }
 
-        if (canvas == null)
-        {
-            var host = new GameObject("MainMenuOverlay", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            canvas = host.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.overrideSorting = true;
-            canvas.sortingOrder = 500;
-            canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1
-                | AdditionalCanvasShaderChannels.Normal
-                | AdditionalCanvasShaderChannels.Tangent;
-            var scaler = host.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1080f, 1920f);
-            scaler.matchWidthOrHeight = 0f;
-        }
+        var host = new GameObject("MainMenuOverlay", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        Canvas canvas = host.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 500;
+        canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1
+            | AdditionalCanvasShaderChannels.Normal
+            | AdditionalCanvasShaderChannels.Tangent;
+        var scaler = host.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1080f, 1920f);
+        scaler.matchWidthOrHeight = 0f;
 
+        OverlayCanvas = canvas;
         canvas.gameObject.SetActive(true);
         return canvas;
     }
 
     static RectTransform FindPanel()
     {
-        Canvas[] canvases = Resources.FindObjectsOfTypeAll<Canvas>();
-        RectTransform best = null;
-        for (int i = 0; i < canvases.Length; i++)
-        {
-            Canvas canvas = canvases[i];
-            if (canvas == null || !canvas.gameObject.scene.IsValid())
-                continue;
-
-            RectTransform found = FindNamed(canvas.transform);
-            if (found == null)
-                continue;
-            if (best == null || found.childCount > best.childCount)
-                best = found;
-        }
-
-        return best;
-    }
-
-    static RectTransform FindNamed(Transform root)
-    {
-        for (int i = 0; i < root.childCount; i++)
-        {
-            Transform child = root.GetChild(i);
-            string compact = child.name.Replace(" ", "");
-            if (compact.Equals("MainMenuPanel", System.StringComparison.OrdinalIgnoreCase))
-                return child as RectTransform;
-
-            RectTransform nested = FindNamed(child);
-            if (nested != null)
-                return nested;
-        }
-
-        return null;
+        return MenuHome.Panel;
     }
 
     static Sprite rounded;

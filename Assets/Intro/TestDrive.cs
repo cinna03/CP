@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using Capstone.App.AR;
 using Capstone.App.Data;
+using Capstone.App.UI;
 using Capstone.Catalogue;
 using Capstone.Placement;
 using TMPro;
@@ -16,10 +18,16 @@ public class TestDrive : MonoBehaviour
     static readonly Artwork SessionPiece = new Artwork(
         "session", "Session piece", "", 0, "", 64f, 50f, "", "", "", "", "", "");
 
-    ARPlaneManager planes;
-    ARRaycastManager rays;
+    static TestDrive live;
+    static ARPlaneManager pendingPlanes;
+    static ARRaycastManager pendingRays;
+
+    [SerializeField] ARPlaneManager planes;
+    [SerializeField] ARRaycastManager rays;
     readonly List<ARRaycastHit> hits = new List<ARRaycastHit>();
     Transform piece;
+    ARArtworkPresenter presenter;
+    WallDecisionHUDController decisions;
     TMP_Text hint;
     GameObject hintHost;
     readonly List<Canvas> covered = new List<Canvas>();
@@ -28,19 +36,40 @@ public class TestDrive : MonoBehaviour
     bool dragging;
     bool onInterface;
 
+    public static Canvas HintCanvas { get; private set; }
+    public const string CameraDenied = "Camera access is required to preview art on your wall. Please enable Camera in iPhone Settings.";
+    public const string TrackingPaused = "Wall tracking paused — point slowly at a well-lit wall.";
+
     public static void Begin()
     {
-        if (FindAnyObjectByType<TestDrive>() != null)
+        if (live != null)
             return;
+
+        if (WallSessionLinks.Active != null)
+        {
+            pendingPlanes = WallSessionLinks.Active.Planes;
+            pendingRays = WallSessionLinks.Active.Rays;
+        }
 
         var host = new GameObject("AR visualization session");
         host.AddComponent<TestDrive>();
     }
 
+    public void Use(ARPlaneManager planeManager, ARRaycastManager raycastManager)
+    {
+        planes = planeManager;
+        rays = raycastManager;
+    }
+
     void Awake()
     {
-        planes = FindAnyObjectByType<ARPlaneManager>();
-        rays = FindAnyObjectByType<ARRaycastManager>();
+        live = this;
+        if (planes == null)
+            planes = pendingPlanes;
+        if (rays == null)
+            rays = pendingRays;
+        pendingPlanes = null;
+        pendingRays = null;
         if (planes != null)
         {
             planes.enabled = true;
@@ -50,8 +79,28 @@ public class TestDrive : MonoBehaviour
         if (rays != null)
             rays.enabled = true;
 
+#if !UNITY_EDITOR
+        if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+            StartCoroutine(AskForCamera());
+#endif
+
         CoverMenu();
         hint = Hint(out hintHost);
+        AttachVisit();
+    }
+
+    void OnDestroy()
+    {
+        if (live == this)
+            live = null;
+        if (HintCanvas != null && hintHost != null && HintCanvas.gameObject == hintHost)
+            HintCanvas = null;
+    }
+
+    System.Collections.IEnumerator AskForCamera()
+    {
+        yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+        RefreshHint();
     }
 
     void Update()
@@ -99,8 +148,35 @@ public class TestDrive : MonoBehaviour
             Stick(tap);
 
         wasDown = down;
-        if (hint != null)
-            hint.text = piece != null ? "Drag to move it" : WallSeen() ? "Tap the wall to place it" : "Move across a wall";
+        RefreshHint();
+    }
+
+    void RefreshHint()
+    {
+        if (hint == null)
+            return;
+
+#if !UNITY_EDITOR
+        if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+        {
+            hint.text = CameraDenied;
+            return;
+        }
+#endif
+
+        if (!Application.isEditor && (planes == null || rays == null))
+        {
+            hint.text = CameraDenied;
+            return;
+        }
+
+        if (!Application.isEditor && ARSession.state != ARSessionState.SessionTracking && ARSession.state != ARSessionState.None)
+        {
+            hint.text = TrackingPaused;
+            return;
+        }
+
+        hint.text = piece != null ? "Drag to move it" : WallSeen() ? "Tap the wall to place it" : "Move across a wall";
     }
 
     bool Wall(Vector2 screen, out ARRaycastHit wall)
@@ -152,8 +228,10 @@ public class TestDrive : MonoBehaviour
         if (camera != null && Vector3.Dot(normal, camera.transform.position - hit.pose.position) < 0f)
             normal = -normal;
 
+        if (presenter != null)
+            presenter.HideStudio();
         if (piece == null)
-            piece = Piece();
+            piece = presenter != null ? presenter.EnsureArtwork() : Piece();
 
         piece.SetPositionAndRotation(
             hit.pose.position + normal * 0.01f,
@@ -229,7 +307,8 @@ public class TestDrive : MonoBehaviour
 
     TMP_Text Hint(out GameObject host)
     {
-        host = new GameObject("DriveHint", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        host = new GameObject("DriveHint", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(Capstone.App.UI.SafeAreaFitter));
+        HintCanvas = host.GetComponent<Canvas>();
         var canvas = host.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.overrideSorting = true;
@@ -254,7 +333,7 @@ public class TestDrive : MonoBehaviour
         backImage.color = new Color(1f, 1f, 1f, 0.92f);
         var backButton = backObject.GetComponent<Button>();
         backButton.targetGraphic = backImage;
-        backButton.onClick.AddListener(Leave);
+        backButton.onClick.AddListener(LeaveToCaller);
 
         var backLabel = new GameObject("Label", typeof(RectTransform));
         backLabel.transform.SetParent(backObject.transform, false);
@@ -303,34 +382,92 @@ public class TestDrive : MonoBehaviour
         return text;
     }
 
+    void AttachVisit()
+    {
+        CatalogueShelf shelf = Resources.Load<CatalogueShelf>("CatalogueShelf");
+        ArtworkSessionState visit = shelf != null ? shelf.Session : null;
+        var host = new GameObject("Wall visit");
+        presenter = host.AddComponent<ARArtworkPresenter>();
+        presenter.Bind(visit);
+
+#if UNITY_EDITOR
+        if (!WallSeen())
+        {
+            presenter.BeginStudio();
+            piece = presenter.ArtworkQuad;
+            Transform bar = hintHost != null ? hintHost.transform.Find("Bar") : null;
+            if (bar != null)
+                bar.gameObject.SetActive(false);
+        }
+#endif
+
+        var panel = new GameObject("Wall decision");
+        decisions = panel.AddComponent<WallDecisionHUDController>();
+        decisions.VisitFinished += Leave;
+        decisions.VisitCancelled += LeaveToCaller;
+        decisions.Open(presenter, visit, shelf != null ? shelf.Works : null, shelf != null ? shelf.Frames : null);
+        decisions.RememberForPhoto(HintCanvas);
+    }
+
     void CoverMenu()
     {
-        Canvas[] canvases = Resources.FindObjectsOfTypeAll<Canvas>();
-        for (int i = 0; i < canvases.Length; i++)
-        {
-            Canvas canvas = canvases[i];
-            if (canvas == null || !canvas.gameObject.scene.IsValid() || !canvas.gameObject.activeInHierarchy)
-                continue;
-            if (canvas.name == "DriveHint")
-                continue;
-            covered.Add(canvas);
-            canvas.gameObject.SetActive(false);
-        }
+        Hide(MainMenu.OverlayCanvas);
+        Hide(MenuPage.Page);
+    }
+
+    void Hide(Canvas canvas)
+    {
+        if (canvas == null || !canvas.gameObject.activeInHierarchy)
+            return;
+        covered.Add(canvas);
+        canvas.gameObject.SetActive(false);
     }
 
     void Leave()
     {
+        Exit(false);
+    }
+
+    void LeaveToCaller()
+    {
+        Exit(true);
+    }
+
+    void Exit(bool restorePage)
+    {
+        Canvas page = null;
         for (int i = 0; i < covered.Count; i++)
         {
             Canvas canvas = covered[i];
-            if (canvas != null && canvas.name == "MainMenuOverlay")
+            if (canvas == null)
+                continue;
+            if (canvas.name == "MainMenuOverlay")
+                continue;
+            page = canvas;
+        }
+
+        for (int i = 0; i < covered.Count; i++)
+        {
+            Canvas canvas = covered[i];
+            if (canvas == null)
+                continue;
+            if (canvas.name == "MainMenuOverlay")
+                canvas.gameObject.SetActive(true);
+            else if (restorePage)
                 canvas.gameObject.SetActive(true);
         }
 
+        if (restorePage && page != null)
+            page.transform.SetAsLastSibling();
+
         if (planes != null)
             planes.enabled = false;
-        if (piece != null)
+        if (presenter != null)
+            Destroy(presenter.gameObject);
+        else if (piece != null)
             Destroy(piece.gameObject);
+        if (decisions != null)
+            Destroy(decisions.gameObject);
         if (hintHost != null)
             Destroy(hintHost);
         Destroy(gameObject);

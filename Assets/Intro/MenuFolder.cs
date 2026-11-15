@@ -1,3 +1,4 @@
+using Capstone.App.UI;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -120,10 +121,13 @@ public class FolderBow : BaseMeshEffect
 
 public class MenuPage : MonoBehaviour
 {
+    public static Canvas Page { get; private set; }
+
     public static void Open(string title)
     {
-        var host = new GameObject(title + " Page", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        var host = new GameObject(title + " Page", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(Capstone.App.UI.SafeAreaFitter));
         var canvas = host.GetComponent<Canvas>();
+        Page = canvas;
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.overrideSorting = true;
         canvas.sortingOrder = 650;
@@ -141,7 +145,7 @@ public class MenuPage : MonoBehaviour
         root.anchorMax = Vector2.one;
         root.offsetMin = root.offsetMax = Vector2.zero;
 
-        bool catalogue = title == "Catalogue" || title == "Favorites";
+        bool catalogue = title == "Catalogue" || title == "Favorites" || title == "Gallery" || title == "Help";
         var paper = host.AddComponent<Image>();
         paper.color = catalogue ? new Color32(251, 249, 250, 255) : new Color32(232, 230, 227, 255);
 
@@ -156,7 +160,12 @@ public class MenuPage : MonoBehaviour
         backImage.color = Color.white;
         var backButton = backObject.GetComponent<Button>();
         backButton.targetGraphic = backImage;
-        backButton.onClick.AddListener(() => Destroy(host));
+        backButton.onClick.AddListener(() =>
+        {
+            if (Page == canvas)
+                Page = null;
+            Destroy(host);
+        });
 
         var backLabel = new GameObject("Label", typeof(RectTransform));
         backLabel.transform.SetParent(backObject.transform, false);
@@ -195,6 +204,10 @@ public class MenuPage : MonoBehaviour
             headingText.alignment = TextAlignmentOptions.MidlineLeft;
             if (title == "Favorites")
                 CataloguePage.FillFavorites(root);
+            else if (title == "Gallery")
+                GalleryViewController.Fill(root, delegate { Destroy(host); TestDrive.Begin(); });
+            else if (title == "Help")
+                HelpViewController.Fill(root, delegate { Destroy(host); Open("Catalogue"); });
             else
                 CataloguePage.Fill(root);
             return;

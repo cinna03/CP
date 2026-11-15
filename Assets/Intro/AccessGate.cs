@@ -1,4 +1,7 @@
 using System;
+using Capstone.App.Data;
+using Capstone.App.Services;
+using Capstone.App.UI;
 using Capstone.Session;
 using TMPro;
 using UnityEngine;
@@ -46,6 +49,12 @@ public class AccessGate : MonoBehaviour
     bool armed;
     bool wasDown;
 
+    public static void Reopen()
+    {
+        Granted = false;
+        Present(null, null);
+    }
+
     public static void Present(Action onAdmitted, TMP_FontAsset nighty)
     {
         if (Granted)
@@ -70,12 +79,14 @@ public class AccessGate : MonoBehaviour
         scaler.referenceResolution = new Vector2(1080f, 1920f);
         scaler.matchWidthOrHeight = 0f;
 
-        host.GetComponent<AccessGate>().admitted = onAdmitted;
+            host.GetComponent<AccessGate>().admitted = onAdmitted;
+            UserProfileFlush.Ensure();
     }
 
     void Awake()
     {
         group = gameObject.AddComponent<CanvasGroup>();
+        gameObject.AddComponent<Capstone.App.UI.SafeAreaFitter>();
         var paper = gameObject.AddComponent<Image>();
         paper.color = Paper;
         paper.raycastTarget = true;
@@ -164,7 +175,7 @@ public class AccessGate : MonoBehaviour
         idleLine.rectTransform.SetParent(entry, true);
         slots.transform.SetParent(entry, true);
         notice.rectTransform.SetParent(entry, true);
-
+        GuestButton(font);
         BuildThanks(nighty != null ? nighty : font, font);
     }
 
@@ -348,22 +359,79 @@ public class AccessGate : MonoBehaviour
         if (entered.Length < Length)
             return;
 
-        if (EntranceCodes.Accepts(entered))
+        Admit(entered, true);
+    }
+
+    void AssignGuest()
+    {
+        if (thanks || refused)
+            return;
+
+        Admit(new UserProfileTracker().NextParticipantCode(), false);
+    }
+
+    void Admit(string raw, bool requireListed)
+    {
+        string code = UserProfileTracker.Normalize(raw);
+        if (code.Length < 2)
         {
-            focused = false;
-            thanks = true;
-            Granted = true;
-            thanksName.text = "Thanks " + Pretty(entered) + "!";
-            if (board != null)
-                board.active = false;
-            if (admitted != null)
-                admitted.Invoke();
+            notice.text = "Please enter a valid 2+ character code";
+            notice.color = new Color(LabelInk.r, LabelInk.g, LabelInk.b, 1f);
             return;
         }
 
-        refused = true;
-        shake = 0.4f;
-        hold = 0.46f;
+        if (requireListed && !EntranceCodes.Accepts(code))
+        {
+            refused = true;
+            shake = 0.4f;
+            hold = 0.46f;
+            return;
+        }
+
+        focused = false;
+        thanks = true;
+        Granted = true;
+        new UserProfileTracker().Register(code);
+        UserProfileFlush.Ensure();
+        CatalogueShelf shelf = Resources.Load<CatalogueShelf>("CatalogueShelf");
+        if (shelf != null && shelf.Session != null)
+            shelf.Session.RestoreSaved(shelf.Works);
+        thanksName.text = "Thanks " + Pretty(code) + "!";
+        if (board != null)
+            board.active = false;
+        if (admitted != null)
+            admitted.Invoke();
+    }
+
+    void GuestButton(TMP_FontAsset font)
+    {
+        var host = new GameObject("New participant", typeof(RectTransform), typeof(Image), typeof(Button));
+        host.transform.SetParent(entry, false);
+        var rect = host.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(640f, 88f);
+        rect.anchoredPosition = new Vector2(0f, -280f);
+        Image image = host.GetComponent<Image>();
+        image.color = new Color32(233, 168, 188, 255);
+        Button button = host.GetComponent<Button>();
+        button.targetGraphic = image;
+        button.onClick.AddListener(AssignGuest);
+        TMP_Text label = NewText("New Participant (Auto-ID)", font, 28f, new Color32(42, 34, 37, 255), FontStyles.Bold);
+        label.rectTransform.SetParent(host.transform, false);
+        label.rectTransform.anchorMin = Vector2.zero;
+        label.rectTransform.anchorMax = Vector2.one;
+        label.rectTransform.offsetMin = label.rectTransform.offsetMax = Vector2.zero;
+    }
+
+    void OnApplicationPause(bool pause)
+    {
+        if (pause)
+            UserProfileTracker.Flush();
+    }
+
+    void OnApplicationQuit()
+    {
+        UserProfileTracker.Flush();
     }
 
     void Refresh()

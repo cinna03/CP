@@ -79,19 +79,37 @@ public static class CataloguePage
         for (int i = listContent.childCount - 1; i >= 0; i--)
             Object.Destroy(listContent.GetChild(i).gameObject);
 
-        CatalogueQuery query = new CatalogueQuery
+        IReadOnlyList<ArtworkData> shown;
+        bool pin = false;
+        string arrival = "";
+        if (!favorites && ArtFinderArrival.Pending)
         {
-            Style = style,
-            Mood = mood,
-            Colour = colour,
-            Search = search,
-            Orientation = WantedOrientation(),
-            SizeTier = WantedSize()
-        };
-        IReadOnlyList<ArtworkData> source = favorites
-            ? (session != null ? session.Shortlist : new List<ArtworkData>())
-            : shelf.Works;
-        IReadOnlyList<ArtworkData> shown = Filter.Matching(source, query);
+            pin = ArtFinderArrival.PinMatches;
+            arrival = ArtFinderArrival.Message;
+            ArtFinderArrival.Pending = false;
+        }
+
+        if (pin && session != null)
+            shown = Filter.Suggested(shelf.Works, session.Taste);
+        else
+        {
+            CatalogueQuery query = new CatalogueQuery
+            {
+                Style = style,
+                Mood = mood,
+                Colour = colour,
+                Search = search,
+                Orientation = WantedOrientation(),
+                SizeTier = WantedSize()
+            };
+            IReadOnlyList<ArtworkData> source = favorites
+                ? (session != null ? session.Shortlist : new List<ArtworkData>())
+                : shelf.Works;
+            shown = Filter.Matching(source, query);
+        }
+
+        if (arrival.Length > 0)
+            Arrival(listContent, arrival);
         if (shown.Count == 0)
         {
             bool untouched = string.IsNullOrWhiteSpace(search) && style == "" && mood == "" && colour == "" && orientation == "" && sizeTier == "";
@@ -844,6 +862,17 @@ public static class CataloguePage
     {
         Text(parent, value, size, color, style, new Vector2(0f, y), new Vector2(920f, height), false, TextAlignmentOptions.TopLeft, new Vector2(0.5f, 1f));
         return y - height - 6f;
+    }
+
+    static void Arrival(RectTransform content, string value)
+    {
+        var row = new GameObject("Arrival", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+        row.transform.SetParent(content, false);
+        row.GetComponent<LayoutElement>().preferredHeight = 140f;
+        Image plate = row.GetComponent<Image>();
+        plate.color = Blush;
+        plate.raycastTarget = false;
+        Text(row.transform, value, 26f, Ink, FontStyles.Bold, Vector2.zero, new Vector2(0f, 140f), true, TextAlignmentOptions.Center);
     }
 
     static void Note(RectTransform content, string value)
