@@ -32,10 +32,7 @@ namespace Capstone.Ranking
                 "earth",
                 "none",
                 image,
-                new StoryNotes(
-                    "Supplied for this wall trial.",
-                    "The centimetres follow the picture so the preview does not stretch.",
-                    meaning));
+                meaning);
         }
     }
 }

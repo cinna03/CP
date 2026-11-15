@@ -21,6 +21,7 @@ namespace Capstone.App.Data
         [SerializeField] float cardCornerRadius = 16f;
         [SerializeField] float pillCornerRadius = 24f;
         [SerializeField] TMP_FontAsset font;
+        [SerializeField] TMP_FontAsset nightyFont;
 
         public Color CanvasBackground => canvasBackground;
         public Color CardSurface => cardSurface;
@@ -39,5 +40,8 @@ namespace Capstone.App.Data
 
         /// <summary>Optional sans-serif. When empty, a view keeps the font already on its text.</summary>
         public TMP_FontAsset Font => font;
+
+        /// <summary>Nighty, for the entrance line. When empty, the entrance looks the font up itself.</summary>
+        public TMP_FontAsset NightyFont => nightyFont;
     }
 }

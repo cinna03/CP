@@ -5,7 +5,11 @@
         "Capstone.Catalogue",
         "Capstone.Dialogue",
         "Capstone.Ranking",
-        "Unity.TextMeshPro"
+        "Capstone.Session",
+        "Unity.InputSystem",
+        "Unity.TextMeshPro",
+        "Unity.XR.ARFoundation",
+        "Unity.XR.ARSubsystems"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

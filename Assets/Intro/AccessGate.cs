@@ -9,46 +9,47 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
-// Off-white entrance. One dash until it is tapped, then five slots.
-// The fifth character is checked immediately.
+// Off-white entrance. Five slots are ready at once.
+// A letter or a digit fills the next slot. The fifth character is checked immediately.
 [AddComponentMenu("Intro/Access Gate")]
 public class AccessGate : MonoBehaviour
 {
     public static bool Granted { get; private set; }
 
     const int Length = 5;
-    static readonly Color Paper = new Color32(247, 246, 243, 255);
-    static readonly Color LabelInk = new Color32(155, 155, 155, 255);
-    static readonly Color LineInk = new Color32(198, 198, 198, 255);
-    static readonly Color MarkInk = new Color32(28, 28, 30, 255);
+    static readonly Color Paper = new Color32(0xFA, 0xF7, 0xF6, 0xFF);
+    static readonly Color Ink = new Color32(0x1A, 0x17, 0x18, 0xFF);
+    static readonly Color Quiet = new Color32(0xC8, 0xC0, 0xBC, 0xFF);
+    static readonly Color Stone = new Color32(0x8A, 0x82, 0x7E, 0xFF);
 
-    readonly Image[] lines = new Image[Length];
+    readonly Image[] borders = new Image[Length];
+    readonly Image[] fills = new Image[Length];
+    readonly Image[] carets = new Image[Length];
     readonly TMP_Text[] glyphs = new TMP_Text[Length];
+    readonly float[] born = new float[Length];
 
-    CanvasGroup group;
     RectTransform titleRect;
     RectTransform entry;
     CanvasGroup entryGroup;
     CanvasGroup successGroup;
     RectTransform checkCircle;
     TMP_Text thanksName;
-    HorizontalLayoutGroup slots;
-    Image idleLine;
-    TMP_Text notice;
+    RectTransform slotsRect;
+    [SerializeField] Image topBowImage;
+    [SerializeField] TMP_FontAsset nightyFont;
+    CanvasGroup bowGroup;
+    int shown;
+    float revealAt = -1f;
+    float shakeTime = -1f;
     Action admitted;
     TouchScreenKeyboard board;
     string entered = "";
-    float open;
-    float openTarget;
-    float shake;
     float hold = -1f;
     bool focused;
     bool refused;
     bool thanks;
     float seen;
-    bool armed;
-    bool wasDown;
-
+    float bowAt = -1f;
     public static void Reopen()
     {
         Granted = false;
@@ -85,7 +86,6 @@ public class AccessGate : MonoBehaviour
 
     void Awake()
     {
-        group = gameObject.AddComponent<CanvasGroup>();
         gameObject.AddComponent<Capstone.App.UI.SafeAreaFitter>();
         var paper = gameObject.AddComponent<Image>();
         paper.color = Paper;
@@ -95,74 +95,84 @@ public class AccessGate : MonoBehaviour
         root.anchorMax = Vector2.one;
         root.offsetMin = root.offsetMax = Vector2.zero;
 
+        for (int i = 0; i < Length; i++)
+            born[i] = -1f;
+
         TMP_FontAsset font = TMP_Settings.defaultFontAsset;
-        TMP_FontAsset nighty = pendingFont != null ? pendingFont : NightyFont();
+        TMP_FontAsset nighty = nightyFont != null ? nightyFont : pendingFont != null ? pendingFont : NightyFont();
+        if (nighty == null)
+            nighty = ThemeNighty();
         pendingFont = null;
-        var pink = new Color32(255, 183, 208, 255);
+        TMP_FontAsset words = nighty != null ? nighty : font;
 
-        var title = NewText("Entrance code", nighty != null ? nighty : font, 68f, pink, FontStyles.Normal);
-        title.overflowMode = TextOverflowModes.Overflow;
-        titleRect = title.rectTransform;
-        titleRect.sizeDelta = new Vector2(900f, 140f);
+        BuildBow();
+
+        TMP_Text prompt = NewText("ENTER YOUR CODE", words, 36f, new Color(0.88235295f, 0.6156863f, 0.74509805f, 1f), FontStyles.Normal);
+        prompt.characterSpacing = 0f;
+        titleRect = prompt.rectTransform;
+        titleRect.sizeDelta = new Vector2(1000f, 56f);
         titleRect.anchoredPosition = new Vector2(0f, 64f);
-
-        var rule = new GameObject("Dash", typeof(RectTransform), typeof(Image));
-        rule.transform.SetParent(transform, false);
-        var ruleRect = rule.GetComponent<RectTransform>();
-        ruleRect.anchorMin = ruleRect.anchorMax = new Vector2(0.5f, 0.5f);
-        ruleRect.pivot = new Vector2(0.5f, 0.5f);
-        ruleRect.sizeDelta = new Vector2(460f, 3f);
-        ruleRect.anchoredPosition = new Vector2(0f, -28f);
-        idleLine = rule.GetComponent<Image>();
-        idleLine.color = LineInk;
-        idleLine.raycastTarget = false;
 
         var row = new GameObject("Slots", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         row.transform.SetParent(transform, false);
-        var rowRect = row.GetComponent<RectTransform>();
-        rowRect.anchorMin = rowRect.anchorMax = new Vector2(0.5f, 0.5f);
-        rowRect.pivot = new Vector2(0.5f, 0.5f);
-        rowRect.sizeDelta = new Vector2(900f, 160f);
-        rowRect.anchoredPosition = new Vector2(0f, -28f);
-        slots = row.GetComponent<HorizontalLayoutGroup>();
-        slots.childAlignment = TextAnchor.MiddleCenter;
-        slots.childControlWidth = false;
-        slots.childControlHeight = false;
-        slots.childForceExpandWidth = false;
-        slots.childForceExpandHeight = false;
-        slots.spacing = -84f;
+        slotsRect = row.GetComponent<RectTransform>();
+        slotsRect.anchorMin = slotsRect.anchorMax = new Vector2(0.5f, 0.5f);
+        slotsRect.pivot = new Vector2(0.5f, 0.5f);
+        slotsRect.sizeDelta = new Vector2(460f, 96f);
+        slotsRect.anchoredPosition = new Vector2(0f, -20f);
+        var layout = row.GetComponent<HorizontalLayoutGroup>();
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+        layout.spacing = 12f;
 
         for (int i = 0; i < Length; i++)
         {
-            var slot = new GameObject("Slot", typeof(RectTransform));
+            var slot = new GameObject("Slot", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
             slot.transform.SetParent(row.transform, false);
             var slotRect = slot.GetComponent<RectTransform>();
-            slotRect.sizeDelta = new Vector2(84f, 150f);
+            slotRect.sizeDelta = new Vector2(72f, 88f);
+            slotRect.localScale = new Vector3(0.85f, 0.85f, 1f);
+            borders[i] = slot.GetComponent<Image>();
+            borders[i].sprite = Rounded(12);
+            borders[i].type = Image.Type.Sliced;
+            borders[i].color = Quiet;
+            borders[i].raycastTarget = false;
+            slot.GetComponent<CanvasGroup>().alpha = 0f;
 
-            TMP_Text glyph = NewText("", font, 68f, MarkInk, FontStyles.Bold);
+            var fillObject = new GameObject("Fill", typeof(RectTransform), typeof(Image));
+            fillObject.transform.SetParent(slot.transform, false);
+            var fillRect = fillObject.GetComponent<RectTransform>();
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = Vector2.one;
+            fillRect.offsetMin = new Vector2(1.5f, 1.5f);
+            fillRect.offsetMax = new Vector2(-1.5f, -1.5f);
+            fills[i] = fillObject.GetComponent<Image>();
+            fills[i].sprite = Rounded(12);
+            fills[i].type = Image.Type.Sliced;
+            fills[i].color = Paper;
+            fills[i].raycastTarget = false;
+
+            TMP_Text glyph = NewText("", font, 36f, Ink, FontStyles.Bold);
+            glyph.characterSpacing = -1f;
             glyph.transform.SetParent(slot.transform, false);
-            glyph.rectTransform.anchorMin = new Vector2(0f, 0.28f);
-            glyph.rectTransform.anchorMax = new Vector2(1f, 1f);
+            glyph.rectTransform.anchorMin = Vector2.zero;
+            glyph.rectTransform.anchorMax = Vector2.one;
             glyph.rectTransform.offsetMin = glyph.rectTransform.offsetMax = Vector2.zero;
             glyphs[i] = glyph;
 
-            var line = new GameObject("Line", typeof(RectTransform), typeof(Image));
-            line.transform.SetParent(slot.transform, false);
-            var lineRect = line.GetComponent<RectTransform>();
-            lineRect.anchorMin = new Vector2(0f, 0.5f);
-            lineRect.anchorMax = new Vector2(1f, 0.5f);
-            lineRect.pivot = new Vector2(0.5f, 0.5f);
-            lineRect.sizeDelta = new Vector2(16f, 3f);
-            lineRect.anchoredPosition = Vector2.zero;
-            lines[i] = line.GetComponent<Image>();
-            lines[i].color = new Color(LineInk.r, LineInk.g, LineInk.b, 0f);
-            lines[i].raycastTarget = false;
+            var caret = new GameObject("Caret", typeof(RectTransform), typeof(Image));
+            caret.transform.SetParent(slot.transform, false);
+            var caretRect = caret.GetComponent<RectTransform>();
+            caretRect.anchorMin = caretRect.anchorMax = new Vector2(0.5f, 0.5f);
+            caretRect.sizeDelta = new Vector2(2f, 36f);
+            carets[i] = caret.GetComponent<Image>();
+            carets[i].color = Ink;
+            carets[i].raycastTarget = false;
+            caret.SetActive(false);
         }
-
-        notice = NewText("", font, 32f, LabelInk, FontStyles.Normal);
-        notice.rectTransform.sizeDelta = new Vector2(860f, 70f);
-        notice.rectTransform.anchoredPosition = new Vector2(0f, -150f);
-        notice.color = new Color(LabelInk.r, LabelInk.g, LabelInk.b, 0f);
 
         var entryObject = new GameObject("Entry", typeof(RectTransform), typeof(CanvasGroup));
         entryObject.transform.SetParent(transform, false);
@@ -172,39 +182,58 @@ public class AccessGate : MonoBehaviour
         entry.offsetMin = entry.offsetMax = Vector2.zero;
         entryGroup = entryObject.GetComponent<CanvasGroup>();
         titleRect.SetParent(entry, true);
-        idleLine.rectTransform.SetParent(entry, true);
-        slots.transform.SetParent(entry, true);
-        notice.rectTransform.SetParent(entry, true);
-        GuestButton(font);
-        BuildThanks(nighty != null ? nighty : font, font);
+        if (topBowImage != null)
+            topBowImage.rectTransform.SetParent(entry, true);
+        slotsRect.SetParent(entry, true);
+        BuildThanks(words, font);
+    }
+
+    void OnEnable()
+    {
+        if (Keyboard.current != null)
+            Keyboard.current.onTextInput += OnTyped;
+    }
+
+    void OnDisable()
+    {
+        if (Keyboard.current != null)
+            Keyboard.current.onTextInput -= OnTyped;
+    }
+
+    void Start()
+    {
+        bowAt = Time.unscaledTime;
+        if (bowGroup != null)
+        {
+            bowGroup.alpha = 0f;
+            topBowImage.rectTransform.localScale = Vector3.one * 0.92f;
+        }
+        Focus();
     }
 
     void Update()
     {
         float step = Mathf.Min(Time.unscaledDeltaTime, 0.05f);
-        open = Mathf.MoveTowards(open, openTarget, step / 0.42f);
-        float eased = Ease(open);
-        slots.spacing = Mathf.Lerp(-84f, 38f, eased);
-        float lineWidth = Mathf.Lerp(16f, -6f, eased);
-        Color segment = LineInk;
-        segment.a = eased;
-        for (int i = 0; i < Length; i++)
+        if (bowAt >= 0f && bowGroup != null)
         {
-            lines[i].rectTransform.sizeDelta = new Vector2(lineWidth, 3f);
-            lines[i].color = segment;
+            float u = Mathf.Clamp01((Time.unscaledTime - bowAt) / 0.35f);
+            float ease = 1f - (1f - u) * (1f - u);
+            bowGroup.alpha = ease;
+            float scale = Mathf.Lerp(0.92f, 1f, ease);
+            topBowImage.rectTransform.localScale = new Vector3(scale, scale, 1f);
         }
-        Color single = LineInk;
-        single.a = 1f - eased;
-        idleLine.color = single;
-        titleRect.anchoredPosition = new Vector2(0f, Mathf.Lerp(64f, 156f, eased));
-
         float wave = 0f;
-        if (shake > 0f)
+        if (shakeTime >= 0f)
         {
-            shake = Mathf.Max(0f, shake - step);
-            wave = Mathf.Sin(shake * 52f) * shake * 36f;
+            shakeTime += step;
+            wave = Mathf.Sin(shakeTime * 45f) * Mathf.Exp(-shakeTime * 8f) * 18f;
+            if (shakeTime >= 0.40f)
+                shakeTime = -1f;
         }
-        entry.anchoredPosition = new Vector2(wave, 0f);
+        if (slotsRect != null)
+            slotsRect.anchoredPosition = new Vector2(wave, -20f);
+
+        PaintBoxes();
 
         if (thanks)
         {
@@ -219,13 +248,6 @@ public class AccessGate : MonoBehaviour
                 Destroy(gameObject);
             }
         }
-
-        bool down = Pressed();
-        if (!armed)
-            armed = !down;
-        else if (down && !wasDown && !focused && !thanks && OverDash())
-            Focus();
-        wasDown = down;
 
         if (focused && !thanks)
             ReadEntry();
@@ -244,6 +266,8 @@ public class AccessGate : MonoBehaviour
         {
             entered = "";
             refused = false;
+            for (int i = 0; i < Length; i++)
+                born[i] = -1f;
             if (TouchScreenKeyboard.isSupported)
                 board = TouchScreenKeyboard.Open("", TouchScreenKeyboardType.ASCIICapable, false, false, false, false, "", Length);
             Refresh();
@@ -264,38 +288,60 @@ public class AccessGate : MonoBehaviour
         return null;
     }
 
-    bool OverDash()
+    void BuildBow()
     {
-        Vector2 screen = PointerScreen();
-        if (screen == Vector2.zero && !Pressed())
-            return false;
+        if (topBowImage == null)
+        {
+            var bowObject = new GameObject("TopBowAccentImage", typeof(RectTransform), typeof(CanvasGroup), typeof(Image));
+            bowObject.transform.SetParent(transform, false);
+            topBowImage = bowObject.GetComponent<Image>();
+        }
 
-        RectTransform area = idleLine.rectTransform;
-        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(area, screen, null, out Vector2 local))
-            return false;
-
-        Rect hit = area.rect;
-        hit.xMin -= 28f;
-        hit.xMax += 28f;
-        hit.yMin -= 42f;
-        hit.yMax += 42f;
-        return hit.Contains(local);
+        RectTransform bowRect = topBowImage.rectTransform;
+        bowRect.anchorMin = bowRect.anchorMax = new Vector2(0.5f, 1f);
+        bowRect.pivot = new Vector2(0.5f, 1f);
+        bowRect.sizeDelta = new Vector2(460f, 460f);
+        bowRect.anchoredPosition = new Vector2(0f, -36f);
+        topBowImage.preserveAspect = true;
+        topBowImage.raycastTarget = false;
+        if (topBowImage.sprite == null)
+            topBowImage.sprite = Resources.Load<Sprite>("TopBowAccent");
+        if (topBowImage.sprite == null)
+            topBowImage.sprite = Resources.Load<Sprite>("Bow Pin");
+        bowGroup = topBowImage.GetComponent<CanvasGroup>();
+        if (bowGroup == null)
+            bowGroup = topBowImage.gameObject.AddComponent<CanvasGroup>();
+        bowGroup.alpha = 0f;
+        bowGroup.blocksRaycasts = false;
     }
 
-    static Vector2 PointerScreen()
+    static TMP_FontAsset ThemeNighty()
     {
-        if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.isPressed)
-            return Touchscreen.current.primaryTouch.position.ReadValue();
-        if (Mouse.current != null)
-            return Mouse.current.position.ReadValue();
-        Pointer pointer = Pointer.current;
-        return pointer != null ? pointer.position.ReadValue() : Vector2.zero;
+        UIThemeData[] themes = Resources.FindObjectsOfTypeAll<UIThemeData>();
+        for (int i = 0; i < themes.Length; i++)
+        {
+            if (themes[i] != null && themes[i].NightyFont != null)
+                return themes[i].NightyFont;
+        }
+
+        return null;
+    }
+
+    void OnTyped(char c)
+    {
+        if (board != null || !focused || thanks || refused)
+            return;
+        if (char.IsLetterOrDigit(c))
+            Apply(entered + c);
     }
 
     void Focus()
     {
+        if (focused || thanks || refused)
+            return;
+
         focused = true;
-        openTarget = 1f;
+        revealAt = Time.unscaledTime;
         if (TouchScreenKeyboard.isSupported)
             board = TouchScreenKeyboard.Open(entered, TouchScreenKeyboardType.ASCIICapable, false, false, false, false, "", Length);
     }
@@ -319,29 +365,6 @@ public class AccessGate : MonoBehaviour
             return;
         }
 
-        for (Key key = Key.A; key <= Key.Z; key++)
-        {
-            if (!keyboard[key].wasPressedThisFrame)
-                continue;
-            Apply(entered + (char)('A' + (key - Key.A)));
-            return;
-        }
-
-        for (Key key = Key.Digit0; key <= Key.Digit9; key++)
-        {
-            if (!keyboard[key].wasPressedThisFrame)
-                continue;
-            Apply(entered + (char)('0' + (key - Key.Digit0)));
-            return;
-        }
-
-        for (Key key = Key.Numpad0; key <= Key.Numpad9; key++)
-        {
-            if (!keyboard[key].wasPressedThisFrame)
-                continue;
-            Apply(entered + (char)('0' + (key - Key.Numpad0)));
-            return;
-        }
     }
 
     void Apply(string raw)
@@ -354,37 +377,27 @@ public class AccessGate : MonoBehaviour
             return;
 
         entered = next;
-        notice.color = new Color(LabelInk.r, LabelInk.g, LabelInk.b, 0f);
         Refresh();
         if (entered.Length < Length)
             return;
 
-        Admit(entered, true);
+        Admit(entered);
     }
 
-    void AssignGuest()
-    {
-        if (thanks || refused)
-            return;
-
-        Admit(new UserProfileTracker().NextParticipantCode(), false);
-    }
-
-    void Admit(string raw, bool requireListed)
+    void Admit(string raw)
     {
         string code = UserProfileTracker.Normalize(raw);
         if (code.Length < 2)
-        {
-            notice.text = "Please enter a valid 2+ character code";
-            notice.color = new Color(LabelInk.r, LabelInk.g, LabelInk.b, 1f);
             return;
-        }
 
-        if (requireListed && !EntranceCodes.Accepts(code))
+        if (!EntranceCodes.Accepts(code))
         {
             refused = true;
-            shake = 0.4f;
-            hold = 0.46f;
+            shakeTime = 0f;
+            hold = 0.40f;
+#if UNITY_IOS && !UNITY_EDITOR
+            Handheld.Vibrate();
+#endif
             return;
         }
 
@@ -403,26 +416,6 @@ public class AccessGate : MonoBehaviour
             admitted.Invoke();
     }
 
-    void GuestButton(TMP_FontAsset font)
-    {
-        var host = new GameObject("New participant", typeof(RectTransform), typeof(Image), typeof(Button));
-        host.transform.SetParent(entry, false);
-        var rect = host.GetComponent<RectTransform>();
-        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(640f, 88f);
-        rect.anchoredPosition = new Vector2(0f, -280f);
-        Image image = host.GetComponent<Image>();
-        image.color = new Color32(233, 168, 188, 255);
-        Button button = host.GetComponent<Button>();
-        button.targetGraphic = image;
-        button.onClick.AddListener(AssignGuest);
-        TMP_Text label = NewText("New Participant (Auto-ID)", font, 28f, new Color32(42, 34, 37, 255), FontStyles.Bold);
-        label.rectTransform.SetParent(host.transform, false);
-        label.rectTransform.anchorMin = Vector2.zero;
-        label.rectTransform.anchorMax = Vector2.one;
-        label.rectTransform.offsetMin = label.rectTransform.offsetMax = Vector2.zero;
-    }
-
     void OnApplicationPause(bool pause)
     {
         if (pause)
@@ -436,19 +429,83 @@ public class AccessGate : MonoBehaviour
 
     void Refresh()
     {
+        if (entered.Length > shown)
+        {
+            for (int i = shown; i < entered.Length; i++)
+                born[i] = Time.unscaledTime;
+        }
+        else if (entered.Length < shown)
+        {
+            for (int i = entered.Length; i < shown; i++)
+                born[i] = -1f;
+        }
+
+        shown = entered.Length;
         for (int i = 0; i < Length; i++)
             glyphs[i].text = i < entered.Length ? entered[i].ToString() : "";
     }
 
-    void BlinkCaret()
+    void PaintBoxes()
     {
-        bool blink = focused && !refused && !thanks && entered.Length < Length && Mathf.Repeat(Time.unscaledTime, 1.1f) < 0.55f;
+        float pulse = Mathf.PingPong(Time.unscaledTime, 0.5f) / 0.5f;
         for (int i = 0; i < Length; i++)
         {
-            if (!blink || i != entered.Length)
-                continue;
-            lines[i].color = MarkInk;
+            if (borders[i] == null)
+                return;
+
+            bool active = focused && !refused && !thanks && i == entered.Length;
+            float reveal = Reveal(i);
+            float wave = thanks ? SuccessWave(i) : 1f;
+            float pop = Pop(i);
+            float scale = Mathf.LerpUnclamped(0.85f, 1f, reveal) * pop * wave;
+            borders[i].rectTransform.localScale = new Vector3(scale, scale, 1f);
+            CanvasGroup fade = borders[i].GetComponent<CanvasGroup>();
+            if (fade != null)
+                fade.alpha = focused || thanks ? Mathf.Clamp01((Time.unscaledTime - revealAt - i * 0.03f) / 0.16f) : 0f;
+
+            fills[i].color = Paper;
+            borders[i].color = active ? Ink : Quiet;
+
+            bool showCaret = active;
+            carets[i].gameObject.SetActive(showCaret);
+            if (showCaret)
+                carets[i].color = new Color(Ink.r, Ink.g, Ink.b, pulse);
         }
+    }
+
+    float Reveal(int index)
+    {
+        if ((!focused && !thanks) || revealAt < 0f)
+            return 0f;
+        float t = (Time.unscaledTime - revealAt - index * 0.03f) / 0.28f;
+        if (t <= 0f)
+            return 0f;
+        return EaseOutBack(t);
+    }
+
+    float Pop(int index)
+    {
+        if (born[index] < 0f)
+            return 1f;
+        float u = Mathf.Clamp01((Time.unscaledTime - born[index]) / 0.14f);
+        if (u < 0.45f)
+            return Mathf.Lerp(1f, 1.12f, EaseOut(u / 0.45f));
+        return Mathf.Lerp(1.12f, 1f, EaseOut((u - 0.45f) / 0.55f));
+    }
+
+    float SuccessWave(int index)
+    {
+        float t = seen - index * 0.04f;
+        if (t <= 0f)
+            return 1f;
+        float u = Mathf.Clamp01(t / 0.16f);
+        if (u < 0.5f)
+            return Mathf.Lerp(1f, 1.08f, u * 2f);
+        return Mathf.Lerp(1.08f, 1f, (u - 0.5f) * 2f);
+    }
+
+    void BlinkCaret()
+    {
     }
 
     static string Sanitize(string raw)
@@ -466,16 +523,6 @@ public class AccessGate : MonoBehaviour
         }
 
         return kept.ToString();
-    }
-
-    static bool Pressed()
-    {
-        if (Touchscreen.current != null && Touchscreen.current.primaryTouch.press.isPressed)
-            return true;
-        if (Mouse.current != null && Mouse.current.leftButton.isPressed)
-            return true;
-        Pointer pointer = Pointer.current;
-        return pointer != null && pointer.press.isPressed;
     }
 
     TMP_Text NewText(string value, TMP_FontAsset font, float size, Color color, FontStyles style)
@@ -510,7 +557,6 @@ public class AccessGate : MonoBehaviour
         successGroup.alpha = 0f;
         successGroup.blocksRaycasts = false;
 
-        var pink = new Color32(255, 183, 208, 255);
         var circle = new GameObject("Mark", typeof(RectTransform), typeof(Image));
         circle.transform.SetParent(host.transform, false);
         checkCircle = circle.GetComponent<RectTransform>();
@@ -519,76 +565,21 @@ public class AccessGate : MonoBehaviour
         checkCircle.sizeDelta = new Vector2(132f, 132f);
         checkCircle.anchoredPosition = new Vector2(0f, 92f);
         var circleImage = circle.GetComponent<Image>();
-        circleImage.sprite = Icon();
+        circleImage.sprite = Resources.Load<Sprite>("PinkTick");
+        circleImage.preserveAspect = true;
         circleImage.color = Color.white;
         circleImage.raycastTarget = false;
 
-        thanksName = NewText("Thanks", nighty, 64f, pink, FontStyles.Normal);
+        thanksName = NewText("Thanks", nighty, 64f, Ink, FontStyles.Normal);
         thanksName.overflowMode = TextOverflowModes.Overflow;
         thanksName.transform.SetParent(host.transform, false);
         thanksName.rectTransform.sizeDelta = new Vector2(920f, 130f);
         thanksName.rectTransform.anchoredPosition = new Vector2(0f, -36f);
 
-        var note = NewText("Your code has been received.\nYou can continue.", plain, 30f, new Color32(186, 186, 186, 255), FontStyles.Normal);
+        var note = NewText("Your code has been received.\nYou can continue.", plain, 28f, Stone, FontStyles.Normal);
         note.transform.SetParent(host.transform, false);
         note.rectTransform.sizeDelta = new Vector2(780f, 96f);
         note.rectTransform.anchoredPosition = new Vector2(0f, -118f);
-    }
-
-    static Sprite icon;
-
-    static Sprite Icon()
-    {
-        if (icon != null)
-            return icon;
-
-        const int size = 160;
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        tex.wrapMode = TextureWrapMode.Clamp;
-        tex.filterMode = FilterMode.Bilinear;
-        var pixels = new Color32[size * size];
-        var center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
-        float circle = size * 0.48f;
-        var pink = new Color32(248, 214, 226, 255);
-        var white = new Color32(255, 255, 255, 255);
-        Vector2 start = new Vector2(size * 0.30f, size * 0.46f);
-        Vector2 corner = new Vector2(size * 0.42f, size * 0.33f);
-        Vector2 end = new Vector2(size * 0.73f, size * 0.67f);
-        float thickness = size * 0.105f;
-
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                var point = new Vector2(x, y);
-                float outside = Vector2.Distance(point, center) - circle;
-                if (outside > 1f)
-                    continue;
-
-                float edge = Mathf.Clamp01(1f - outside);
-                float mark = thickness - Mathf.Min(DistanceToSegment(point, start, corner), DistanceToSegment(point, corner, end));
-                float cover = Mathf.Clamp01(mark);
-                Color ink = Color.Lerp(pink, white, cover);
-                ink.a *= edge;
-                pixels[y * size + x] = ink;
-            }
-        }
-
-        tex.SetPixels32(pixels);
-        tex.Apply();
-        icon = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), size);
-        return icon;
-    }
-
-    static float DistanceToSegment(Vector2 point, Vector2 from, Vector2 to)
-    {
-        Vector2 line = to - from;
-        float length = line.sqrMagnitude;
-        if (length < 0.001f)
-            return Vector2.Distance(point, from);
-
-        float along = Mathf.Clamp01(Vector2.Dot(point - from, line) / length);
-        return Vector2.Distance(point, from + line * along);
     }
 
     static string Pretty(string code)
@@ -596,6 +587,58 @@ public class AccessGate : MonoBehaviour
         if (string.IsNullOrEmpty(code))
             return "";
         return char.ToUpperInvariant(code[0]) + code.Substring(1).ToLowerInvariant();
+    }
+
+    static Sprite rounded;
+
+    static Sprite Rounded(int radius)
+    {
+        if (rounded != null)
+            return rounded;
+
+        const int edge = 48;
+        var texture = new Texture2D(edge, edge, TextureFormat.RGBA32, false);
+        texture.wrapMode = TextureWrapMode.Clamp;
+        texture.filterMode = FilterMode.Bilinear;
+        var pixels = new Color32[edge * edge];
+        for (int y = 0; y < edge; y++)
+        {
+            for (int x = 0; x < edge; x++)
+            {
+                float dx = 0f;
+                float dy = 0f;
+                if (x < radius)
+                    dx = radius - x;
+                else if (x >= edge - radius)
+                    dx = x - (edge - radius - 1);
+                if (y < radius)
+                    dy = radius - y;
+                else if (y >= edge - radius)
+                    dy = y - (edge - radius - 1);
+                float outside = Mathf.Sqrt(dx * dx + dy * dy) - radius;
+                byte alpha = (byte)(Mathf.Clamp01(1f - outside) * 255f);
+                pixels[y * edge + x] = new Color32(255, 255, 255, alpha);
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.Apply();
+        rounded = Sprite.Create(texture, new Rect(0f, 0f, edge, edge), new Vector2(0.5f, 0.5f), edge, 0, SpriteMeshType.FullRect, new Vector4(radius, radius, radius, radius));
+        return rounded;
+    }
+
+    static float EaseOut(float t)
+    {
+        t = Mathf.Clamp01(t);
+        return 1f - (1f - t) * (1f - t);
+    }
+
+    static float EaseOutBack(float t)
+    {
+        t = Mathf.Clamp01(t);
+        const float c1 = 1.70158f;
+        const float c3 = c1 + 1f;
+        return 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
     }
 
     static float Ease(float t)

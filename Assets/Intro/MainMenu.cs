@@ -86,18 +86,7 @@ public class MainMenu : MonoBehaviour
         if (Compact(node.name) == "mainmenupanel")
             return true;
 
-        bool drive = false;
-        bool catalogue = false;
-        for (int i = 0; i < node.childCount; i++)
-        {
-            string compact = Compact(node.GetChild(i).name);
-            if (compact == "testdrive" || compact == "arvisualizationsession")
-                drive = true;
-            if (compact == "catalogue")
-                catalogue = true;
-        }
-
-        return drive && catalogue;
+        return HasEntry(node, "catalogue") && (HasEntry(node, "testdrive") || HasEntry(node, "arvisualizationsession"));
     }
 
     static string Compact(string value)
@@ -105,6 +94,28 @@ public class MainMenu : MonoBehaviour
         if (string.IsNullOrEmpty(value))
             return "";
         return value.Replace(" ", "").Replace("\u00A0", "").ToLowerInvariant();
+    }
+
+    static bool HasEntry(Transform node, string compactName)
+    {
+        if (node == null)
+            return false;
+
+        for (int i = 0; i < node.childCount; i++)
+        {
+            Transform child = node.GetChild(i);
+            if (Compact(child.name) == compactName)
+                return true;
+            if (Compact(child.name) != "dock")
+                continue;
+            for (int j = 0; j < child.childCount; j++)
+            {
+                if (Compact(child.GetChild(j).name) == compactName)
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     public static void Show()
@@ -181,46 +192,65 @@ public class MainMenu : MonoBehaviour
         float height;
         Measure(panel, out width, out height);
 
-        float margin = Mathf.Clamp(Mathf.Min(width, height) * 0.05f, 44f, 64f);
-        float gap = Mathf.Clamp(margin * 0.42f, 12f, 18f);
+        float margin = 28f;
+        float gap = 16f;
         float left = -width * 0.5f + margin;
         float right = width * 0.5f - margin;
-        float top = height * 0.5f - margin;
+        float top = height * 0.5f - 12f;
+        float bottom = -height * 0.5f;
         float innerW = right - left;
-        float free = height - margin * 2f - gap * 2f;
-        float topH = free * 0.30f;
-        float midH = free * 0.40f;
-        float botH = free - topH - midH;
-        float topY = top - topH * 0.5f;
-        float midY = top - topH - gap - midH * 0.5f;
-        float botY = top - topH - gap - midH - gap - botH * 0.5f;
+        float dockH = 64f;
+        float dockLift = 20f;
+        float headerH = 88f;
+        float reserved = gap + 158f + gap + dockH + dockLift;
+        float topZone = Mathf.Min(height * 0.38f, Mathf.Max(160f, height - reserved - 12f));
+        float zoneBottom = top - topZone;
+        float dashTop = top - headerH;
+        float dashH = Mathf.Max(0f, dashTop - zoneBottom);
+        float dashY = dashTop - dashH * 0.5f;
+        float folderCeiling = zoneBottom - gap;
+        float folderFloor = bottom + dockLift + dockH + gap;
+        float folderRoom = folderCeiling - folderFloor;
+        float folderH = folderRoom >= 150f ? Mathf.Min(158f, folderRoom) : Mathf.Max(120f, folderRoom);
+        float minCenter = folderFloor + folderH * 0.5f;
+        float maxCenter = folderCeiling - folderH * 0.5f;
+        float folderY = maxCenter < minCenter ? minCenter : (minCenter + maxCenter) * 0.5f;
         float half = (innerW - gap) * 0.5f;
-        float type = Mathf.Clamp(innerW * 0.034f, 22f, 32f);
 
-        Masthead(panel, new Vector2(left + half * 0.5f, topY), new Vector2(half, topH));
-        Card(panel, "Catalogue", new Vector2(right - half * 0.5f, topY), new Vector2(half, topH),
-            new Color32(214, 224, 198, 255), new Color32(28, 28, 30, 255), type);
+        Title(panel, new Vector2(left + 250f, top - headerH * 0.5f));
+        HideNamed(panel, "Slogan");
+        HideNamed(panel, "Open");
 
-        float sessionW = (innerW - gap) * 0.62f;
-        float helpW = innerW - gap - sessionW;
-        Card(panel, "AR visualization session", new Vector2(left + sessionW * 0.5f, midY), new Vector2(sessionW, midH),
-            new Color32(188, 206, 164, 255), new Color32(28, 28, 30, 255), type);
-        Card(panel, "Help", new Vector2(right - helpW * 0.5f, midY), new Vector2(helpW, midH),
-            new Color32(214, 220, 206, 255), new Color32(28, 28, 30, 255), type);
-        FolderCard(panel, "Favorites", new Vector2(left + half * 0.5f, botY), new Vector2(half, botH));
-        FolderCard(panel, "Gallery", new Vector2(right - half * 0.5f, botY), new Vector2(half, botH));
+        RectTransform dashboard = Host(panel, "Studio dashboard", new Vector2(0f, dashY), new Vector2(innerW, dashH));
+        if (Application.isPlaying)
+        {
+            var view = dashboard.GetComponent<MainMenuDashboardController>();
+            if (view == null)
+                view = dashboard.gameObject.AddComponent<MainMenuDashboardController>();
+            CatalogueShelf shelf = Resources.Load<CatalogueShelf>("CatalogueShelf");
+            ArtworkSessionState session = shelf != null ? shelf.Session : null;
+            if (session != null && shelf != null)
+                session.RestoreSaved(shelf.Works);
+            view.Show(session, new WallSnapshotService().GetAllSnapshots(), Face(), work => CataloguePage.OpenWork(work));
+        }
+
+        StudioDigest digest = StudioDigest.Read(
+            Resources.Load<CatalogueShelf>("CatalogueShelf") != null ? Resources.Load<CatalogueShelf>("CatalogueShelf").Session : null,
+            Application.isPlaying ? new WallSnapshotService().GetAllSnapshots() : null);
+        Folder(panel, "Favorites", new Vector2(left + half * 0.5f, folderY), new Vector2(half, folderH),
+            new Color32(0xE3, 0x8F, 0xA3, 0xFF), digest.Hearts, "works", digest.FavoriteLine, digest.FavoriteThumb);
+        Folder(panel, "Gallery", new Vector2(right - half * 0.5f, folderY), new Vector2(half, folderH),
+            new Color32(0xF4, 0xC6, 0xD2, 0xFF), digest.Photos, "photos", digest.GalleryLine, null);
+
+        RectTransform dock = DockBar(panel, margin, dockH, dockLift);
+        float dockW = (Mathf.Max(120f, width - margin * 2f) - 24f) / 3f;
+        Dock(dock, "Catalogue", "Catalogue", 0, dockW, false);
+        Dock(dock, "AR visualization session", "Try on My Wall", 1, dockW, true);
+        Dock(dock, "Help", "Help", 2, dockW, false);
 
         Transform board = panel.Find("Board");
         if (board != null)
             board.SetSiblingIndex(1);
-
-        string[] front = { "AR visualization session", "Catalogue", "Help", "Favorites", "Gallery", "Masthead", "Slogan", "Open" };
-        for (int i = 0; i < front.Length; i++)
-        {
-            Transform piece = panel.Find(front[i]);
-            if (piece != null)
-                piece.SetAsLastSibling();
-        }
     }
 
     static void OpenWallOrQuiz()
@@ -249,50 +279,39 @@ public class MainMenu : MonoBehaviour
         var bar = new GameObject("User switch", typeof(RectTransform));
         bar.transform.SetParent(panel, false);
         var rect = bar.GetComponent<RectTransform>();
-        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
-        rect.pivot = new Vector2(0.5f, 1f);
-        rect.sizeDelta = new Vector2(760f, 120f);
-        rect.anchoredPosition = new Vector2(0f, -24f);
+        rect.anchorMin = rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(1f, 1f);
+        rect.sizeDelta = new Vector2(460f, 56f);
+        rect.anchoredPosition = new Vector2(-24f, -24f);
 
         var pill = new GameObject("Switch", typeof(RectTransform), typeof(Image), typeof(Button));
         pill.transform.SetParent(bar.transform, false);
         var pillRect = pill.GetComponent<RectTransform>();
-        pillRect.anchorMin = pillRect.anchorMax = new Vector2(0.5f, 1f);
-        pillRect.pivot = new Vector2(0.5f, 1f);
-        pillRect.sizeDelta = new Vector2(640f, 64f);
-        pillRect.anchoredPosition = Vector2.zero;
-        pill.GetComponent<Image>().color = new Color32(249, 235, 240, 255);
+        pillRect.anchorMin = Vector2.zero;
+        pillRect.anchorMax = Vector2.one;
+        pillRect.offsetMin = pillRect.offsetMax = Vector2.zero;
+        Image pillImage = pill.GetComponent<Image>();
+        pillImage.sprite = Rounded();
+        pillImage.type = Image.Type.Sliced;
+        pillImage.color = new Color32(0xF8, 0xDC, 0xE3, 0xFF);
         var label = new GameObject("Label", typeof(RectTransform));
         label.transform.SetParent(pill.transform, false);
         var labelRect = label.GetComponent<RectTransform>();
         labelRect.anchorMin = Vector2.zero;
         labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
+        labelRect.offsetMin = new Vector2(16f, 0f);
+        labelRect.offsetMax = new Vector2(-16f, 0f);
         var text = label.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            text.font = TMP_Settings.defaultFontAsset;
+        TMP_FontAsset face = Face();
+        if (face != null)
+            text.font = face;
         text.text = "User: " + code + " · Switch";
-        text.fontSize = 26f;
+        text.fontSize = 22f;
         text.fontStyle = FontStyles.Bold;
         text.alignment = TextAlignmentOptions.Center;
-        text.color = new Color32(42, 34, 37, 255);
+        text.color = new Color32(0x1A, 0x17, 0x18, 0xFF);
         text.raycastTarget = false;
         pill.GetComponent<Button>().onClick.AddListener(SwitchUser);
-
-        var count = new GameObject("Count", typeof(RectTransform));
-        count.transform.SetParent(bar.transform, false);
-        var countRect = count.GetComponent<RectTransform>();
-        countRect.anchorMin = countRect.anchorMax = new Vector2(0.5f, 0f);
-        countRect.pivot = new Vector2(0.5f, 0f);
-        countRect.sizeDelta = new Vector2(640f, 36f);
-        var countText = count.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            countText.font = TMP_Settings.defaultFontAsset;
-        countText.text = "Total Users Tracked: " + profiles.TotalUniqueUsers;
-        countText.fontSize = 20f;
-        countText.alignment = TextAlignmentOptions.Center;
-        countText.color = new Color32(125, 110, 115, 255);
-        countText.raycastTarget = false;
         bar.transform.SetAsLastSibling();
     }
 
@@ -346,15 +365,211 @@ public class MainMenu : MonoBehaviour
         var rect = board.GetComponent<RectTransform>();
         rect.anchorMin = Vector2.zero;
         rect.anchorMax = Vector2.one;
-        rect.offsetMin = new Vector2(16f, 16f);
-        rect.offsetMax = new Vector2(-16f, -16f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
         var image = board.GetComponent<Image>();
-        image.sprite = Rounded();
-        image.type = Image.Type.Sliced;
-        image.color = Color.white;
+        image.sprite = null;
+        image.type = Image.Type.Simple;
+        image.color = new Color32(0xFA, 0xF7, 0xF6, 0xFF);
         image.raycastTarget = false;
         board.transform.SetSiblingIndex(1);
     }
+
+    static void Title(RectTransform panel, Vector2 center)
+    {
+        Line(panel, "Masthead", "cinnarios", 56f, center, new Vector2(520f, 72f), TextAlignmentOptions.MidlineLeft, FontStyles.Normal);
+        Transform line = panel.Find("Masthead");
+        if (line == null)
+            return;
+        var text = line.GetComponent<TMP_Text>();
+        if (text == null)
+            return;
+        TMP_FontAsset face = Face();
+        if (face != null)
+            text.font = face;
+        text.color = new Color32(0xE3, 0x8F, 0xA3, 0xFF);
+        text.text = "cinnarios";
+    }
+
+    static void HideNamed(RectTransform panel, string name)
+    {
+        Transform found = panel.Find(name);
+        if (found != null)
+            found.gameObject.SetActive(false);
+    }
+
+    static RectTransform Host(RectTransform panel, string name, Vector2 position, Vector2 size)
+    {
+        if (name == "AR visualization session")
+        {
+            Transform old = panel.Find("Test Drive");
+            if (old != null)
+                old.name = name;
+        }
+
+        Transform found = panel.Find(name);
+        GameObject card = found != null ? found.gameObject : new GameObject(name, typeof(RectTransform), typeof(Image));
+        if (found == null)
+        {
+            card.transform.SetParent(panel, false);
+            Record(card);
+        }
+
+        card.SetActive(true);
+        var rect = card.GetComponent<RectTransform>();
+        Place(rect, position, size);
+        return rect;
+    }
+
+    static void Folder(RectTransform panel, string name, Vector2 position, Vector2 size, Color body, int count, string unit, string preview, Sprite picture)
+    {
+        RectTransform rect = Host(panel, name, position, size);
+        var card = rect.GetComponent<InteractiveFolderCard>();
+        if (card == null)
+            card = rect.gameObject.AddComponent<InteractiveFolderCard>();
+        var legacy = rect.GetComponent<FolderPeek>();
+        if (legacy != null)
+            legacy.enabled = false;
+        card.Present(name, count, unit, body, preview, picture, Face(), () => MenuPage.Open(name));
+    }
+
+    static RectTransform DockBar(RectTransform panel, float margin, float height, float lift)
+    {
+        Transform found = panel.Find("Dock");
+        GameObject bar = found != null ? found.gameObject : new GameObject("Dock", typeof(RectTransform));
+        if (found == null)
+        {
+            bar.transform.SetParent(panel, false);
+            Record(bar);
+        }
+
+        bar.SetActive(true);
+        var rect = bar.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 0f);
+        rect.anchorMax = new Vector2(1f, 0f);
+        rect.pivot = new Vector2(0.5f, 0f);
+        rect.anchoredPosition = new Vector2(0f, lift);
+        rect.sizeDelta = new Vector2(-margin * 2f, height);
+        rect.localScale = Vector3.one;
+        return rect;
+    }
+
+    static void Dock(RectTransform bar, string name, string copy, int index, float width, bool primary)
+    {
+        Transform found = bar.Find(name);
+        if (found == null && name == "AR visualization session" && bar.parent != null)
+            found = bar.parent.Find("Test Drive");
+        if (found == null && bar.parent != null)
+            found = bar.parent.Find(name);
+        if (found == null && name == "AR visualization session")
+            found = bar.Find("Test Drive");
+
+        GameObject card = found != null ? found.gameObject : new GameObject(name, typeof(RectTransform), typeof(Image));
+        if (found == null)
+        {
+            card.transform.SetParent(bar, false);
+            Record(card);
+        }
+        else if (card.transform.parent != bar)
+        {
+            card.transform.SetParent(bar, false);
+        }
+
+        card.name = name;
+        card.SetActive(true);
+        var rect = card.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 0f);
+        rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 0.5f);
+        rect.sizeDelta = new Vector2(width, 0f);
+        rect.anchoredPosition = new Vector2(index * (width + 12f), 0f);
+        rect.localScale = Vector3.one;
+        rect.localRotation = Quaternion.identity;
+        Image image = rect.GetComponent<Image>();
+        if (image == null)
+            image = rect.gameObject.AddComponent<Image>();
+        image.sprite = Rounded();
+        image.type = Image.Type.Sliced;
+        image.color = new Color32(0xEB, 0xC8, 0xD2, 0xFF);
+        image.raycastTarget = true;
+
+        Transform fill = rect.Find("Fill");
+        if (fill == null)
+        {
+            var fillObject = new GameObject("Fill", typeof(RectTransform), typeof(Image));
+            fillObject.transform.SetParent(rect, false);
+            fill = fillObject.transform;
+        }
+
+        var fillRect = fill as RectTransform;
+        fillRect.anchorMin = Vector2.zero;
+        fillRect.anchorMax = Vector2.one;
+        fillRect.offsetMin = new Vector2(2f, 2f);
+        fillRect.offsetMax = new Vector2(-2f, -2f);
+        Image fillImage = fill.GetComponent<Image>();
+        fillImage.sprite = Rounded();
+        fillImage.type = Image.Type.Sliced;
+        fillImage.color = primary ? new Color32(0xE3, 0x8F, 0xA3, 0xFF) : Color.white;
+        fillImage.raycastTarget = false;
+
+        Transform label = rect.Find("Label");
+        if (label == null)
+        {
+            var labelObject = new GameObject("Label", typeof(RectTransform));
+            labelObject.transform.SetParent(rect, false);
+            label = labelObject.transform;
+            var created = labelObject.AddComponent<TextMeshProUGUI>();
+            created.raycastTarget = false;
+            created.alignment = TextAlignmentOptions.Center;
+            created.fontStyle = FontStyles.Bold;
+        }
+
+        var labelRect = label as RectTransform;
+        if (labelRect != null)
+        {
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.pivot = new Vector2(0.5f, 0.5f);
+            labelRect.offsetMin = new Vector2(8f, 6f);
+            labelRect.offsetMax = new Vector2(-8f, -6f);
+        }
+
+        label.SetAsLastSibling();
+        var text = label.GetComponent<TMP_Text>();
+        if (text != null)
+        {
+            TMP_FontAsset face = Face();
+            if (face != null)
+                text.font = face;
+            text.text = copy;
+            text.fontSize = 20f;
+            text.color = primary ? Color.white : new Color32(0x1A, 0x17, 0x18, 0xFF);
+            text.alignment = TextAlignmentOptions.Center;
+            text.textWrappingMode = TextWrappingModes.Normal;
+        }
+
+        Listen(rect.gameObject, name);
+    }
+
+    static TMP_FontAsset Face()
+    {
+        if (nighty != null)
+            return nighty;
+        TMP_FontAsset[] fonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
+        for (int i = 0; i < fonts.Length; i++)
+        {
+            if (fonts[i] != null && fonts[i].name.IndexOf("Nighty", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                nighty = fonts[i];
+                return nighty;
+            }
+        }
+
+        nighty = TMP_Settings.defaultFontAsset;
+        return nighty;
+    }
+
+    static TMP_FontAsset nighty;
 
     static void Masthead(RectTransform panel, Vector2 center, Vector2 size)
     {
@@ -485,7 +700,7 @@ public class MainMenu : MonoBehaviour
                 image = existing.gameObject.AddComponent<Image>();
             image.sprite = null;
             image.type = Image.Type.Simple;
-            image.color = new Color32(228, 228, 226, 255);
+            image.color = new Color32(0xFA, 0xF7, 0xF6, 0xFF);
             image.enabled = true;
             image.raycastTarget = false;
             existing.gameObject.SetActive(true);
@@ -500,7 +715,7 @@ public class MainMenu : MonoBehaviour
         created.anchorMin = Vector2.zero;
         created.anchorMax = Vector2.one;
         created.offsetMin = created.offsetMax = Vector2.zero;
-        ground.GetComponent<Image>().color = new Color32(228, 228, 226, 255);
+        ground.GetComponent<Image>().color = new Color32(0xFA, 0xF7, 0xF6, 0xFF);
         ground.GetComponent<Image>().raycastTarget = false;
         Record(ground);
     }

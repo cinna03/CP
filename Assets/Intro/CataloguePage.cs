@@ -40,6 +40,17 @@ public static class CataloguePage
         OpenPage(root, true);
     }
 
+    public static void OpenWork(ArtworkData work)
+    {
+        if (work == null)
+            return;
+
+        if (page == null)
+            MenuPage.Open("Catalogue");
+        if (page != null)
+            Open(work);
+    }
+
     static void OpenPage(RectTransform root, bool savedOnly)
     {
         shelf = Resources.Load<CatalogueShelf>("CatalogueShelf");
