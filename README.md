@@ -4,7 +4,7 @@ An iPhone prototype for online buyers of physical art in Kigali. A buyer can loo
 
 The buyer study itself is separate. This repository is the prototype.
 
-**Technical report:** [Report/ProductTechnicalReport.pdf](Report/ProductTechnicalReport.pdf)
+**Technical report:** [Product technical report](https://docs.google.com/document/d/1FnrBSD-Siu4OH1_nqBLnR40Lywg4CWovJblIVUfLC8w/edit?usp=sharing)
 
 **Demonstration video:** not recorded yet. The link will be added here after the iPhone 13 recording.
 
