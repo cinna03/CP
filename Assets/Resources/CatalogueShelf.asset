@@ -38,3 +38,10 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 92c9348a306f44a59736875457e47196, type: 2}
   - {fileID: 11400000, guid: caea35fe61584485a2d6460b2d7de865, type: 2}
   - {fileID: 11400000, guid: 3777dda36d4243cd9173c8d6e4cf68e2, type: 2}
+  theme: {fileID: 11400000, guid: a84c98f77371942e68264314d3120b41, type: 2}
+  session: {fileID: 11400000, guid: 01037c0bf99474731a39d6e26a31a421, type: 2}
+  frames:
+  - {fileID: 11400000, guid: eb2c60e7596324c088d13561436be4cf, type: 2}
+  - {fileID: 11400000, guid: e0a7926f1213944e29ab895f6e446c3e, type: 2}
+  - {fileID: 11400000, guid: 7442fd1e794ea4501ba4246b1bb4e1d9, type: 2}
+  - {fileID: 11400000, guid: cc116a096b33e464aa8fcb3725deb62f, type: 2}

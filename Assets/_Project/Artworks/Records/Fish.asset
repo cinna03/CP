@@ -15,13 +15,15 @@ MonoBehaviour:
   identifier: fish
   title: With the fish
   artist: 
-  year: 0
-  medium: 
+  year: 2019
+  medium: Ink
   availableSizes:
   - {x: 60, y: 60}
+  - {x: 43, y: 43}
+  - {x: 78, y: 78}
   style: Soft
   mood: Still
   colour: Blue
   priceBand: 
   artworkSprite: {fileID: 21300000, guid: f8f454f24d2d4950aa16f81ce0cac484, type: 3}
-  storyNote: 
+  storyNote: Still blue water with the fish, for a quiet room.

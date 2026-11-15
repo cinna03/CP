@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using Capstone.App.Data;
 using Capstone.App.Services;
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Capstone.App.UI
 {
@@ -31,7 +33,11 @@ namespace Capstone.App.UI
         [SerializeField] ArtworkSessionState session;
         [SerializeField] ArtworkCardView cardPrefab;
         [SerializeField] RectTransform grid;
+        [SerializeField] TMP_InputField searchField;
+        [SerializeField] Button clearSearchButton;
+        [SerializeField] string search = "";
         [SerializeField] string style = "";
+        bool favoritesOnly;
         [SerializeField] string mood = "";
         [SerializeField] string colour = "";
         [SerializeField] OrientationFilter orientation = OrientationFilter.Any;
@@ -47,6 +53,34 @@ namespace Capstone.App.UI
         {
             if (filter == null)
                 filter = new CatalogueFilterService();
+            if (searchField != null)
+                searchField.onValueChanged.AddListener(SetSearch);
+            if (clearSearchButton != null)
+                clearSearchButton.onClick.AddListener(ClearSearch);
+        }
+
+        public void OpenFavoritesMode()
+        {
+            favoritesOnly = true;
+            Rebuild();
+        }
+
+        public void SetSearch(string value)
+        {
+            search = value ?? "";
+            if (clearSearchButton != null)
+                clearSearchButton.gameObject.SetActive(!string.IsNullOrEmpty(search));
+            Rebuild();
+        }
+
+        public void ClearSearch()
+        {
+            search = "";
+            if (searchField != null)
+                searchField.SetTextWithoutNotify("");
+            if (clearSearchButton != null)
+                clearSearchButton.gameObject.SetActive(false);
+            Rebuild();
         }
 
         void OnEnable()
@@ -64,37 +98,40 @@ namespace Capstone.App.UI
 
         public void UseStyle(string value)
         {
-            style = value ?? "";
+            value = value ?? "";
+            style = style == value ? "" : value;
             Rebuild();
         }
 
         public void UseMood(string value)
         {
-            mood = value ?? "";
+            value = value ?? "";
+            mood = mood == value ? "" : value;
             Rebuild();
         }
 
         public void UseColour(string value)
         {
-            colour = value ?? "";
+            value = value ?? "";
+            colour = colour == value ? "" : value;
             Rebuild();
         }
 
         public void UsePortrait()
         {
-            orientation = OrientationFilter.Portrait;
+            orientation = orientation == OrientationFilter.Portrait ? OrientationFilter.Any : OrientationFilter.Portrait;
             Rebuild();
         }
 
         public void UseLandscape()
         {
-            orientation = OrientationFilter.Landscape;
+            orientation = orientation == OrientationFilter.Landscape ? OrientationFilter.Any : OrientationFilter.Landscape;
             Rebuild();
         }
 
         public void UseSquare()
         {
-            orientation = OrientationFilter.Square;
+            orientation = orientation == OrientationFilter.Square ? OrientationFilter.Any : OrientationFilter.Square;
             Rebuild();
         }
 
@@ -106,19 +143,19 @@ namespace Capstone.App.UI
 
         public void UseSmall()
         {
-            sizeTier = SizeTierFilter.Small;
+            sizeTier = sizeTier == SizeTierFilter.Small ? SizeTierFilter.Any : SizeTierFilter.Small;
             Rebuild();
         }
 
         public void UseMedium()
         {
-            sizeTier = SizeTierFilter.Medium;
+            sizeTier = sizeTier == SizeTierFilter.Medium ? SizeTierFilter.Any : SizeTierFilter.Medium;
             Rebuild();
         }
 
         public void UseLarge()
         {
-            sizeTier = SizeTierFilter.Large;
+            sizeTier = sizeTier == SizeTierFilter.Large ? SizeTierFilter.Any : SizeTierFilter.Large;
             Rebuild();
         }
 
@@ -133,6 +170,11 @@ namespace Capstone.App.UI
             style = "";
             mood = "";
             colour = "";
+            search = "";
+            if (searchField != null)
+                searchField.SetTextWithoutNotify("");
+            if (clearSearchButton != null)
+                clearSearchButton.gameObject.SetActive(false);
             orientation = OrientationFilter.Any;
             sizeTier = SizeTierFilter.Any;
             Rebuild();
@@ -149,11 +191,13 @@ namespace Capstone.App.UI
                 Style = style,
                 Mood = mood,
                 Colour = colour,
+                Search = search,
                 Orientation = ToOrientation(orientation),
                 SizeTier = ToSizeTier(sizeTier)
             };
 
-            IReadOnlyList<ArtworkData> shown = filter.Matching(artworks, query);
+            IReadOnlyList<ArtworkData> source = favoritesOnly && session != null ? session.Shortlist : artworks;
+            IReadOnlyList<ArtworkData> shown = filter.Matching(source, query);
             for (int i = 0; i < shown.Count; i++)
             {
                 ArtworkData work = shown[i];

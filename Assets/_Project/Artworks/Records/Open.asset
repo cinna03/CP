@@ -15,10 +15,12 @@ MonoBehaviour:
   identifier: open
   title: Arms open
   artist: 
-  year: 0
-  medium: 
+  year: 2025
+  medium: Acrylic
   availableSizes:
   - {x: 85, y: 53}
+  - {x: 61, y: 38}
+  - {x: 110, y: 69}
   style: Soft
   mood: Still
   colour: Green

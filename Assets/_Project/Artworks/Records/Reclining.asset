@@ -15,10 +15,12 @@ MonoBehaviour:
   identifier: reclining
   title: Reclining
   artist: 
-  year: 0
-  medium: 
+  year: 2024
+  medium: Watercolour
   availableSizes:
   - {x: 70, y: 46}
+  - {x: 50, y: 33}
+  - {x: 91, y: 60}
   style: Soft
   mood: Still
   colour: Green

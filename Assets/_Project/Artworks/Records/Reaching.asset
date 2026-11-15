@@ -15,13 +15,15 @@ MonoBehaviour:
   identifier: reaching
   title: Reaching
   artist: Denis Sarazhin
-  year: 0
-  medium: 
+  year: 2020
+  medium: Oil
   availableSizes:
   - {x: 110, y: 110}
+  - {x: 79, y: 79}
+  - {x: 143, y: 143}
   style: Bold
   mood: Still
   colour: Ochre
   priceBand: 
   artworkSprite: {fileID: 21300000, guid: d8c18f94f2a94aea83c9ef468c7b74a2, type: 3}
-  storyNote: 
+  storyNote: A still figure reaching, large on a tall wall.

@@ -15,13 +15,15 @@ MonoBehaviour:
   identifier: garden
   title: In the garden
   artist: 
-  year: 0
-  medium: 
+  year: 2021
+  medium: Watercolour
   availableSizes:
   - {x: 50, y: 70}
+  - {x: 36, y: 50}
+  - {x: 65, y: 91}
   style: Soft
   mood: Bright
   colour: Pink
   priceBand: 
   artworkSprite: {fileID: 21300000, guid: 5a9601ed250b485197d1df4404a798b0, type: 3}
-  storyNote: 
+  storyNote: Botanical pink light in the garden, for a calm room.

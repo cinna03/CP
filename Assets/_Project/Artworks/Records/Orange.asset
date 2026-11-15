@@ -15,13 +15,15 @@ MonoBehaviour:
   identifier: orange
   title: Orange band
   artist: 
-  year: 0
-  medium: 
+  year: 2022
+  medium: Acrylic
   availableSizes:
   - {x: 90, y: 45}
+  - {x: 65, y: 32}
+  - {x: 117, y: 58}
   style: Graphic
   mood: Direct
   colour: Orange
   priceBand: 
   artworkSprite: {fileID: 21300000, guid: fe3abd99cb0c422a9303d3ffd6d3ff8c, type: 3}
-  storyNote: 
+  storyNote: A graphic orange band for a minimalist living room.

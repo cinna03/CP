@@ -10,7 +10,13 @@ namespace Capstone.App.Data
     public sealed class CatalogueShelf : ScriptableObject
     {
         [SerializeField] List<ArtworkData> works = new List<ArtworkData>();
+        [SerializeField] UIThemeData theme;
+        [SerializeField] ArtworkSessionState session;
+        [SerializeField] List<FrameOption> frames = new List<FrameOption>();
 
         public IReadOnlyList<ArtworkData> Works => works;
+        public UIThemeData Theme => theme;
+        public ArtworkSessionState Session => session;
+        public IReadOnlyList<FrameOption> Frames => frames;
     }
 }

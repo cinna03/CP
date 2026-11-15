@@ -141,7 +141,7 @@ public class MenuPage : MonoBehaviour
         root.anchorMax = Vector2.one;
         root.offsetMin = root.offsetMax = Vector2.zero;
 
-        bool catalogue = title == "Catalogue";
+        bool catalogue = title == "Catalogue" || title == "Favorites";
         var paper = host.AddComponent<Image>();
         paper.color = catalogue ? new Color32(251, 249, 250, 255) : new Color32(232, 230, 227, 255);
 
@@ -193,7 +193,10 @@ public class MenuPage : MonoBehaviour
             headingRect.sizeDelta = new Vector2(900f, 80f);
             headingText.fontSize = 48f;
             headingText.alignment = TextAlignmentOptions.MidlineLeft;
-            CataloguePage.Fill(root);
+            if (title == "Favorites")
+                CataloguePage.FillFavorites(root);
+            else
+                CataloguePage.Fill(root);
             return;
         }
 

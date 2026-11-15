@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Capstone.App.Data;
 using Capstone.Catalogue;
 using Capstone.Placement;
 using TMPro;
@@ -161,22 +162,53 @@ public class TestDrive : MonoBehaviour
 
     static Transform Piece()
     {
+        CatalogueShelf shelf = Resources.Load<CatalogueShelf>("CatalogueShelf");
+        ArtworkSessionState visit = shelf != null ? shelf.Session : null;
+        ArtworkData chosen = visit != null ? visit.SelectedArtwork : null;
+
         var face = GameObject.CreatePrimitive(PrimitiveType.Quad);
         face.name = "Painting";
-        WorkQuad.Fit(face.transform, SessionPiece);
-        Paint(face.GetComponent<Renderer>(), new Color32(247, 236, 232, 255));
+        Renderer faceRenderer = face.GetComponent<Renderer>();
+        if (chosen != null)
+        {
+            Vector2 metres = chosen.GetDimensionsInMeters(visit.SizeIndex);
+            if (metres.x > 0f && metres.y > 0f)
+                face.transform.localScale = new Vector3(metres.x, metres.y, 1f);
+            Paint(faceRenderer, Color.white);
+            ApplyPicture(faceRenderer, chosen.ArtworkSprite);
+        }
+        else
+        {
+            WorkQuad.Fit(face.transform, SessionPiece);
+            Paint(faceRenderer, new Color32(247, 236, 232, 255));
+        }
 
         var frame = GameObject.CreatePrimitive(PrimitiveType.Quad);
         frame.name = "Frame";
         frame.transform.SetParent(face.transform, false);
         frame.transform.localPosition = new Vector3(0f, 0f, -0.004f);
         frame.transform.localScale = new Vector3(1.08f, 1.08f, 1f);
-        Paint(frame.GetComponent<Renderer>(), new Color32(28, 28, 30, 255));
+        Renderer frameRenderer = frame.GetComponent<Renderer>();
+        FrameOption option = visit != null ? visit.SelectedFrame : null;
+        bool showFrame = chosen != null && option != null && option.FrameName != "Unframed";
+        frameRenderer.enabled = showFrame || chosen == null;
+        Paint(frameRenderer, showFrame ? option.UIHighlightColor : new Color32(28, 28, 30, 255));
         var blocker = frame.GetComponent<Collider>();
         if (blocker != null)
             Destroy(blocker);
 
         return face.transform;
+    }
+
+    static void ApplyPicture(Renderer renderer, Sprite sprite)
+    {
+        if (renderer == null || sprite == null || sprite.texture == null)
+            return;
+
+        Material material = renderer.material;
+        if (material.HasProperty("_BaseMap"))
+            material.SetTexture("_BaseMap", sprite.texture);
+        material.mainTexture = sprite.texture;
     }
 
     static void Paint(Renderer renderer, Color color)

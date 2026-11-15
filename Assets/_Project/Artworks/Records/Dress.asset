@@ -15,13 +15,15 @@ MonoBehaviour:
   identifier: dress
   title: White dress
   artist: 
-  year: 0
-  medium: 
+  year: 2025
+  medium: Acrylic
   availableSizes:
   - {x: 50, y: 100}
+  - {x: 36, y: 72}
+  - {x: 65, y: 130}
   style: Quiet
   mood: Calm
   colour: White
   priceBand: 
   artworkSprite: {fileID: 21300000, guid: 5343eff6a811433aac848d599b75a4b1, type: 3}
-  storyNote: 
+  storyNote: A tall white dress for a narrow wall.

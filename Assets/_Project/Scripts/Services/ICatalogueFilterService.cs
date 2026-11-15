@@ -12,6 +12,7 @@ namespace Capstone.App.Services
         public string Style;
         public string Mood;
         public string Colour;
+        public string Search;
         public Orientation? Orientation;
         public SizeTier? SizeTier;
     }

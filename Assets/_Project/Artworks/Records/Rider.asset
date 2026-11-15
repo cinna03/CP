@@ -15,10 +15,12 @@ MonoBehaviour:
   identifier: rider
   title: The rider
   artist: Lukas Sedlak
-  year: 0
-  medium: 
+  year: 2023
+  medium: Oil
   availableSizes:
   - {x: 80, y: 58}
+  - {x: 58, y: 42}
+  - {x: 104, y: 75}
   style: Bold
   mood: Bright
   colour: Grey

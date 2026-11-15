@@ -19,6 +19,8 @@ MonoBehaviour:
   medium: 
   availableSizes:
   - {x: 29, y: 45}
+  - {x: 21, y: 32}
+  - {x: 38, y: 58}
   style: Quiet
   mood: Still
   colour: Ochre
