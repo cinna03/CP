@@ -174,6 +174,12 @@ namespace Capstone.App.UI
             ShowRecommendations(ranking.Three(catalogue, work, decision, dismissed, session != null ? session.Taste : null));
         }
 
+        void ResetWall()
+        {
+            if (wall != null)
+                wall.RequestReset();
+        }
+
         void Back()
         {
             if (closing)
@@ -504,6 +510,7 @@ namespace Capstone.App.UI
             compareButton.SetActive(false);
             Pill(transform, "← Back", new Vector2(0f, 1f), new Vector2(220f, 72f), new Vector2(146f, -80f), Blush, Back);
             Pill(transform, "Take Photo", new Vector2(0.5f, 1f), new Vector2(280f, 72f), new Vector2(0f, -80f), Accent, TakePhoto);
+            Pill(transform, "Reset Wall", new Vector2(0.5f, 1f), new Vector2(220f, 56f), new Vector2(0f, -176f), Blush, ResetWall);
             Pill(transform, "Finish Visit", new Vector2(1f, 1f), new Vector2(280f, 72f), new Vector2(-180f, -80f), Accent, FinishVisit);
             BuildHistory();
 

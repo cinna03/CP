@@ -22,6 +22,12 @@ namespace Capstone.App.AR
 
         public Transform ArtworkQuad => artworkQuad;
         public bool InStudio => studio;
+        public event System.Action ResetRequested;
+
+        public void RequestReset()
+        {
+            ResetRequested?.Invoke();
+        }
 
         void OnEnable()
         {

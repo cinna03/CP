@@ -30,11 +30,17 @@ public class TestDrive : MonoBehaviour
     WallDecisionHUDController decisions;
     TMP_Text hint;
     GameObject hintHost;
+    GameObject placeHereButton;
     readonly List<Canvas> covered = new List<Canvas>();
     Vector2 pressedAt;
+    Vector3 slideNormal = Vector3.forward;
+    float waiting;
     bool wasDown;
     bool dragging;
     bool onInterface;
+    const float ManualPlaceDelay = 4f;
+    const float ManualPlaceDistance = 1.6f;
+    static readonly Color PlacePink = new Color32(233, 168, 188, 255);
 
     public static Canvas HintCanvas { get; private set; }
     public const string CameraDenied = "Camera access is required to preview art on your wall. Please enable Camera in iPhone Settings.";
@@ -77,7 +83,11 @@ public class TestDrive : MonoBehaviour
         }
 
         if (rays != null)
+        {
             rays.enabled = true;
+            if (!Application.isEditor && rays.GetComponent<ARPointCloudManager>() == null)
+                rays.gameObject.AddComponent<ARPointCloudManager>();
+        }
 
 #if !UNITY_EDITOR
         if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
@@ -91,6 +101,8 @@ public class TestDrive : MonoBehaviour
 
     void OnDestroy()
     {
+        if (presenter != null)
+            presenter.ResetRequested -= ResetWall;
         if (live == this)
             live = null;
         if (HintCanvas != null && hintHost != null && HintCanvas.gameObject == hintHost)
@@ -138,14 +150,25 @@ public class TestDrive : MonoBehaviour
         }
 
         bool moved = down && (point - pressedAt).sqrMagnitude > 18f * 18f;
-        if (down && piece != null && moved && Wall(point, out ARRaycastHit hit))
+        if (down && piece != null && (dragging || moved))
         {
             dragging = true;
-            Stick(hit);
+            Slide(point);
         }
 
-        if (ended && !dragging && Wall(point, out ARRaycastHit tap))
-            Stick(tap);
+        if (ended && !dragging && TryPlace(point, out Vector3 spot, out Quaternion turn))
+            Put(spot, turn);
+
+        if (!Application.isEditor && piece == null)
+        {
+            waiting += Time.unscaledDeltaTime;
+            if (placeHereButton != null)
+                placeHereButton.SetActive(waiting >= ManualPlaceDelay);
+        }
+        else if (placeHereButton != null && placeHereButton.activeSelf)
+        {
+            placeHereButton.SetActive(false);
+        }
 
         wasDown = down;
         RefreshHint();
@@ -179,7 +202,27 @@ public class TestDrive : MonoBehaviour
         hint.text = piece != null ? "Drag to move it" : WallSeen() ? "Tap the wall to place it" : "Move across a wall";
     }
 
-    bool Wall(Vector2 screen, out ARRaycastHit wall)
+    bool TryPlace(Vector2 screen, out Vector3 position, out Quaternion rotation)
+    {
+        position = default;
+        rotation = Quaternion.identity;
+        if (VerticalPlane(screen, out ARRaycastHit planeHit))
+        {
+            PoseOnPlane(planeHit, out position, out rotation);
+            return true;
+        }
+
+        if (Application.isEditor || rays == null)
+            return false;
+        if (!rays.Raycast(screen, hits, TrackableType.FeaturePoint) || hits.Count == 0)
+            return false;
+
+        position = hits[0].pose.position;
+        rotation = UprightFacingBuyer();
+        return true;
+    }
+
+    bool VerticalPlane(Vector2 screen, out ARRaycastHit wall)
     {
         wall = default;
         if (rays == null || !rays.Raycast(screen, hits, TrackableType.PlaneWithinPolygon))
@@ -207,6 +250,109 @@ public class TestDrive : MonoBehaviour
         return false;
     }
 
+    void PoseOnPlane(ARRaycastHit hit, out Vector3 position, out Quaternion rotation)
+    {
+        Camera camera = Camera.main;
+        Vector3 normal = hit.pose.up;
+        if (camera != null && Vector3.Dot(normal, camera.transform.position - hit.pose.position) < 0f)
+            normal = -normal;
+        slideNormal = normal;
+        position = hit.pose.position + normal * 0.01f;
+        rotation = Quaternion.LookRotation(normal, Vector3.up);
+    }
+
+    Quaternion UprightFacingBuyer()
+    {
+        Camera camera = Camera.main;
+        Vector3 intoRoom = camera != null ? Vector3.ProjectOnPlane(camera.transform.forward, Vector3.up) : Vector3.forward;
+        if (intoRoom.sqrMagnitude < 0.0001f)
+            intoRoom = Vector3.forward;
+        intoRoom.Normalize();
+        slideNormal = -intoRoom;
+        return Quaternion.LookRotation(slideNormal, Vector3.up);
+    }
+
+    void PlaceOnWallHere()
+    {
+        Camera camera = Camera.main;
+        if (camera == null)
+            return;
+
+        Quaternion rotation = UprightFacingBuyer();
+        Vector3 intoRoom = -slideNormal;
+        Vector3 position = camera.transform.position + intoRoom * ManualPlaceDistance;
+        position.y = camera.transform.position.y;
+        Put(position, rotation);
+    }
+
+    void Slide(Vector2 screen)
+    {
+        if (piece == null)
+            return;
+
+        Camera camera = Camera.main;
+        if (camera == null)
+            return;
+
+        Vector3 normal = Vector3.ProjectOnPlane(slideNormal, Vector3.up);
+        if (normal.sqrMagnitude < 0.0001f)
+            normal = Vector3.ProjectOnPlane(piece.forward, Vector3.up);
+        if (normal.sqrMagnitude < 0.0001f)
+            normal = Vector3.forward;
+        normal.Normalize();
+
+        Ray ray = camera.ScreenPointToRay(screen);
+        var plane = new Plane(normal, piece.position);
+        if (!plane.Raycast(ray, out float distance))
+            return;
+
+        Vector3 scale = piece.localScale;
+        piece.SetPositionAndRotation(ray.GetPoint(distance), Quaternion.LookRotation(normal, Vector3.up));
+        piece.localScale = scale;
+    }
+
+    void Put(Vector3 position, Quaternion rotation)
+    {
+        if (presenter != null)
+            presenter.HideStudio();
+        if (piece == null)
+            piece = presenter != null ? presenter.EnsureArtwork() : Piece();
+        if (piece == null)
+            return;
+
+        piece.gameObject.SetActive(true);
+        Vector3 scale = piece.localScale;
+        piece.SetPositionAndRotation(position, rotation);
+        piece.localScale = scale;
+        if (presenter != null)
+            presenter.Apply();
+        waiting = 0f;
+        if (placeHereButton != null)
+            placeHereButton.SetActive(false);
+    }
+
+    void ResetWall()
+    {
+        if (Application.isEditor && presenter != null && presenter.InStudio)
+        {
+            presenter.BeginStudio();
+            piece = presenter.ArtworkQuad;
+            if (piece != null)
+                slideNormal = piece.forward;
+            return;
+        }
+
+        if (presenter != null && presenter.ArtworkQuad != null)
+            presenter.ArtworkQuad.gameObject.SetActive(false);
+        else if (piece != null)
+            piece.gameObject.SetActive(false);
+
+        piece = null;
+        waiting = 0f;
+        if (placeHereButton != null)
+            placeHereButton.SetActive(false);
+    }
+
     bool WallSeen()
     {
         if (planes == null)
@@ -219,23 +365,6 @@ public class TestDrive : MonoBehaviour
         }
 
         return false;
-    }
-
-    void Stick(ARRaycastHit hit)
-    {
-        Camera camera = Camera.main;
-        Vector3 normal = hit.pose.up;
-        if (camera != null && Vector3.Dot(normal, camera.transform.position - hit.pose.position) < 0f)
-            normal = -normal;
-
-        if (presenter != null)
-            presenter.HideStudio();
-        if (piece == null)
-            piece = presenter != null ? presenter.EnsureArtwork() : Piece();
-
-        piece.SetPositionAndRotation(
-            hit.pose.position + normal * 0.01f,
-            Quaternion.LookRotation(normal, Vector3.up));
     }
 
     static Transform Piece()
@@ -379,7 +508,42 @@ public class TestDrive : MonoBehaviour
         text.color = new Color32(28, 28, 30, 255);
         text.raycastTarget = false;
         text.text = "Move across a wall";
+        placeHereButton = PlaceHereButton(host.transform);
         return text;
+    }
+
+    GameObject PlaceHereButton(Transform parent)
+    {
+        var host = new GameObject("Place on Wall Here", typeof(RectTransform), typeof(Image), typeof(Button));
+        host.transform.SetParent(parent, false);
+        var rect = host.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(560f, 88f);
+        rect.anchoredPosition = new Vector2(0f, -220f);
+        Image image = host.GetComponent<Image>();
+        image.color = PlacePink;
+        Button button = host.GetComponent<Button>();
+        button.targetGraphic = image;
+        button.onClick.AddListener(PlaceOnWallHere);
+
+        var label = new GameObject("Label", typeof(RectTransform));
+        label.transform.SetParent(host.transform, false);
+        var labelRect = label.GetComponent<RectTransform>();
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
+        var caption = label.AddComponent<TextMeshProUGUI>();
+        if (TMP_Settings.defaultFontAsset != null)
+            caption.font = TMP_Settings.defaultFontAsset;
+        caption.text = "Place on Wall Here";
+        caption.fontSize = 32f;
+        caption.fontStyle = FontStyles.Bold;
+        caption.alignment = TextAlignmentOptions.Center;
+        caption.color = new Color32(42, 34, 37, 255);
+        caption.raycastTarget = false;
+        host.SetActive(false);
+        return host;
     }
 
     void AttachVisit()
@@ -389,12 +553,15 @@ public class TestDrive : MonoBehaviour
         var host = new GameObject("Wall visit");
         presenter = host.AddComponent<ARArtworkPresenter>();
         presenter.Bind(visit);
+        presenter.ResetRequested += ResetWall;
 
 #if UNITY_EDITOR
         if (!WallSeen())
         {
             presenter.BeginStudio();
             piece = presenter.ArtworkQuad;
+            if (piece != null)
+                slideNormal = piece.forward;
             Transform bar = hintHost != null ? hintHost.transform.Find("Bar") : null;
             if (bar != null)
                 bar.gameObject.SetActive(false);
