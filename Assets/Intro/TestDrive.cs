@@ -26,6 +26,14 @@ public class TestDrive : MonoBehaviour
     [SerializeField] ARRaycastManager rays;
     readonly List<ARRaycastHit> hits = new List<ARRaycastHit>();
     Transform piece;
+    // The wall session's lifecycle (Idle > Scanning > Settling > Placed), checked against a transition table.
+    readonly ARSessionStateMachine wallState = new ARSessionStateMachine();
+    // Smooths finger drags so the work glides along the wall instead of jumping with every touch sample.
+    readonly PoseSmoother dragSmoother = new PoseSmoother(24f);
+    bool dragSmoothing;
+
+    /// <summary>The current stage of the wall session.</summary>
+    public WallSessionState WallState => wallState.Current;
     ARArtworkPresenter presenter;
     WallDecisionHUDController decisions;
     TMP_Text hint;
@@ -170,8 +178,22 @@ public class TestDrive : MonoBehaviour
             placeHereButton.SetActive(false);
         }
 
+        if (ended)
+            dragSmoothing = false;
         wasDown = down;
+        TrackWallState();
         RefreshHint();
+    }
+
+    /// <summary>Feeds what the camera sees into the wall-session state machine.</summary>
+    void TrackWallState()
+    {
+        WallSessionState next = piece != null && piece.gameObject.activeInHierarchy
+            ? WallSessionState.Placed
+            : WallSeen() ? WallSessionState.Settling : WallSessionState.Scanning;
+        if (wallState.Current == WallSessionState.Idle && next == WallSessionState.Settling)
+            wallState.MoveTo(WallSessionState.Scanning);
+        wallState.MoveTo(next);
     }
 
     void RefreshHint()
@@ -306,8 +328,17 @@ public class TestDrive : MonoBehaviour
         if (!plane.Raycast(ray, out float distance))
             return;
 
+        PlacementSettle.Cancel(piece);
+        Quaternion facing = Quaternion.LookRotation(normal, Vector3.up);
+        if (!dragSmoothing)
+        {
+            dragSmoother.SnapTo(piece.position, piece.rotation);
+            dragSmoothing = true;
+        }
+
+        dragSmoother.Step(ray.GetPoint(distance), facing, Time.unscaledDeltaTime);
         Vector3 scale = piece.localScale;
-        piece.SetPositionAndRotation(ray.GetPoint(distance), Quaternion.LookRotation(normal, Vector3.up));
+        piece.SetPositionAndRotation(dragSmoother.Position, dragSmoother.Rotation);
         piece.localScale = scale;
     }
 
@@ -326,6 +357,7 @@ public class TestDrive : MonoBehaviour
         piece.localScale = scale;
         if (presenter != null)
             presenter.Apply();
+        PlacementSettle.Begin(piece, position, rotation);
         waiting = 0f;
         if (placeHereButton != null)
             placeHereButton.SetActive(false);

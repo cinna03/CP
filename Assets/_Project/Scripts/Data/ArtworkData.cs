@@ -68,6 +68,31 @@ namespace Capstone.App.Data
         public string ArtistNote => artistNote ?? "";
         public string InspirationNote => inspirationNote ?? "";
 
+        /// <summary>Identifiers of pieces the buyer brought themselves start with this prefix.</summary>
+        public const string OwnPiecePrefix = "own-";
+
+        /// <summary>The name used when the buyer leaves the title empty.</summary>
+        public const string OwnPieceTitle = "My piece";
+
+        /// <summary>True for a piece the buyer added from their own photo, not from the catalogue.</summary>
+        public bool IsOwnPiece => Identifier.StartsWith(OwnPiecePrefix, System.StringComparison.Ordinal);
+
+        /// <summary>
+        /// Builds a runtime artwork from the buyer's own photo and the size they entered, so it can go
+        /// through the same wall, reply and ranking flow as a catalogue work. It is never saved as an asset.
+        /// </summary>
+        public static ArtworkData CreateOwnPiece(string title, Vector2 centimetres, Sprite picture)
+        {
+            ArtworkData work = CreateInstance<ArtworkData>();
+            work.identifier = OwnPiecePrefix + System.Guid.NewGuid().ToString("N").Substring(0, 8);
+            work.title = string.IsNullOrWhiteSpace(title) ? OwnPieceTitle : title.Trim();
+            work.availableSizes = new List<Vector2> { centimetres };
+            work.artworkSprite = picture;
+            work.storyNote = "Your own piece, shown at the size you entered.";
+            work.name = work.title;
+            return work;
+        }
+
         /// <summary>Portrait, landscape, or square from the default size.</summary>
         public Orientation Orientation => OrientationAt(0);
 

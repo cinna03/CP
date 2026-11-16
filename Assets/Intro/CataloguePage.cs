@@ -121,6 +121,8 @@ public static class CataloguePage
 
         if (arrival.Length > 0)
             Arrival(listContent, arrival);
+        if (!favorites)
+            AddOwnPieceCard(listContent);
         if (shown.Count == 0)
         {
             bool untouched = string.IsNullOrWhiteSpace(search) && style == "" && mood == "" && colour == "" && orientation == "" && sizeTier == "";
@@ -487,6 +489,26 @@ public static class CataloguePage
         scroll.movementType = ScrollRect.MovementType.Clamped;
         scroll.scrollSensitivity = 30f;
         return content;
+    }
+
+    /// <summary>The first card in the list: lets the buyer try a piece that is not in the catalogue.</summary>
+    static void AddOwnPieceCard(RectTransform content)
+    {
+        var card = new GameObject("Own piece", typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        card.transform.SetParent(content, false);
+        Capstone.App.UI.UIMotion.AppearInList(card);
+        Image image = card.GetComponent<Image>();
+        image.sprite = RoundedSprite();
+        image.type = Image.Type.Sliced;
+        image.color = Blush;
+        var layout = card.GetComponent<LayoutElement>();
+        layout.minHeight = 150f;
+        layout.preferredHeight = 150f;
+        Text(card.transform, "Try your own piece", 30f, Ink, FontStyles.Bold, new Vector2(40f, 26f), new Vector2(760f, 40f));
+        Text(card.transform, "Add a photo and its size, then see it on your wall.", 24f, Stone, FontStyles.Normal, new Vector2(40f, -20f), new Vector2(760f, 36f));
+        Text(card.transform, "+", 56f, Ink, FontStyles.Bold, new Vector2(860f, 0f), new Vector2(80f, 80f));
+        card.GetComponent<Button>().onClick.AddListener(() =>
+            Capstone.App.UI.OwnPieceFormView.Present(work => TryOnWall(work, 0, FirstFrame())));
     }
 
     static void AddWork(RectTransform content, ArtworkData work)

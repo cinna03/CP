@@ -32,6 +32,16 @@ namespace Capstone.Placement
             settle.enabled = true;
         }
 
+        /// <summary>Stops easing at once, for example when the buyer starts dragging the work.</summary>
+        public static void Cancel(Transform piece)
+        {
+            if (piece == null)
+                return;
+            PlacementSettle settle = piece.GetComponent<PlacementSettle>();
+            if (settle != null && settle.enabled)
+                settle.enabled = false;
+        }
+
         void LateUpdate()
         {
             smoother.Step(targetPosition, targetRotation, Time.unscaledDeltaTime);
