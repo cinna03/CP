@@ -1,63 +1,57 @@
+using System.Collections;
+using System.Collections.Generic;
+using Capstone.App.Data;
 using Capstone.App.Services;
+using Capstone.App.UI;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Runs the same four slides before the catalogue and again after the wall session.
-/// Drag existing slide roots, question labels, and Next/Submit buttons into the inspector
-/// if those panels are already in the scene. Empty slots are built at runtime.
-/// The heart on a catalogue card is unchanged. Favorites and Gallery are not opened from here.
+/// "After Visit": the wrap-up check, opened by Finish Visit. One question per card on the app's paper
+/// background, sliding in from the right. Screen 3 quotes the buyer's own blocker; screen 4 opens an
+/// optional follow-up only for buyers who are still unsure. It ends on a before -> now summary.
 /// </summary>
 public class SurveyFlow : MonoBehaviour
 {
-    static readonly string[] Questions =
-    {
-        "I can tell whether this painting fits my space.",
-        "I can tell how big this painting will look on my wall.",
-        "I can tell whether its colours and style suit the room.",
-        "I can decide whether this painting is right for me."
-    };
-
-    static readonly Color Ink = new Color32(0x1A, 0x17, 0x18, 0xFF);
-    static readonly Color Rose = new Color32(0xE3, 0x8F, 0xA3, 0xFF);
-    static readonly Color Blush = new Color32(0xF8, 0xDC, 0xE3, 0xFF);
-    static readonly Color Paper = new Color32(0xFA, 0xF7, 0xF6, 0xFF);
+    static readonly Color Paper = new Color32(0xFC, 0xFB, 0xFA, 0xFF);
+    static readonly Color Ink = new Color32(0x2B, 0x21, 0x24, 0xFF);
+    static readonly Color Stone = new Color32(0x6B, 0x53, 0x59, 0xFF);
+    static readonly Color Rose = new Color32(0xB8, 0x5C, 0x74, 0xFF);
+    static readonly Color Petal = new Color32(0xF7, 0xEC, 0xEF, 0xFF);
+    const float SlideSeconds = 0.42f;
+    const float FollowUpHeight = 300f;
 
     static SurveyFlow live;
 
-    [SerializeField] GameObject[] slides = new GameObject[4];
-    [SerializeField] TMP_Text[] questionLabels = new TMP_Text[4];
-    [SerializeField] Button[] nextButtons = new Button[4];
-
-    readonly int[] picks = new int[4];
-    readonly Button[][] ratings = new Button[4][];
-    bool post;
+    RectTransform page;
+    QuestionCardView card;
+    StudyQuestion[] after;
+    string preBlocker;
     int index;
+    readonly HashSet<string> tags = new HashSet<string>();
+    TMP_InputField comment;
+    bool followUpShown;
 
+    /// <summary>Kept for older callers: the "before" questions now live on the intro slides.</summary>
     public static void OpenPre()
     {
-        Open(false);
     }
 
     public static void OpenPost()
-    {
-        Open(true);
-    }
-
-    public static void StartSurvey(bool isPostAR)
-    {
-        Open(isPostAR);
-    }
-
-    static void Open(bool isPostAR)
     {
         SurveyDataManager.Ensure();
         if (live == null)
             live = BuildHost();
         live.gameObject.SetActive(true);
         live.transform.SetAsLastSibling();
-        live.Begin(isPostAR);
+        live.Begin();
+    }
+
+    public static void StartSurvey(bool isPostAR)
+    {
+        if (isPostAR)
+            OpenPost();
     }
 
     static SurveyFlow BuildHost()
@@ -70,230 +64,254 @@ public class SurveyFlow : MonoBehaviour
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1080f, 1920f);
         scaler.matchWidthOrHeight = 0f;
-        RectTransform rect = host.GetComponent<RectTransform>();
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = rect.offsetMax = Vector2.zero;
         DontDestroyOnLoad(host);
         return host.GetComponent<SurveyFlow>();
     }
 
-    void Begin(bool isPostAR)
+    void Begin()
     {
-        post = isPostAR;
+        if (page != null)
+            Destroy(page.gameObject);
+        page = Fill("Page", transform, Paper);
+        Heading(page, "Before you go", "Four quick taps so we know whether this visit helped.");
+        preBlocker = SurveyDataManager.Instance.PreBlocker();
+        after = StudyQuestions.After(preBlocker);
+        tags.Clear();
+        comment = null;
+        followUpShown = false;
         index = 0;
-        SurveyDataManager.Instance.ClearRound();
-        EnsureSlides();
-        for (int i = 0; i < 4; i++)
-        {
-            picks[i] = 0;
-            if (questionLabels[i] != null && i < Questions.Length)
-                questionLabels[i].text = Questions[i];
-            PaintRatings(i);
-            int captured = i;
-            if (nextButtons[i] != null)
-            {
-                nextButtons[i].onClick.RemoveAllListeners();
-                nextButtons[i].onClick.AddListener(() => Advance(captured));
-                nextButtons[i].interactable = false;
-            }
-        }
-
-        Show(0);
+        card = null;
+        Ask();
     }
 
-    void EnsureSlides()
+    void Ask()
     {
-        for (int i = 0; i < 4; i++)
-        {
-            if (slides[i] != null && questionLabels[i] != null && nextButtons[i] != null)
-            {
-                EnsureRatings(i);
-                continue;
-            }
-
-            BuildSlide(i);
-        }
+        StudyQuestion question = after[index];
+        bool last = index == after.Length - 1;
+        string prompt = question is ChoiceQuestion && question.Id == StudyQuestions.BlockerResolution.Id
+            ? StudyQuestions.ResolutionPrompt(preBlocker)
+            : null;
+        QuestionCardView previous = card;
+        card = QuestionCardView.Show(page, question, prompt, index + 1, after.Length,
+            answer => Answered(question, answer),
+            last, last ? (System.Action<int>)(pick => Picked(question, pick)) : null);
+        if (previous != null)
+            StartCoroutine(Slide(previous, card));
     }
 
-    void BuildSlide(int slide)
+    void Answered(StudyQuestion question, int answer)
     {
-        var panel = new GameObject("Slide " + (slide + 1), typeof(RectTransform), typeof(Image));
-        panel.transform.SetParent(transform, false);
-        RectTransform rect = panel.GetComponent<RectTransform>();
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = rect.offsetMax = Vector2.zero;
-        panel.GetComponent<Image>().color = Paper;
-
-        var labelObject = new GameObject("Question", typeof(RectTransform));
-        labelObject.transform.SetParent(panel.transform, false);
-        RectTransform labelRect = labelObject.GetComponent<RectTransform>();
-        labelRect.anchorMin = labelRect.anchorMax = new Vector2(0.5f, 1f);
-        labelRect.pivot = new Vector2(0.5f, 1f);
-        labelRect.sizeDelta = new Vector2(920f, 280f);
-        labelRect.anchoredPosition = new Vector2(0f, -280f);
-        TMP_Text label = labelObject.AddComponent<TextMeshProUGUI>();
-        if (Capstone.App.UI.AppType.BodyFont != null)
-            label.font = Capstone.App.UI.AppType.BodyFont;
-        label.fontSize = 40f;
-        label.alignment = TextAlignmentOptions.TopLeft;
-        label.color = Ink;
-        label.textWrappingMode = TextWrappingModes.Normal;
-
-        var nextObject = new GameObject(slide == 3 ? "Submit" : "Next", typeof(RectTransform), typeof(Image), typeof(Button));
-        nextObject.transform.SetParent(panel.transform, false);
-        RectTransform nextRect = nextObject.GetComponent<RectTransform>();
-        nextRect.anchorMin = nextRect.anchorMax = new Vector2(0.5f, 0f);
-        nextRect.pivot = new Vector2(0.5f, 0f);
-        nextRect.sizeDelta = new Vector2(420f, 88f);
-        nextRect.anchoredPosition = new Vector2(0f, 160f);
-        nextObject.GetComponent<Image>().color = Rose;
-        Button next = nextObject.GetComponent<Button>();
-        next.targetGraphic = nextObject.GetComponent<Image>();
-        var nextLabel = new GameObject("Label", typeof(RectTransform));
-        nextLabel.transform.SetParent(nextObject.transform, false);
-        RectTransform nextLabelRect = nextLabel.GetComponent<RectTransform>();
-        nextLabelRect.anchorMin = Vector2.zero;
-        nextLabelRect.anchorMax = Vector2.one;
-        nextLabelRect.offsetMin = nextLabelRect.offsetMax = Vector2.zero;
-        TMP_Text nextText = nextLabel.AddComponent<TextMeshProUGUI>();
-        if (Capstone.App.UI.AppType.BodyFont != null)
-            nextText.font = Capstone.App.UI.AppType.BodyFont;
-        nextText.text = slide == 3 ? "Submit" : "Next";
-        nextText.fontSize = 32f;
-        nextText.alignment = TextAlignmentOptions.Center;
-        nextText.color = Color.white;
-        nextText.raycastTarget = false;
-        int captured = slide;
-        next.onClick.AddListener(() => Advance(captured));
-
-        slides[slide] = panel;
-        questionLabels[slide] = label;
-        nextButtons[slide] = next;
-        EnsureRatings(slide);
-    }
-
-    void EnsureRatings(int slide)
-    {
-        if (ratings[slide] != null && ratings[slide].Length == 5)
-            return;
-
-        Transform parent = slides[slide].transform;
-        Transform existing = parent.Find("Ratings");
-        RectTransform row;
-        if (existing == null)
+        SurveyDataManager.Instance.Record(question, answer);
+        index++;
+        if (index < after.Length)
         {
-            var rowObject = new GameObject("Ratings", typeof(RectTransform));
-            rowObject.transform.SetParent(parent, false);
-            row = rowObject.GetComponent<RectTransform>();
-            row.anchorMin = row.anchorMax = new Vector2(0.5f, 0.5f);
-            row.sizeDelta = new Vector2(860f, 120f);
-            row.anchoredPosition = new Vector2(0f, -40f);
-        }
-        else
-        {
-            row = existing as RectTransform;
-        }
-
-        ratings[slide] = new Button[5];
-        for (int score = 1; score <= 5; score++)
-        {
-            Transform found = row.Find(score.ToString());
-            Button button;
-            if (found == null)
-            {
-                var item = new GameObject(score.ToString(), typeof(RectTransform), typeof(Image), typeof(Button));
-                item.transform.SetParent(row, false);
-                RectTransform itemRect = item.GetComponent<RectTransform>();
-                itemRect.anchorMin = itemRect.anchorMax = new Vector2(0f, 0.5f);
-                itemRect.pivot = new Vector2(0f, 0.5f);
-                itemRect.sizeDelta = new Vector2(140f, 100f);
-                itemRect.anchoredPosition = new Vector2((score - 1) * 172f, 0f);
-                item.GetComponent<Image>().color = Color.white;
-                button = item.GetComponent<Button>();
-                button.targetGraphic = item.GetComponent<Image>();
-                var caption = new GameObject("Label", typeof(RectTransform));
-                caption.transform.SetParent(item.transform, false);
-                RectTransform captionRect = caption.GetComponent<RectTransform>();
-                captionRect.anchorMin = Vector2.zero;
-                captionRect.anchorMax = Vector2.one;
-                captionRect.offsetMin = captionRect.offsetMax = Vector2.zero;
-                TMP_Text text = caption.AddComponent<TextMeshProUGUI>();
-                if (Capstone.App.UI.AppType.BodyFont != null)
-                    text.font = Capstone.App.UI.AppType.BodyFont;
-                text.text = score.ToString();
-                text.fontSize = 36f;
-                text.alignment = TextAlignmentOptions.Center;
-                text.color = Ink;
-                text.raycastTarget = false;
-            }
-            else
-            {
-                button = found.GetComponent<Button>();
-            }
-
-            int picked = score;
-            int slideIndex = slide;
-            button.onClick.RemoveAllListeners();
-            button.onClick.AddListener(() => Choose(slideIndex, picked));
-            ratings[slide][score - 1] = button;
-        }
-    }
-
-    void Choose(int slide, int score)
-    {
-        picks[slide] = score;
-        if (post)
-            SurveyDataManager.Instance.RecordPostAnswer(slide, score);
-        else
-            SurveyDataManager.Instance.RecordPreAnswer(slide, score);
-        PaintRatings(slide);
-        if (nextButtons[slide] != null)
-            nextButtons[slide].interactable = true;
-    }
-
-    void PaintRatings(int slide)
-    {
-        Button[] row = ratings[slide];
-        if (row == null)
-            return;
-        for (int i = 0; i < row.Length; i++)
-        {
-            if (row[i] == null)
-                continue;
-            Image image = row[i].GetComponent<Image>();
-            if (image != null)
-                image.color = picks[slide] == i + 1 ? Rose : Blush;
-        }
-    }
-
-    void Advance(int slide)
-    {
-        if (picks[slide] < 1)
-            return;
-        if (slide < 3)
-        {
-            Show(slide + 1);
+            Ask();
             return;
         }
 
-        if (post)
-            SurveyDataManager.Instance.SavePostSurveyImmediately();
-        else
-            SurveyDataManager.Instance.SavePreSurveyImmediately();
+        string note = comment != null ? comment.text : null;
+        StudySession session = SurveyDataManager.Instance.SaveAfter(tags, note);
+        ShowResult(session);
+    }
+
+    /// <summary>On the last screen: open the optional follow-up for buyers who are still unsure.</summary>
+    void Picked(StudyQuestion question, int pick)
+    {
+        SurveyDataManager.Instance.Record(question, pick);
+        if (followUpShown)
+            return;
+        int confidence = SurveyDataManager.Instance.Answer(StudyQuestions.PostConfidence);
+        string resolution = StudyQuestions.BlockerResolution.Key(SurveyDataManager.Instance.Answer(StudyQuestions.BlockerResolution));
+        if (!StudyQuestions.NeedsFollowUp(confidence, resolution))
+            return;
+        followUpShown = true;
+        card.Reveal(FollowUp(), FollowUpHeight);
+    }
+
+    RectTransform FollowUp()
+    {
+        var section = new GameObject("Follow-up", typeof(RectTransform));
+        var rect = (RectTransform)section.transform;
+        rect.SetParent(page, false);
+        float w = card.Width - 96f;
+        QuestionCardView.Label(rect, "Mind sharing what held you back? (Optional)", AppType.BodyFont, 26f, Stone,
+            new Vector2(0f, 0f), new Vector2(w, 40f), TextAlignmentOptions.Left);
+
+        float chipW = (w - 12f) / 2f;
+        for (int i = 0; i < StudyQuestions.OutlierTags.Length; i++)
+        {
+            string tag = StudyQuestions.OutlierTags[i];
+            Button chip = null;
+            chip = QuestionCardView.Pill(rect, tag, new Vector2(chipW, 64f), () => Toggle(tag, chip), 22f, TextAlignmentOptions.Center, Petal, Ink);
+            var chipRect = (RectTransform)chip.transform;
+            chipRect.anchorMin = chipRect.anchorMax = new Vector2(0f, 1f);
+            chipRect.pivot = new Vector2(0f, 1f);
+            chipRect.anchoredPosition = new Vector2((i % 2) * (chipW + 12f), -52f - (i / 2) * 76f);
+        }
+
+        comment = CommentField(rect, new Vector2(0f, -212f), new Vector2(w, 72f));
+        return rect;
+    }
+
+    void Toggle(string tag, Button chip)
+    {
+        bool on = !tags.Remove(tag);
+        if (on)
+            tags.Add(tag);
+        chip.GetComponent<Image>().color = on ? Rose : Petal;
+        chip.GetComponentInChildren<TMP_Text>().color = on ? Color.white : Ink;
+    }
+
+    static TMP_InputField CommentField(RectTransform parent, Vector2 at, Vector2 size)
+    {
+        var host = new GameObject("Comment", typeof(RectTransform), typeof(Image));
+        host.SetActive(false);
+        host.transform.SetParent(parent, false);
+        var rect = (RectTransform)host.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = at;
+        rect.sizeDelta = size;
+        QuestionCardView.Paint(host.GetComponent<Image>(), Petal, 0.5f);
+
+        var area = new GameObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
+        area.transform.SetParent(host.transform, false);
+        var areaRect = (RectTransform)area.transform;
+        areaRect.anchorMin = Vector2.zero;
+        areaRect.anchorMax = Vector2.one;
+        areaRect.offsetMin = new Vector2(28f, 8f);
+        areaRect.offsetMax = new Vector2(-28f, -8f);
+
+        TMP_Text hint = Stretch(QuestionCardView.Label(area.transform, "Anything else? (one line)", AppType.BodyFont, 24f, Stone, Vector2.zero, Vector2.zero, TextAlignmentOptions.MidlineLeft));
+        hint.fontStyle = FontStyles.Italic;
+        TMP_Text typed = Stretch(QuestionCardView.Label(area.transform, "", AppType.BodyFont, 24f, Ink, Vector2.zero, Vector2.zero, TextAlignmentOptions.MidlineLeft));
+        typed.textWrappingMode = TextWrappingModes.NoWrap;
+
+        TMP_InputField field = host.AddComponent<TMP_InputField>();
+        field.textViewport = areaRect;
+        field.textComponent = typed;
+        field.placeholder = hint;
+        field.lineType = TMP_InputField.LineType.SingleLine;
+        field.characterLimit = 140;
+        if (AppType.BodyFont != null)
+            field.fontAsset = AppType.BodyFont;
+        field.pointSize = 24f;
+        host.SetActive(true);
+        return field;
+    }
+
+    static TMP_Text Stretch(TMP_Text text)
+    {
+        text.rectTransform.anchorMin = Vector2.zero;
+        text.rectTransform.anchorMax = Vector2.one;
+        text.rectTransform.offsetMin = text.rectTransform.offsetMax = Vector2.zero;
+        return text;
+    }
+
+    /// <summary>The old card leaves to the left as the new one arrives from the right.</summary>
+    IEnumerator Slide(QuestionCardView leaving, QuestionCardView arriving)
+    {
+        float width = page.rect.width > 10f ? page.rect.width : 1080f;
+        RectTransform from = leaving.Rect;
+        RectTransform to = arriving.Rect;
+        Vector2 home = to.anchoredPosition;
+        float t = 0f;
+        while (t < 1f && from != null && to != null)
+        {
+            t += Time.unscaledDeltaTime / SlideSeconds;
+            float u = UIMotion.EaseOutCubic(Mathf.Clamp01(t));
+            from.anchoredPosition = new Vector2(Mathf.Lerp(0f, -width, u), home.y);
+            to.anchoredPosition = new Vector2(Mathf.Lerp(width, 0f, u), home.y);
+            yield return null;
+        }
+
+        if (from != null)
+            Destroy(from.gameObject);
+        if (to != null)
+            to.anchoredPosition = home;
+    }
+
+    /// <summary>Before and after side by side, so the change is the first thing the buyer sees.</summary>
+    void ShowResult(StudySession session)
+    {
+        if (card != null)
+            UIMotion.Dismiss(card.gameObject);
+        card = null;
+
+        var result = new GameObject("Result", typeof(RectTransform), typeof(Image));
+        result.transform.SetParent(page, false);
+        var rect = (RectTransform)result.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0f);
+        rect.pivot = new Vector2(0.5f, 0f);
+        float w = Mathf.Min(968f, page.rect.width > 300f ? page.rect.width - 64f : 968f);
+        rect.sizeDelta = new Vector2(w, 720f);
+        rect.anchoredPosition = new Vector2(0f, 120f);
+        QuestionCardView.Paint(result.GetComponent<Image>(), Color.white, 0.5f);
+
+        float half = (w - 96f - 24f) / 2f;
+        QuestionCardView.Label(result.transform, "HOW READY YOU FEEL TO BUY", AppType.LabelFont, 22f, Stone, new Vector2(48f, -48f), new Vector2(w - 96f, 40f), TextAlignmentOptions.Left);
+        Score(result.transform, "Before", session.pre_confidence, new Vector2(48f, -108f), half, Petal, Ink);
+        Score(result.transform, "Now", session.post_confidence, new Vector2(48f + half + 24f, -108f), half, Rose, Color.white);
+
+        int? change = session.ConfidenceDelta;
+        string shift = !change.HasValue ? "Thanks — your answers are saved."
+            : change.Value > 0 ? "You feel " + change.Value + (change.Value == 1 ? " step" : " steps") + " more ready than when you arrived."
+            : change.Value < 0 ? "You feel less ready than when you arrived. That is useful to know before spending."
+            : "You feel as ready as when you arrived.";
+        QuestionCardView.Label(result.transform, shift, AppType.DisplayFont, 32f, Ink, new Vector2(48f, -392f), new Vector2(w - 96f, 110f), TextAlignmentOptions.TopLeft);
+        int? size = session.SizeClarityDelta;
+        if (size.HasValue && size.Value != 0)
+            QuestionCardView.Label(result.transform, "Picturing true size: " + (size.Value > 0 ? "+" : "") + size.Value + " on a 7-point scale.",
+                AppType.BodyFont, 26f, Stone, new Vector2(48f, -500f), new Vector2(w - 96f, 50f), TextAlignmentOptions.TopLeft);
+
+        Button close = QuestionCardView.Pill(result.transform, "Back to the catalogue", new Vector2(w - 96f, 96f), Close);
+        var closeRect = (RectTransform)close.transform;
+        closeRect.anchorMin = closeRect.anchorMax = new Vector2(0.5f, 0f);
+        closeRect.pivot = new Vector2(0.5f, 0f);
+        closeRect.anchoredPosition = new Vector2(0f, 48f);
+        UIMotion.Appear(result);
+    }
+
+    void Close()
+    {
         gameObject.SetActive(false);
         MainMenu.TakeOver();
         MenuPage.Open("Catalogue");
     }
 
-    void Show(int slide)
+    static void Score(Transform parent, string caption, int value, Vector2 at, float width, Color fill, Color ink)
     {
-        index = slide;
-        for (int i = 0; i < slides.Length; i++)
-        {
-            if (slides[i] != null)
-                slides[i].SetActive(i == slide);
-        }
+        var box = new GameObject(caption, typeof(RectTransform), typeof(Image));
+        box.transform.SetParent(parent, false);
+        var rect = (RectTransform)box.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = at;
+        rect.sizeDelta = new Vector2(width, 260f);
+        QuestionCardView.Paint(box.GetComponent<Image>(), fill, 0.5f);
+        QuestionCardView.Label(box.transform, caption.ToUpperInvariant(), AppType.LabelFont, 22f, ink, new Vector2(32f, -28f), new Vector2(width - 64f, 36f), TextAlignmentOptions.Left);
+        TMP_Text number = QuestionCardView.Label(box.transform, value > 0 ? value + "<size=40%> / 7</size>" : "–", AppType.DisplayFont, 110f, ink, new Vector2(32f, -66f), new Vector2(width - 64f, 130f), TextAlignmentOptions.Left);
+        number.richText = true;
+        QuestionCardView.Label(box.transform, value > 0 ? StudyQuestions.PostConfidence.Describe(value) : "", AppType.BodyFont, 24f, ink, new Vector2(32f, -200f), new Vector2(width - 64f, 40f), TextAlignmentOptions.Left);
+    }
+
+    static RectTransform Fill(string name, Transform parent, Color color)
+    {
+        var host = new GameObject(name, typeof(RectTransform), typeof(Image));
+        host.transform.SetParent(parent, false);
+        var rect = (RectTransform)host.transform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = rect.offsetMax = Vector2.zero;
+        host.GetComponent<Image>().color = color;
+        return rect;
+    }
+
+    static void Heading(RectTransform parent, string title, string line)
+    {
+        QuestionCardView.Label(parent, "Nº 02  ·  AFTER YOUR VISIT", AppType.LabelFont, 22f, Stone, new Vector2(78f, -200f), new Vector2(924f, 40f), TextAlignmentOptions.Left);
+        TMP_Text big = QuestionCardView.Label(parent, title, AppType.DisplayFont, 72f, Ink, new Vector2(78f, -260f), new Vector2(924f, 110f), TextAlignmentOptions.TopLeft);
+        big.lineSpacing = AppType.Leading(72f);
+        QuestionCardView.Label(parent, line, AppType.BodyFont, 30f, Stone, new Vector2(78f, -380f), new Vector2(924f, 100f), TextAlignmentOptions.TopLeft);
     }
 }
