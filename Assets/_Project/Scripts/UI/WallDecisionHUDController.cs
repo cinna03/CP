@@ -45,6 +45,7 @@ namespace Capstone.App.UI
         bool HasCards => cardPool != null && cardPool.ActiveCount > 0;
         TMP_Text trayHeading;
         GameObject suggestionPill;
+        RectTransform tools;
         TMP_Text keptLabel;
         GameObject compareButton;
         RectTransform compareList;
@@ -200,7 +201,8 @@ namespace Capstone.App.UI
             if (checkIn != null)
                 Destroy(checkIn.gameObject);
 
-            checkDriver = "";
+            // The old 1-5 check-in is gone: the after-visit study questions open straight after this.
+            checkDriver = "Post-visit questions";
             int tried = session != null && session.Tried != null ? session.Tried.Count : 0;
             int kept = session != null && session.Kept != null ? session.Kept.Count : 0;
             int questions = session != null && session.Answers != null ? session.Answers.Count : 0;
@@ -223,37 +225,9 @@ namespace Capstone.App.UI
                 ArtworkData work = Current();
                 pieceTitle = work.Title;
                 dimensions = work.FormatSizeLabel(SizeIndex());
-                frame = session != null && session.SelectedFrame != null && session.SelectedFrame.FrameName.Length > 0 ? session.SelectedFrame.FrameName : "Unframed";
             }
 
-            string pieceLine = dimensions.Length > 0 ? pieceTitle + ", " + dimensions + " · " + frame : pieceTitle;
-            checkIn = CardAt("Finish", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(920f, 1180f), Vector2.zero);
-            checkIn.pivot = new Vector2(0.5f, 0.5f);
-            TMP_Text recap = Label(checkIn, "You tested " + tried + " works on your wall, kept " + kept + " finalists, and asked " + questions + " questions.\n\nTop piece: " + pieceLine, 26f, Ink, FontStyles.Normal, TextAlignmentOptions.TopLeft);
-            recap.rectTransform.anchorMin = new Vector2(0f, 1f);
-            recap.rectTransform.anchorMax = new Vector2(1f, 1f);
-            recap.rectTransform.pivot = new Vector2(0.5f, 1f);
-            recap.rectTransform.sizeDelta = new Vector2(-56f, 160f);
-            recap.rectTransform.anchoredPosition = new Vector2(0f, -24f);
-            recap.enableWordWrapping = true;
-            TMP_Text prompt = Label(checkIn, "How confident do you feel about choosing art for your space now?", 28f, Ink, FontStyles.Bold, TextAlignmentOptions.TopLeft);
-            prompt.rectTransform.anchorMin = new Vector2(0f, 1f);
-            prompt.rectTransform.anchorMax = new Vector2(1f, 1f);
-            prompt.rectTransform.pivot = new Vector2(0.5f, 1f);
-            prompt.rectTransform.sizeDelta = new Vector2(-56f, 90f);
-            prompt.rectTransform.anchoredPosition = new Vector2(0f, -200f);
-            prompt.enableWordWrapping = true;
-
-            Pill(checkIn, "1 · Unsure", new Vector2(0.5f, 1f), new Vector2(820f, 56f), new Vector2(0f, -310f), Accent, delegate { CloseVisit(tried, kept, pieceTitle, dimensions, frame, questions, room, 1); });
-            Pill(checkIn, "2", new Vector2(0.5f, 1f), new Vector2(820f, 56f), new Vector2(0f, -376f), Accent, delegate { CloseVisit(tried, kept, pieceTitle, dimensions, frame, questions, room, 2); });
-            Pill(checkIn, "3", new Vector2(0.5f, 1f), new Vector2(820f, 56f), new Vector2(0f, -442f), Accent, delegate { CloseVisit(tried, kept, pieceTitle, dimensions, frame, questions, room, 3); });
-            Pill(checkIn, "4", new Vector2(0.5f, 1f), new Vector2(820f, 56f), new Vector2(0f, -508f), Accent, delegate { CloseVisit(tried, kept, pieceTitle, dimensions, frame, questions, room, 4); });
-            Pill(checkIn, "5 · Very Confident", new Vector2(0.5f, 1f), new Vector2(820f, 56f), new Vector2(0f, -574f), Accent, delegate { CloseVisit(tried, kept, pieceTitle, dimensions, frame, questions, room, 5); });
-            Pill(checkIn, "Seeing real size helped", new Vector2(0.5f, 1f), new Vector2(820f, 52f), new Vector2(0f, -660f), Blush, delegate { checkDriver = "Seeing real size helped"; });
-            Pill(checkIn, "Advisor tips helped", new Vector2(0.5f, 1f), new Vector2(820f, 52f), new Vector2(0f, -722f), Blush, delegate { checkDriver = "Advisor tips helped"; });
-            Pill(checkIn, "Easy to compare", new Vector2(0.5f, 1f), new Vector2(820f, 52f), new Vector2(0f, -784f), Blush, delegate { checkDriver = "Easy to compare"; });
-            Pill(checkIn, "Skip & Exit", new Vector2(0.5f, 1f), new Vector2(280f, 52f), new Vector2(0f, -870f), Blush, delegate { CloseVisit(tried, kept, pieceTitle, dimensions, frame, questions, room, 0); });
-            checkIn.SetAsLastSibling();
+            CloseVisit(tried, kept, pieceTitle, dimensions, frame, questions, room, 0);
         }
 
         void CloseVisit(int tried, int kept, string title, string dimensions, string frame, int questions, string room, int score)
@@ -261,7 +235,7 @@ namespace Capstone.App.UI
             if (closing)
                 return;
             closing = true;
-            string driver = score == 0 ? "Skipped" : checkDriver;
+            string driver = score == 0 && string.IsNullOrEmpty(checkDriver) ? "Skipped" : checkDriver;
             if (string.IsNullOrEmpty(driver))
                 driver = "Unspecified";
 
@@ -284,7 +258,7 @@ namespace Capstone.App.UI
             if (checkIn != null)
                 Destroy(checkIn.gameObject);
             checkIn = null;
-            ShowToast("Session saved — thank you!");
+            ShowToast("Visit saved");
             if (exitRoutine != null)
                 StopCoroutine(exitRoutine);
             exitRoutine = StartCoroutine(ReturnToMenu());
@@ -511,14 +485,22 @@ namespace Capstone.App.UI
             gameObject.AddComponent<GraphicRaycaster>();
             gameObject.AddComponent<SafeAreaFitter>();
 
-            Button kept = Pill(transform, "Compare Tried (0)", new Vector2(1f, 1f), new Vector2(420f, 72f), new Vector2(-250f, -164f), Accent, ToggleCompare);
+            // Top bar: only the way out (left) and the way to finish (right).
+            Pill(transform, "← Back", new Vector2(0f, 1f), new Vector2(180f, 64f), new Vector2(130f, -76f), Blush, Back);
+            Pill(transform, "Finish visit", new Vector2(1f, 1f), new Vector2(240f, 64f), new Vector2(-160f, -76f), Accent, FinishVisit);
+
+            // Tools: one tidy row above Keep / Save / Dismiss. Buttons that are not available yet are hidden
+            // and the row re-centres itself, so nothing floats around the screen.
+            tools = ToolRow();
+            Tool("Ask", ShowHistory);
+            suggestionPill = Tool("Suggestions", ShowSuggestions).gameObject;
+            suggestionPill.SetActive(false);
+            Button kept = Tool("Compare (0)", ToggleCompare);
             keptLabel = kept.GetComponentInChildren<TMP_Text>();
             compareButton = kept.gameObject;
             compareButton.SetActive(false);
-            Pill(transform, "← Back", new Vector2(0f, 1f), new Vector2(220f, 72f), new Vector2(146f, -80f), Blush, Back);
-            Pill(transform, "Take Photo", new Vector2(0.5f, 1f), new Vector2(280f, 72f), new Vector2(0f, -80f), Accent, TakePhoto);
-            Pill(transform, "Reset Wall", new Vector2(0.5f, 1f), new Vector2(220f, 56f), new Vector2(0f, -176f), Blush, ResetWall);
-            Pill(transform, "Finish Visit", new Vector2(1f, 1f), new Vector2(280f, 72f), new Vector2(-180f, -80f), Accent, FinishVisit);
+            Tool("Photo", TakePhoto);
+            Tool("New wall", ResetWall);
             BuildHistory();
 
             tray = CardAt("Recommendations", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(1000f, 460f), new Vector2(0f, 420f));
@@ -544,8 +526,6 @@ namespace Capstone.App.UI
             layout.childForceExpandWidth = true;
             layout.childForceExpandHeight = true;
             tray.gameObject.SetActive(false);
-            suggestionPill = Pill(transform, "Show Suggestions", new Vector2(0.5f, 0f), new Vector2(420f, 64f), new Vector2(0f, 250f), Accent, ShowSuggestions).gameObject;
-            suggestionPill.SetActive(false);
 
             var decisions = new GameObject("Decisions", typeof(RectTransform));
             decisions.transform.SetParent(transform, false);
@@ -553,7 +533,7 @@ namespace Capstone.App.UI
             decisionRect.anchorMin = decisionRect.anchorMax = new Vector2(0.5f, 0f);
             decisionRect.pivot = new Vector2(0.5f, 0f);
             decisionRect.sizeDelta = new Vector2(980f, 72f);
-            decisionRect.anchoredPosition = new Vector2(0f, 320f);
+            decisionRect.anchoredPosition = new Vector2(0f, 312f);
             Pill(decisionRect, "Keep", new Vector2(0f, 0.5f), new Vector2(300f, 64f), new Vector2(158f, 0f), Accent, Keep);
             Pill(decisionRect, "Save", new Vector2(0.5f, 0.5f), new Vector2(300f, 64f), Vector2.zero, Blush, Save);
             Pill(decisionRect, "Dismiss", new Vector2(1f, 0.5f), new Vector2(300f, 64f), new Vector2(-158f, 0f), Card, DismissWork);
@@ -758,10 +738,8 @@ namespace Capstone.App.UI
             Pill(chipRect, "Where to Hang", new Vector2(0f, 0f), new Vector2(450f, 52f), new Vector2(235f, 28f), Card, AskPlace);
             Pill(chipRect, "Story & Craft", new Vector2(1f, 0f), new Vector2(450f, 52f), new Vector2(-235f, 28f), Card, AskStory);
             BuildAsk();
-            history.gameObject.SetActive(true);
-
-            historyPill = Pill(transform, "Show questions", new Vector2(0f, 1f), new Vector2(280f, 64f), new Vector2(180f, -80f), Accent, ShowHistory).gameObject;
-            historyPill.SetActive(false);
+            // Closed until the buyer taps Ask in the tool row, so the wall stays clear.
+            history.gameObject.SetActive(false);
         }
 
         void AddHistory(string title, string question, string reply, string[] options, ConsultAction[] actions)
@@ -946,7 +924,7 @@ namespace Capstone.App.UI
         {
             int count = session != null && session.Tried != null ? session.Tried.Count : 0;
             if (keptLabel != null)
-                keptLabel.text = "Compare Tried (" + count + ")";
+                keptLabel.text = "Compare (" + count + ")";
             if (compareButton != null)
                 compareButton.SetActive(count >= 2);
         }
@@ -1217,6 +1195,34 @@ namespace Capstone.App.UI
             image.type = Image.Type.Sliced;
             image.color = Card;
             return rect;
+        }
+
+        RectTransform ToolRow()
+        {
+            var row = new GameObject("Tools", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            row.transform.SetParent(transform, false);
+            var rect = row.GetComponent<RectTransform>();
+            rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0f);
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.sizeDelta = new Vector2(1000f, 60f);
+            rect.anchoredPosition = new Vector2(0f, 222f);
+            var layout = row.GetComponent<HorizontalLayoutGroup>();
+            layout.spacing = 12f;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = false;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            return rect;
+        }
+
+        Button Tool(string caption, UnityEngine.Events.UnityAction tap)
+        {
+            Button button = Pill(tools, caption, new Vector2(0.5f, 0.5f), new Vector2(caption.Length > 9 ? 196f : 168f, 58f), Vector2.zero, Card, tap);
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>();
+            if (label != null)
+                label.fontSize = 22f;
+            return button;
         }
 
         Button Pill(Transform parent, string caption, Vector2 anchor, Vector2 size, Vector2 position, Color fill, UnityEngine.Events.UnityAction tap)
