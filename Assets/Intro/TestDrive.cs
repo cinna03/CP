@@ -52,6 +52,7 @@ public class TestDrive : MonoBehaviour
     bool wasDown;
     bool dragging;
     bool onInterface;
+    bool grabbed;
     const float ManualPlaceDelay = 4f;
     const float ManualPlaceDistance = 1.6f;
     static readonly Color PlacePink = new Color32(233, 168, 188, 255);
@@ -154,9 +155,12 @@ public class TestDrive : MonoBehaviour
                 bool wall = plane != null && plane.alignment == PlaneAlignment.Vertical && plane.subsumedBy == null;
                 if (plane == null)
                     continue;
-                Renderer[] drawn = plane.GetComponentsInChildren<Renderer>(true);
-                for (int i = 0; i < drawn.Length; i++)
-                    drawn[i].enabled = wall && piece == null;
+                // The scan overlay is only for choosing a spot. Switching the whole plane object off is
+                // sturdier than its renderers, which the template's visualiser turns back on every frame.
+                // Raycasts still hit it: they go to the AR subsystem, not the GameObject.
+                bool show = wall && piece == null;
+                if (plane.gameObject.activeSelf != show)
+                    plane.gameObject.SetActive(show);
             }
         }
 
@@ -167,6 +171,7 @@ public class TestDrive : MonoBehaviour
         {
             pressedAt = point;
             dragging = false;
+            grabbed = piece != null && Touches(piece, point);
             onInterface = OverInterface();
         }
 
@@ -179,7 +184,8 @@ public class TestDrive : MonoBehaviour
         }
 
         bool moved = down && (point - pressedAt).sqrMagnitude > 18f * 18f;
-        if (down && piece != null && (dragging || moved))
+        // Only a finger that starts on the work moves it, so walking with a thumb on the screen never drags it along.
+        if (down && piece != null && grabbed && (dragging || moved))
         {
             dragging = true;
             Slide(point);
@@ -263,6 +269,23 @@ public class TestDrive : MonoBehaviour
             hint.text = WallSeen() ? "Locked. Tap the wall to add another work" : "Locked. Walk around, or find a wall to add another";
         else
             hint.text = WallSeen() ? "Tap the wall to place it" : "Move across a wall";
+    }
+
+    /// <summary>True when the screen point lands on the work (its quad is one unit square, scaled to size).</summary>
+    static bool Touches(Transform work, Vector2 screen)
+    {
+        Camera camera = Camera.main;
+        if (camera == null || work == null)
+            return false;
+
+        Ray ray = camera.ScreenPointToRay(screen);
+        var surface = new Plane(work.forward, work.position);
+        if (!surface.Raycast(ray, out float distance))
+            return false;
+
+        Vector3 local = work.InverseTransformPoint(ray.GetPoint(distance));
+        const float Margin = 0.62f; // a little beyond the edge so the frame is easy to grab
+        return Mathf.Abs(local.x) <= Margin && Mathf.Abs(local.y) <= Margin;
     }
 
     bool TryPlace(Vector2 screen, out Vector3 position, out Quaternion rotation)
@@ -547,6 +570,8 @@ public class TestDrive : MonoBehaviour
         var backButton = backObject.GetComponent<Button>();
         backButton.targetGraphic = backImage;
         backButton.onClick.AddListener(LeaveToCaller);
+        // The wall's own top bar (WallDecisionHUDController) already has Back; this older one sat behind it.
+        backObject.SetActive(false);
 
         var backLabel = new GameObject("Label", typeof(RectTransform));
         backLabel.transform.SetParent(backObject.transform, false);
@@ -651,7 +676,18 @@ public class TestDrive : MonoBehaviour
         GameObject host = PlaceHereButton(parent);
         host.name = "Lock it here";
         var rect = host.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(420f, 88f);
+        // Under Reset Wall, clear of the work, so it never covers what the buyer is judging.
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = new Vector2(0f, -150f);
+        rect.sizeDelta = new Vector2(420f, 84f);
+        Image pill = host.GetComponent<Image>();
+        Sprite rounded = Capstone.App.UI.UIShapes.Rounded();
+        if (rounded != null)
+        {
+            pill.sprite = rounded;
+            pill.type = Image.Type.Sliced;
+        }
         Button button = host.GetComponent<Button>();
         button.onClick.RemoveAllListeners();
         button.onClick.AddListener(LockHere);
@@ -749,15 +785,16 @@ public class TestDrive : MonoBehaviour
 
     void Leave()
     {
-        Exit(false);
+        Exit(false, true);
     }
 
     void LeaveToCaller()
     {
-        Exit(true);
+        Exit(true, false);
     }
 
-    void Exit(bool restorePage)
+    /// <summary>Ends the wall visit. Only Finish Visit (finished) asks the "after" questions; Back just returns.</summary>
+    void Exit(bool restorePage, bool finished)
     {
         Canvas page = null;
         for (int i = 0; i < covered.Count; i++)
@@ -806,7 +843,8 @@ public class TestDrive : MonoBehaviour
         if (hintHost != null)
             Destroy(hintHost);
         Destroy(gameObject);
-        SurveyFlow.OpenPost();
+        if (finished)
+            SurveyFlow.OpenPost();
     }
 
     static bool OverInterface()

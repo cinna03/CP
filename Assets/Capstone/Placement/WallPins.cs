@@ -11,6 +11,9 @@ namespace Capstone.Placement
     /// </summary>
     public sealed class WallPins : MonoBehaviour
     {
+        /// <summary>Two works whose centres are closer than this are treated as the same spot.</summary>
+        public const float ReplaceRadius = 0.3f;
+
         readonly List<GameObject> pinned = new List<GameObject>();
 
         public int Count => pinned.Count;
@@ -20,6 +23,9 @@ namespace Capstone.Placement
         {
             if (painting == null)
                 return null;
+
+            // Locking on top of an earlier work replaces it instead of stacking copies.
+            RemoveNear(painting.position, ReplaceRadius);
 
             var holder = new GameObject("Locked work " + (pinned.Count + 1));
             holder.transform.SetPositionAndRotation(painting.position, painting.rotation);
@@ -47,6 +53,24 @@ namespace Capstone.Placement
             RoomLight.Register(copy.GetComponent<Renderer>());
             pinned.Add(holder);
             return copy;
+        }
+
+        /// <summary>Takes down any locked work whose centre is within the radius (metres).</summary>
+        public int RemoveNear(Vector3 centre, float radius)
+        {
+            int removed = 0;
+            for (int i = pinned.Count - 1; i >= 0; i--)
+            {
+                GameObject holder = pinned[i];
+                if (holder != null && (holder.transform.position - centre).sqrMagnitude > radius * radius)
+                    continue;
+                if (holder != null)
+                    Destroy(holder);
+                pinned.RemoveAt(i);
+                removed++;
+            }
+
+            return removed;
         }
 
         public void Clear()
