@@ -7,7 +7,7 @@ using UnityEngine;
 /// "Before Visit": the four onboarding questions, one per intro slide (extra ones share the last slide).
 /// A slide with a question waits for the answer instead of a tap, then slides on with its own animation.
 /// After the last answer the card says "Got it—tailoring your gallery experience..." for 1.5 s.
-/// A buyer whose code already has an open "before" session is not asked again.
+/// The questions are asked on every entrance; each entrance is a new session.
 /// </summary>
 public sealed class PreVisitSurvey
 {
@@ -119,6 +119,8 @@ public sealed class PreVisitSurvey
         if (checkedEarlier)
             return;
         checkedEarlier = true;
-        alreadyGiven = SurveyDataManager.Ensure().BeforeAlreadyGiven();
+        // Every entrance starts a fresh session, so the questions are always asked. The "after" answers
+        // pair with the newest open session for that code.
+        alreadyGiven = false;
     }
 }
