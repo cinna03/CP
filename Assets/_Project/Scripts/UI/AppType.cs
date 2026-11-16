@@ -23,6 +23,32 @@ namespace Capstone.App.UI
         public const float Caption = 22f;
         public const float Micro = 18f;
 
+        /// <summary>
+        /// Size-specific tracking (TextMeshPro character spacing), never one value for every size:
+        /// large display text is tightened, body text is left alone, and small labels are opened up
+        /// slightly so they stay legible. Follows Apple's UI typography guidance.
+        /// </summary>
+        public static float Tracking(float size)
+        {
+            if (size >= 48f)
+                return -2f;
+            if (size >= 30f)
+                return -0.5f;
+            if (size >= 24f)
+                return 0f;
+            return 1.5f;
+        }
+
+        /// <summary>Line spacing that tightens as text grows: tight for headings, comfortable for body.</summary>
+        public static float Leading(float size)
+        {
+            if (size >= 48f)
+                return -12f;
+            if (size >= 30f)
+                return -4f;
+            return 0f;
+        }
+
         static TMP_FontAsset body;
         static TMP_FontAsset display;
         static bool tried;

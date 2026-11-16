@@ -1,4 +1,5 @@
 using System.Collections;
+using Capstone.App.Core;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -62,15 +63,19 @@ namespace Capstone.App.UI
         {
             if (delay > 0f)
                 yield return new WaitForSecondsRealtime(delay);
+            // Critically damped spring (no overshoot): Apple's default for UI that was not flicked.
+            var scale = new Spring(0.96f, 1f, Mathf.Max(0.2f, duration)) { Target = 1f };
             float time = 0f;
-            while (time < duration)
+            while (!scale.Settled() || time < duration)
             {
                 if (target == null)
                     yield break;
-                time += Time.unscaledDeltaTime;
-                float t = EaseOutCubic(Mathf.Clamp01(time / duration));
-                group.alpha = t;
-                target.transform.localScale = Vector3.one * Mathf.Lerp(0.96f, 1f, t);
+                float step = Time.unscaledDeltaTime;
+                time += step;
+                group.alpha = EaseOutCubic(Mathf.Clamp01(time / duration));
+                target.transform.localScale = Vector3.one * scale.Step(step);
+                if (time > 2f)
+                    break;
                 yield return null;
             }
             if (target == null)
@@ -137,16 +142,16 @@ namespace Capstone.App.UI
     }
 
     /// <summary>
-    /// Scales a button to 96% of its own size while it is held, then springs back.
-    /// It only moves the scale while a press is starting or ending, so it never fights
-    /// a script that animates the same object at other times.
+    /// Press feedback in the Apple style: the button shrinks to 97% the instant the finger
+    /// touches down (not on release), and springs back from wherever it is when the finger lifts,
+    /// so a quick tap that is released mid-shrink reverses smoothly. It only drives the scale while
+    /// a press is starting or ending, so it never fights another script animating the same object.
     /// </summary>
     public sealed class PressFeedback : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
     {
-        const float Pressed = 0.96f;
+        const float Pressed = 0.97f;
         Vector3 rest;
-        float factor = 1f;
-        float target = 1f;
+        Spring factor = new Spring(1f, 1f, 0.25f);
         bool moving;
         Selectable selectable;
 
@@ -160,9 +165,9 @@ namespace Capstone.App.UI
         {
             if (selectable != null && !selectable.interactable)
                 return;
-            if (!moving && factor >= 0.999f)
+            if (!moving)
                 rest = transform.localScale;
-            target = Pressed;
+            factor = new Spring(factor.Value, 1f, 0.1f) { Velocity = factor.Velocity, Target = Pressed };
             moving = true;
         }
 
@@ -172,18 +177,16 @@ namespace Capstone.App.UI
 
         void Release()
         {
-            if (factor >= 0.999f && !moving)
+            if (!moving)
                 return;
-            target = 1f;
-            moving = true;
+            factor = new Spring(factor.Value, 1f, 0.3f) { Velocity = factor.Velocity, Target = 1f };
         }
 
         void OnDisable()
         {
-            if (moving || factor < 0.999f)
+            if (moving)
                 transform.localScale = rest;
-            factor = 1f;
-            target = 1f;
+            factor = new Spring(1f, 1f, 0.25f);
             moving = false;
         }
 
@@ -191,10 +194,12 @@ namespace Capstone.App.UI
         {
             if (!moving)
                 return;
-            factor = Mathf.MoveTowards(factor, target, Time.unscaledDeltaTime * 0.6f);
-            transform.localScale = rest * factor;
-            if (Mathf.Approximately(factor, target))
+            transform.localScale = rest * factor.Step(Time.unscaledDeltaTime);
+            if (factor.Target >= 1f && factor.Settled())
+            {
+                transform.localScale = rest;
                 moving = false;
+            }
         }
     }
 }

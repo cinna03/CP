@@ -91,13 +91,38 @@ namespace Capstone.App.UI
             widthField = Field(root, "e.g. 60", TMP_InputField.ContentType.DecimalNumber, new Vector2(78f, -1276f), new Vector2(440f, 96f));
             Label(root, "HEIGHT (CM)", AppType.LabelFont, AppType.Micro, Stone, new Vector2(562f, -1240f), new Vector2(440f, 30f), TextAlignmentOptions.Left);
             heightField = Field(root, "e.g. 80", TMP_InputField.ContentType.DecimalNumber, new Vector2(562f, -1276f), new Vector2(440f, 96f));
-            widthField.onValueChanged.AddListener(_ => shapeWarned = false);
-            heightField.onValueChanged.AddListener(_ => shapeWarned = false);
+            widthField.onValueChanged.AddListener(_ => ValidateInline());
+            heightField.onValueChanged.AddListener(_ => ValidateInline());
 
             message = Label(root, "", AppType.BodyFont, AppType.Caption, Rose, new Vector2(78f, -1400f), new Vector2(924f, 110f), TextAlignmentOptions.TopLeft);
 
             Button go = Pill(root, "Try on my wall", new Vector2(0.5f, 0f), new Vector2(924f, 112f), new Vector2(0f, 120f), Ink, Paper, Submit);
             go.GetComponent<RectTransform>().pivot = new Vector2(0.5f, 0f);
+        }
+
+        /// <summary>
+        /// Checks the size as the buyer types, so a problem is shown next to the fields straight away
+        /// rather than only after tapping the button. An empty field is not an error yet.
+        /// </summary>
+        void ValidateInline()
+        {
+            shapeWarned = false;
+            if (string.IsNullOrWhiteSpace(widthField.text) || string.IsNullOrWhiteSpace(heightField.text))
+            {
+                message.text = "";
+                return;
+            }
+
+            OwnPieceProblem problem = OwnPieceRules.Validate(true, widthField.text, heightField.text, out float width, out float height);
+            if (problem != OwnPieceProblem.None)
+            {
+                message.text = OwnPieceRules.Message(problem);
+                return;
+            }
+
+            message.text = photo != null && OwnPieceRules.LooksSwapped(photo.width, photo.height, width, height)
+                ? "Check the sides: the photo looks like width and height may be swapped."
+                : "";
         }
 
         void ChoosePhoto()
@@ -123,7 +148,7 @@ namespace Capstone.App.UI
             photoImage.sprite = Sprite.Create(photo, new Rect(0, 0, photo.width, photo.height), new Vector2(0.5f, 0.5f), 100f);
             photoImage.enabled = true;
             photoHint.text = "";
-            shapeWarned = false;
+            ValidateInline();
         }
 
         void Submit()
@@ -198,6 +223,8 @@ namespace Capstone.App.UI
             text.fontSize = size;
             text.color = color;
             text.alignment = align;
+            text.characterSpacing = AppType.Tracking(size);
+            text.lineSpacing = AppType.Leading(size);
             text.raycastTarget = false;
             Place(text.rectTransform, topLeft, box);
             return text;
