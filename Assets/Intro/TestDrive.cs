@@ -94,6 +94,10 @@ public class TestDrive : MonoBehaviour
         if (rays == null)
             rays = Object.FindAnyObjectByType<ARRaycastManager>(FindObjectsInactive.Include);
         SilenceTemplateSpawner();
+        // Make sure the AR session is running on every visit, not just the first.
+        ARSession arSession = Object.FindAnyObjectByType<ARSession>(FindObjectsInactive.Include);
+        if (arSession != null)
+            arSession.enabled = true;
         if (planes != null)
         {
             planes.enabled = true;
@@ -661,10 +665,15 @@ public class TestDrive : MonoBehaviour
             Canvas canvas = canvases[i];
             if (canvas == null || !canvas.isRootCanvas || canvas.renderMode != RenderMode.ScreenSpaceOverlay)
                 continue;
-            if (covered.Contains(canvas) || canvas.GetComponentInParent<TestDrive>() != null)
+            if (!canvas.enabled || covered.Contains(canvas) || canvas.GetComponentInParent<TestDrive>() != null)
                 continue;
+            // Switch off drawing and taps only. Deactivating the object would stop its scripts and
+            // animations mid-way (and anything parented under it), which left the catalogue unresponsive.
             screensBehind.Add(canvas);
-            canvas.gameObject.SetActive(false);
+            canvas.enabled = false;
+            var taps = canvas.GetComponent<UnityEngine.UI.GraphicRaycaster>();
+            if (taps != null)
+                taps.enabled = false;
         }
     }
 
@@ -714,9 +723,15 @@ public class TestDrive : MonoBehaviour
             page.transform.SetAsLastSibling();
         for (int i = 0; i < screensBehind.Count; i++)
         {
-            if (screensBehind[i] != null)
-                screensBehind[i].gameObject.SetActive(true);
+            Canvas canvas = screensBehind[i];
+            if (canvas == null)
+                continue;
+            canvas.enabled = true;
+            var taps = canvas.GetComponent<UnityEngine.UI.GraphicRaycaster>();
+            if (taps != null)
+                taps.enabled = true;
         }
+        screensBehind.Clear();
 
         if (planes != null)
             planes.enabled = false;
