@@ -199,27 +199,20 @@ public class MainMenu : MonoBehaviour
         float top = height * 0.5f - 12f;
         float bottom = -height * 0.5f;
         float innerW = right - left;
+        float headerH = 88f;
         float dockH = 64f;
         float dockLift = 20f;
-        float headerH = 88f;
-        float reserved = gap + 158f + gap + dockH + dockLift;
-        float topZone = Mathf.Min(height * 0.38f, Mathf.Max(160f, height - reserved - 12f));
-        float zoneBottom = top - topZone;
         float dashTop = top - headerH;
-        float dashH = Mathf.Max(0f, dashTop - zoneBottom);
+        float dashBottom = bottom + dockLift + dockH + gap;
+        float dashH = Mathf.Max(180f, dashTop - dashBottom);
         float dashY = dashTop - dashH * 0.5f;
-        float folderCeiling = zoneBottom - gap;
-        float folderFloor = bottom + dockLift + dockH + gap;
-        float folderRoom = folderCeiling - folderFloor;
-        float folderH = folderRoom >= 150f ? Mathf.Min(158f, folderRoom) : Mathf.Max(120f, folderRoom);
-        float minCenter = folderFloor + folderH * 0.5f;
-        float maxCenter = folderCeiling - folderH * 0.5f;
-        float folderY = maxCenter < minCenter ? minCenter : (minCenter + maxCenter) * 0.5f;
-        float half = (innerW - gap) * 0.5f;
 
         Title(panel, new Vector2(left + 250f, top - headerH * 0.5f));
         HideNamed(panel, "Slogan");
         HideNamed(panel, "Open");
+        HideNamed(panel, "Favorites");
+        HideNamed(panel, "Gallery");
+        HideNamed(panel, "Help");
 
         RectTransform dashboard = Host(panel, "Studio dashboard", new Vector2(0f, dashY), new Vector2(innerW, dashH));
         if (Application.isPlaying)
@@ -234,19 +227,11 @@ public class MainMenu : MonoBehaviour
             view.Show(session, new WallSnapshotService().GetAllSnapshots(), Face(), work => CataloguePage.OpenWork(work));
         }
 
-        StudioDigest digest = StudioDigest.Read(
-            Resources.Load<CatalogueShelf>("CatalogueShelf") != null ? Resources.Load<CatalogueShelf>("CatalogueShelf").Session : null,
-            Application.isPlaying ? new WallSnapshotService().GetAllSnapshots() : null);
-        Folder(panel, "Favorites", new Vector2(left + half * 0.5f, folderY), new Vector2(half, folderH),
-            new Color32(0xE3, 0x8F, 0xA3, 0xFF), digest.Hearts, "works", digest.FavoriteLine, digest.FavoriteThumb);
-        Folder(panel, "Gallery", new Vector2(right - half * 0.5f, folderY), new Vector2(half, folderH),
-            new Color32(0xF4, 0xC6, 0xD2, 0xFF), digest.Photos, "photos", digest.GalleryLine, null);
-
         RectTransform dock = DockBar(panel, margin, dockH, dockLift);
-        float dockW = (Mathf.Max(120f, width - margin * 2f) - 24f) / 3f;
+        HideNamed(dock, "Help");
+        float dockW = (Mathf.Max(120f, width - margin * 2f) - 12f) / 2f;
         Dock(dock, "Catalogue", "Catalogue", 0, dockW, false);
         Dock(dock, "AR visualization session", "Try on My Wall", 1, dockW, true);
-        Dock(dock, "Help", "Help", 2, dockW, false);
 
         Transform board = panel.Find("Board");
         if (board != null)
@@ -551,25 +536,9 @@ public class MainMenu : MonoBehaviour
         Listen(rect.gameObject, name);
     }
 
-    static TMP_FontAsset Face()
-    {
-        if (nighty != null)
-            return nighty;
-        TMP_FontAsset[] fonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
-        for (int i = 0; i < fonts.Length; i++)
-        {
-            if (fonts[i] != null && fonts[i].name.IndexOf("Nighty", System.StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                nighty = fonts[i];
-                return nighty;
-            }
-        }
+    // Display face for the menu. Inter SemiBold, loaded by AppType, replaces the Nighty demo font.
+    static TMP_FontAsset Face() => Capstone.App.UI.AppType.DisplayFont;
 
-        nighty = TMP_Settings.defaultFontAsset;
-        return nighty;
-    }
-
-    static TMP_FontAsset nighty;
 
     static void Masthead(RectTransform panel, Vector2 center, Vector2 size)
     {
@@ -628,8 +597,8 @@ public class MainMenu : MonoBehaviour
             labelRect.anchorMax = Vector2.one;
             labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
             var text = labelObject.AddComponent<TextMeshProUGUI>();
-            if (TMP_Settings.defaultFontAsset != null)
-                text.font = TMP_Settings.defaultFontAsset;
+            if (Capstone.App.UI.AppType.BodyFont != null)
+                text.font = Capstone.App.UI.AppType.BodyFont;
             text.text = "Open";
             text.fontSize = Mathf.Clamp(pillH * 0.42f, 16f, 26f);
             text.fontStyle = FontStyles.Bold;
@@ -661,8 +630,8 @@ public class MainMenu : MonoBehaviour
         {
             line.transform.SetParent(panel, false);
             var text = line.AddComponent<TextMeshProUGUI>();
-            if (TMP_Settings.defaultFontAsset != null)
-                text.font = TMP_Settings.defaultFontAsset;
+            if (Capstone.App.UI.AppType.BodyFont != null)
+                text.font = Capstone.App.UI.AppType.BodyFont;
             text.raycastTarget = false;
             Record(line);
         }
@@ -775,8 +744,8 @@ public class MainMenu : MonoBehaviour
         labelRect.anchoredPosition = new Vector2(0f, -36f);
 
         var text = labelObject.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            text.font = TMP_Settings.defaultFontAsset;
+        if (Capstone.App.UI.AppType.BodyFont != null)
+            text.font = Capstone.App.UI.AppType.BodyFont;
         text.text = name;
         text.fontSize = typeSize;
         text.fontStyle = FontStyles.Bold;
@@ -860,8 +829,8 @@ public class MainMenu : MonoBehaviour
             var labelObject = new GameObject("Label", typeof(RectTransform));
             labelObject.transform.SetParent(card.transform, false);
             var text = labelObject.AddComponent<TextMeshProUGUI>();
-            if (TMP_Settings.defaultFontAsset != null)
-                text.font = TMP_Settings.defaultFontAsset;
+            if (Capstone.App.UI.AppType.BodyFont != null)
+                text.font = Capstone.App.UI.AppType.BodyFont;
             text.fontStyle = FontStyles.Bold;
             text.alignment = TextAlignmentOptions.Center;
             text.raycastTarget = false;

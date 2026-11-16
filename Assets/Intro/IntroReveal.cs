@@ -193,12 +193,7 @@ public class IntroReveal : MonoBehaviour
         else if (beat == Beat.Ready)
         {
             if (ScreenAdvance.Tapped())
-            {
-                if (returnTrip)
-                    AskForEntrance();
-                else
-                    BeginFill();
-            }
+                FinishIntro();
         }
         else if (beat == Beat.Fill)
             StepFill();
@@ -344,6 +339,10 @@ public class IntroReveal : MonoBehaviour
         ReleaseBall();
         time = 0f;
         beat = Beat.Ready;
+        if (!returnTrip)
+            AskForEntrance();
+        else
+            FinishIntro();
     }
 
     void ReleaseBall()
@@ -360,7 +359,20 @@ public class IntroReveal : MonoBehaviour
     void AskForEntrance()
     {
         enabled = false;
-        AccessGate.Present(null, beginningName != null ? beginningName.font : null);
+        AccessGate.Present(ResumeSlides, beginningName != null ? beginningName.font : null);
+    }
+
+    void ResumeSlides()
+    {
+        enabled = true;
+        BeginFill();
+    }
+
+    void FinishIntro()
+    {
+        enabled = false;
+        MainMenu.TakeOver();
+        MenuPage.Open("Catalogue");
     }
 
     void BeginFill()

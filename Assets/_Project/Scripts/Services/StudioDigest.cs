@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Capstone.App.Data;
 using UnityEngine;
@@ -73,6 +74,7 @@ namespace Capstone.App.Services
                 AddWeights(weights, session.Taste != null ? session.Taste.LikedStyles : null);
                 AddWeights(weights, session.Taste != null ? session.Taste.LikedMoods : null);
                 AddWeights(weights, session.Taste != null ? session.Taste.LikedColours : null);
+                IncludeSaved(digest, seen, weights);
             }
 
             digest.Photos = photos != null ? photos.Count : 0;
@@ -89,6 +91,65 @@ namespace Capstone.App.Services
                 digest.Bars.Add(new StudioBar(ranked[i].Key, ranked[i].Value));
 
             return digest;
+        }
+
+        static void IncludeSaved(StudioDigest digest, HashSet<string> seen, Dictionary<string, float> weights)
+        {
+            string code = new UserProfileTracker().CurrentEntranceCode;
+            LocalProfile saved = LocalProfileStore.Load(code);
+            if (saved == null)
+                return;
+
+            CatalogueShelf shelf = Resources.Load<CatalogueShelf>("CatalogueShelf");
+            IReadOnlyList<ArtworkData> works = shelf != null ? shelf.Works : null;
+            if (saved.Explored != null)
+            {
+                for (int i = 0; i < saved.Explored.Count; i++)
+                {
+                    string id = saved.Explored[i];
+                    if (string.IsNullOrEmpty(id) || !seen.Add(id))
+                        continue;
+                    digest.Explored++;
+                }
+
+                for (int i = saved.Explored.Count - 1; i >= 0 && digest.Recent.Count < 3; i--)
+                {
+                    ArtworkData work = Find(works, saved.Explored[i]);
+                    if (work != null && !Listed(digest.Recent, work))
+                        digest.Recent.Add(work);
+                }
+            }
+
+            AddStored(weights, saved.KeptStyles);
+            AddStored(weights, saved.KeptMoods);
+            AddStored(weights, saved.KeptColours);
+        }
+
+        static ArtworkData Find(IReadOnlyList<ArtworkData> works, string identifier)
+        {
+            if (works == null || string.IsNullOrEmpty(identifier))
+                return null;
+            for (int i = 0; i < works.Count; i++)
+            {
+                ArtworkData work = works[i];
+                if (work != null && string.Equals(work.Identifier, identifier, StringComparison.Ordinal))
+                    return work;
+            }
+
+            return null;
+        }
+
+        static void AddStored(Dictionary<string, float> weights, List<StoredWeight> notes)
+        {
+            if (notes == null)
+                return;
+            for (int i = 0; i < notes.Count; i++)
+            {
+                StoredWeight note = notes[i];
+                if (note == null)
+                    continue;
+                Add(weights, note.Tag, note.Weight);
+            }
         }
 
         static void Note(Dictionary<string, float> weights, ArtworkData work)

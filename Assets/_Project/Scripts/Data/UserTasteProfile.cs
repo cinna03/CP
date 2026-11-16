@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using Capstone.App.Services;
+using UnityEngine;
 
 namespace Capstone.App.Data
 {
     /// <summary>
-    /// What this visit has learned about the buyer. It is not written to the device.
+    /// What this visit has learned about the buyer.
+    /// The open visit stays in memory. LocalProfileStore keeps the history on the device.
     /// Empty text means that fact is still unknown.
     /// </summary>
     public sealed class UserTasteProfile
@@ -38,6 +41,8 @@ namespace Capstone.App.Data
             Add(styles, style, change);
             Add(moods, mood, change);
             Add(colours, colour, change);
+            if (Application.isPlaying || ArtworkSessionState.PersistOutsidePlay)
+                LocalProfileStore.AddTaste(new UserProfileTracker().CurrentEntranceCode, style, mood, colour, change);
         }
 
         public float Weight(IReadOnlyDictionary<string, float> weights, string tag)
@@ -70,7 +75,33 @@ namespace Capstone.App.Data
                 changed = true;
             }
 
+            if (changed)
+                StorePlace();
             return changed;
+        }
+
+        void StorePlace()
+        {
+            if (!Application.isPlaying && !ArtworkSessionState.PersistOutsidePlay)
+                return;
+            LocalProfileStore.RememberPlace(new UserProfileTracker().CurrentEntranceCode, TargetRoom, WallLighting, FurnitureContext);
+        }
+
+        /// <summary>Replaces the open visit with the copy stored for this entrance code.</summary>
+        public void ApplyVisit(string room, string lighting, string furniture, IList<StoredWeight> styles, IList<StoredWeight> moods, IList<StoredWeight> colours)
+        {
+            bool any = !string.IsNullOrEmpty(room) || !string.IsNullOrEmpty(lighting) || !string.IsNullOrEmpty(furniture)
+                || HasWeight(styles) || HasWeight(moods) || HasWeight(colours);
+            if (!any)
+                return;
+
+            Clear();
+            TargetRoom = room ?? "";
+            WallLighting = lighting ?? "";
+            FurnitureContext = furniture ?? "";
+            Set(this.styles, styles);
+            Set(this.moods, moods);
+            Set(this.colours, colours);
         }
 
         /// <summary>Accepts one of the quick replies. Exact labels only.</summary>
@@ -83,18 +114,21 @@ namespace Capstone.App.Data
             if (TargetRoom.Length == 0 && (value == LivingRoom || value == Bedroom || value == Hallway || value == Workspace))
             {
                 TargetRoom = value;
+                StorePlace();
                 return true;
             }
 
             if (WallLighting.Length == 0 && (value == BrightLight || value == WarmLight || value == SoftLight))
             {
                 WallLighting = value;
+                StorePlace();
                 return true;
             }
 
             if (FurnitureContext.Length == 0 && (value == AboveSofa || value == AboveBed || value == FocalWall || value == DeskShelf))
             {
                 FurnitureContext = value;
+                StorePlace();
                 return true;
             }
 
@@ -142,6 +176,32 @@ namespace Capstone.App.Data
             styles.Clear();
             moods.Clear();
             colours.Clear();
+        }
+
+        static bool HasWeight(IList<StoredWeight> weights)
+        {
+            if (weights == null)
+                return false;
+            for (int i = 0; i < weights.Count; i++)
+            {
+                if (weights[i] != null && !string.IsNullOrWhiteSpace(weights[i].Tag))
+                    return true;
+            }
+
+            return false;
+        }
+
+        static void Set(Dictionary<string, float> target, IList<StoredWeight> weights)
+        {
+            if (target == null || weights == null)
+                return;
+            for (int i = 0; i < weights.Count; i++)
+            {
+                StoredWeight note = weights[i];
+                if (note == null || string.IsNullOrWhiteSpace(note.Tag))
+                    continue;
+                target[note.Tag.Trim()] = note.Weight;
+            }
         }
 
         static void Add(Dictionary<string, float> weights, string tag, float change)

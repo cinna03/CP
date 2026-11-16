@@ -101,6 +101,8 @@ namespace Capstone.App.Data
                 dismissed.Clear();
             if (taste != null)
                 taste.Clear();
+            if (CanPersist)
+                LocalProfileStore.CommitVisit(new UserProfileTracker().CurrentEntranceCode);
             HasDecision = false;
             Changed?.Invoke();
         }
@@ -139,8 +141,10 @@ namespace Capstone.App.Data
         /// <summary>Records a work placed on the wall. A later Keep, Save, or Dismiss replaces Viewing.</summary>
         public void NoteTried(ArtworkData artwork, int sizeIndex, FrameOption frame, string status)
         {
-            if (artwork == null)
+            if (artwork == null || string.IsNullOrEmpty(artwork.Identifier))
                 return;
+            if (CanPersist)
+                LocalProfileStore.RememberExplored(new UserProfileTracker().CurrentEntranceCode, artwork.Identifier);
             if (tried == null)
                 tried = new List<TriedPiece>();
 
@@ -230,6 +234,9 @@ namespace Capstone.App.Data
             }
 
             string[] savedIds = ReadIds();
+            LocalProfile saved = CanPersist ? LocalProfileStore.Load(new UserProfileTracker().CurrentEntranceCode) : null;
+            if (saved != null && saved.Favorites != null && saved.Favorites.Count > 0)
+                savedIds = saved.Favorites.ToArray();
             if (shortlist == null)
                 shortlist = new List<ArtworkData>();
 
@@ -242,14 +249,25 @@ namespace Capstone.App.Data
             }
 
             if (savedIds.Length > 0 && restored.Count == 0)
+            {
+                ApplyStoredVisit(saved);
                 return;
+            }
 
             shortlist.Clear();
             for (int i = 0; i < restored.Count; i++)
                 shortlist.Add(restored[i]);
 
             Remember();
+            ApplyStoredVisit(saved);
             Changed?.Invoke();
+        }
+
+        void ApplyStoredVisit(LocalProfile saved)
+        {
+            if (saved == null || taste == null)
+                return;
+            taste.ApplyVisit(saved.VisitRoom, saved.VisitLighting, saved.VisitFurniture, saved.VisitStyles, saved.VisitMoods, saved.VisitColours);
         }
 
         public void FlushSaved()
@@ -275,6 +293,7 @@ namespace Capstone.App.Data
 
                 PlayerPrefs.SetString(FavoritesKey(), string.Join(",", ids));
                 PlayerPrefs.Save();
+                LocalProfileStore.ReplaceFavorites(new UserProfileTracker().CurrentEntranceCode, ids);
             }
             catch (Exception error)
             {

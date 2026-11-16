@@ -305,8 +305,8 @@ namespace Capstone.App.UI
             rect.anchorMax = Vector2.one;
             rect.offsetMin = rect.offsetMax = Vector2.zero;
             var text = host.AddComponent<TextMeshProUGUI>();
-            if (TMP_Settings.defaultFontAsset != null)
-                text.font = TMP_Settings.defaultFontAsset;
+            if (Capstone.App.UI.AppType.BodyFont != null)
+                text.font = Capstone.App.UI.AppType.BodyFont;
             text.text = caption;
             text.fontSize = size;
             text.fontStyle = style;

@@ -25,7 +25,7 @@ namespace Capstone.App.Services
                 string folder = Folder();
                 string id = Guid.NewGuid().ToString("N");
                 string fileName = id + ".png";
-                File.WriteAllBytes(Path.Combine(folder, fileName), ImageConversion.EncodeToPNG(screenshot));
+                SafeFile.WriteAllBytes(Path.Combine(folder, fileName), ImageConversion.EncodeToPNG(screenshot));
 
             var record = new WallSnapshotRecord
             {
@@ -134,10 +134,10 @@ namespace Capstone.App.Services
             try
             {
                 string path = ManifestPath();
-                if (!File.Exists(path))
+                if (!SafeFile.Exists(path))
                     return new SnapshotFile();
 
-                SnapshotFile file = JsonUtility.FromJson<SnapshotFile>(File.ReadAllText(path));
+                SnapshotFile file = SafeFile.ReadJson<SnapshotFile>(path);
                 if (file == null || file.Items == null)
                     return new SnapshotFile();
                 return file;
@@ -153,7 +153,7 @@ namespace Capstone.App.Services
         {
             try
             {
-                File.WriteAllText(ManifestPath(), JsonUtility.ToJson(file, true));
+                SafeFile.WriteAllText(ManifestPath(), JsonUtility.ToJson(file, true));
             }
             catch (Exception error)
             {

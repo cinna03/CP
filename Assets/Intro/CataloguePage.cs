@@ -183,8 +183,8 @@ public static class CataloguePage
         textRect.anchorMax = Vector2.one;
         textRect.offsetMin = textRect.offsetMax = Vector2.zero;
         TMP_Text value = textObject.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            value.font = TMP_Settings.defaultFontAsset;
+        if (Capstone.App.UI.AppType.BodyFont != null)
+            value.font = Capstone.App.UI.AppType.BodyFont;
         value.fontSize = 26f;
         value.color = Ink;
         value.alignment = TextAlignmentOptions.MidlineLeft;
@@ -196,8 +196,8 @@ public static class CataloguePage
         placeholderRect.anchorMax = Vector2.one;
         placeholderRect.offsetMin = placeholderRect.offsetMax = Vector2.zero;
         TMP_Text placeholder = placeholderObject.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            placeholder.font = TMP_Settings.defaultFontAsset;
+        if (Capstone.App.UI.AppType.BodyFont != null)
+            placeholder.font = Capstone.App.UI.AppType.BodyFont;
         placeholder.text = "Search by mood, colour, style, or artist...";
         placeholder.fontSize = 24f;
         placeholder.fontStyle = FontStyles.Italic;
@@ -493,6 +493,7 @@ public static class CataloguePage
     {
         var card = new GameObject(work.Identifier, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
         card.transform.SetParent(content, false);
+        Capstone.App.UI.UIMotion.AppearInList(card);
         Image image = card.GetComponent<Image>();
         image.sprite = RoundedSprite();
         image.type = Image.Type.Sliced;
@@ -529,7 +530,7 @@ public static class CataloguePage
         heartImage.sprite = RoundedSprite();
         heartImage.type = Image.Type.Sliced;
         heartImage.color = saved ? Accent : Blush;
-        TMP_Text heart = Text(heartObject.transform, saved ? "♥" : "♡", 42f, saved ? Ink : Stone, FontStyles.Normal, Vector2.zero, Vector2.zero, true, TextAlignmentOptions.Center);
+        TMP_Text heart = Text(heartObject.transform, saved ? "♥" : "♥", 42f, saved ? Ink : Stone, FontStyles.Normal, Vector2.zero, Vector2.zero, true, TextAlignmentOptions.Center);
         heart.raycastTarget = false;
         ArtworkData chosen = work;
         heartObject.GetComponent<Button>().onClick.AddListener(() => ToggleSave(chosen, heart, heartImage));
@@ -543,7 +544,7 @@ public static class CataloguePage
 
         bool include = !session.IsShortlisted(work);
         session.SetShortlisted(work, include);
-        heart.text = include ? "♥" : "♡";
+        heart.text = include ? "♥" : "♥";
         heart.color = include ? Ink : Stone;
         if (heartImage != null)
             heartImage.color = include ? Accent : Blush;
@@ -917,8 +918,8 @@ public static class CataloguePage
         var text = label.AddComponent<TextMeshProUGUI>();
         if (theme != null && theme.Font != null)
             text.font = theme.Font;
-        else if (TMP_Settings.defaultFontAsset != null)
-            text.font = TMP_Settings.defaultFontAsset;
+        else if (Capstone.App.UI.AppType.BodyFont != null)
+            text.font = Capstone.App.UI.AppType.BodyFont;
         text.text = value ?? "";
         text.fontSize = size;
         text.fontStyle = fontStyle;

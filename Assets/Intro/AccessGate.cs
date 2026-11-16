@@ -17,15 +17,21 @@ public class AccessGate : MonoBehaviour
     public static bool Granted { get; private set; }
 
     const int Length = 5;
-    static readonly Color Paper = new Color32(0xFA, 0xF7, 0xF6, 0xFF);
-    static readonly Color Ink = new Color32(0x1A, 0x17, 0x18, 0xFF);
-    static readonly Color Quiet = new Color32(0xC8, 0xC0, 0xBC, 0xFF);
-    static readonly Color Stone = new Color32(0x8A, 0x82, 0x7E, 0xFF);
+    // Editorial direction: off-white paper, ink type, dusty-pink wordmark.
+    static readonly Color Paper = new Color32(0xFC, 0xFB, 0xFA, 0xFF);
+    static readonly Color Ink = new Color32(0x2B, 0x21, 0x24, 0xFF);
+    static readonly Color Quiet = new Color32(0xD9, 0xC3, 0xC9, 0xFF);
+    static readonly Color Stone = new Color32(0x6B, 0x53, 0x59, 0xFF);
+    static readonly Color Rose = new Color32(0xB8, 0x5C, 0x74, 0xFF);
+    static readonly Color Blush = new Color32(0xE4, 0xA9, 0xB5, 0xFF);
+    const float Margin = 78f;
+    const float SlotsY = -275f;
 
     readonly Image[] borders = new Image[Length];
     readonly Image[] fills = new Image[Length];
     readonly Image[] carets = new Image[Length];
     readonly TMP_Text[] glyphs = new TMP_Text[Length];
+    readonly Image[] lines = new Image[Length];
     readonly float[] born = new float[Length];
 
     RectTransform titleRect;
@@ -98,7 +104,7 @@ public class AccessGate : MonoBehaviour
         for (int i = 0; i < Length; i++)
             born[i] = -1f;
 
-        TMP_FontAsset font = TMP_Settings.defaultFontAsset;
+        TMP_FontAsset font = Capstone.App.UI.AppType.BodyFont;
         TMP_FontAsset nighty = nightyFont != null ? nightyFont : pendingFont != null ? pendingFont : NightyFont();
         if (nighty == null)
             nighty = ThemeNighty();
@@ -107,33 +113,69 @@ public class AccessGate : MonoBehaviour
 
         BuildBow();
 
-        TMP_Text prompt = NewText("ENTER YOUR CODE", words, 36f, new Color(0.88235295f, 0.6156863f, 0.74509805f, 1f), FontStyles.Normal);
-        prompt.characterSpacing = 0f;
+        TMP_FontAsset heavy = Capstone.App.UI.AppType.HeavyFont;
+        TMP_FontAsset label = Capstone.App.UI.AppType.LabelFont;
+
+        TMP_Text prompt = NewText("VISIT CODE", label, 32f, Stone, FontStyles.Normal);
+        prompt.characterSpacing = 12f;
+        prompt.alignment = TextAlignmentOptions.Left;
         titleRect = prompt.rectTransform;
-        titleRect.sizeDelta = new Vector2(1000f, 56f);
-        titleRect.anchoredPosition = new Vector2(0f, 64f);
+        PinLeft(titleRect, new Vector2(900f, 48f), SlotsY + 130f);
+
+        TMP_Text tagline = NewText("See it at its real size,\non your own wall.", label, 60f, Ink, FontStyles.Normal);
+        tagline.alignment = TextAlignmentOptions.TopLeft;
+        tagline.lineSpacing = -8f;
+        PinLeft(tagline.rectTransform, new Vector2(900f, 160f), SlotsY + 300f);
+
+        TMP_Text place = NewText("ART \u00B7 KIGALI", label, 34f, Ink, FontStyles.Normal);
+        place.characterSpacing = 8f;
+        place.alignment = TextAlignmentOptions.Left;
+        RectTransform placeRect = place.rectTransform;
+        placeRect.anchorMin = placeRect.anchorMax = new Vector2(0f, 1f);
+        placeRect.pivot = new Vector2(0f, 1f);
+        placeRect.sizeDelta = new Vector2(500f, 48f);
+        placeRect.anchoredPosition = new Vector2(Margin, -150f);
+
+        TMP_Text issue = NewText("N\u00BA 01", label, 34f, Ink, FontStyles.Normal);
+        issue.alignment = TextAlignmentOptions.Right;
+        RectTransform issueRect = issue.rectTransform;
+        issueRect.anchorMin = issueRect.anchorMax = new Vector2(1f, 1f);
+        issueRect.pivot = new Vector2(1f, 1f);
+        issueRect.sizeDelta = new Vector2(300f, 48f);
+        issueRect.anchoredPosition = new Vector2(-Margin, -150f);
+
+        TMP_Text wordmark = NewText("Cinnarios", heavy, 330f, Blush, FontStyles.Bold);
+        wordmark.characterSpacing = -6f;
+        wordmark.alignment = TextAlignmentOptions.BottomLeft;
+        wordmark.overflowMode = TextOverflowModes.Overflow;
+        RectTransform markRect = wordmark.rectTransform;
+        markRect.anchorMin = markRect.anchorMax = new Vector2(0f, 0f);
+        markRect.pivot = new Vector2(0f, 0f);
+        markRect.sizeDelta = new Vector2(1400f, 380f);
+        markRect.anchoredPosition = new Vector2(-14f, -96f);
+        Capstone.App.UI.UIMotion.Appear(wordmark.gameObject, 0.25f, 0.7f);
 
         var row = new GameObject("Slots", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         row.transform.SetParent(transform, false);
         slotsRect = row.GetComponent<RectTransform>();
-        slotsRect.anchorMin = slotsRect.anchorMax = new Vector2(0.5f, 0.5f);
-        slotsRect.pivot = new Vector2(0.5f, 0.5f);
-        slotsRect.sizeDelta = new Vector2(460f, 96f);
-        slotsRect.anchoredPosition = new Vector2(0f, -20f);
+        slotsRect.anchorMin = slotsRect.anchorMax = new Vector2(0f, 0.5f);
+        slotsRect.pivot = new Vector2(0f, 0.5f);
+        slotsRect.sizeDelta = new Vector2(728f, 150f);
+        slotsRect.anchoredPosition = new Vector2(Margin, SlotsY);
         var layout = row.GetComponent<HorizontalLayoutGroup>();
-        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childAlignment = TextAnchor.MiddleLeft;
         layout.childControlWidth = false;
         layout.childControlHeight = false;
         layout.childForceExpandWidth = false;
         layout.childForceExpandHeight = false;
-        layout.spacing = 12f;
+        layout.spacing = 22f;
 
         for (int i = 0; i < Length; i++)
         {
             var slot = new GameObject("Slot", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
             slot.transform.SetParent(row.transform, false);
             var slotRect = slot.GetComponent<RectTransform>();
-            slotRect.sizeDelta = new Vector2(72f, 88f);
+            slotRect.sizeDelta = new Vector2(128f, 144f);
             slotRect.localScale = new Vector3(0.85f, 0.85f, 1f);
             borders[i] = slot.GetComponent<Image>();
             borders[i].sprite = Rounded(12);
@@ -155,7 +197,19 @@ public class AccessGate : MonoBehaviour
             fills[i].color = Paper;
             fills[i].raycastTarget = false;
 
-            TMP_Text glyph = NewText("", font, 36f, Ink, FontStyles.Bold);
+            var lineObject = new GameObject("Line", typeof(RectTransform), typeof(Image));
+            lineObject.transform.SetParent(slot.transform, false);
+            var lineRect = lineObject.GetComponent<RectTransform>();
+            lineRect.anchorMin = new Vector2(0f, 0f);
+            lineRect.anchorMax = new Vector2(1f, 0f);
+            lineRect.pivot = new Vector2(0.5f, 0f);
+            lineRect.sizeDelta = new Vector2(0f, 5f);
+            lineRect.anchoredPosition = Vector2.zero;
+            lines[i] = lineObject.GetComponent<Image>();
+            lines[i].color = Quiet;
+            lines[i].raycastTarget = false;
+
+            TMP_Text glyph = NewText("", heavy, 72f, Ink, FontStyles.Bold);
             glyph.characterSpacing = -1f;
             glyph.transform.SetParent(slot.transform, false);
             glyph.rectTransform.anchorMin = Vector2.zero;
@@ -167,7 +221,7 @@ public class AccessGate : MonoBehaviour
             caret.transform.SetParent(slot.transform, false);
             var caretRect = caret.GetComponent<RectTransform>();
             caretRect.anchorMin = caretRect.anchorMax = new Vector2(0.5f, 0.5f);
-            caretRect.sizeDelta = new Vector2(2f, 36f);
+            caretRect.sizeDelta = new Vector2(4f, 72f);
             carets[i] = caret.GetComponent<Image>();
             carets[i].color = Ink;
             carets[i].raycastTarget = false;
@@ -182,10 +236,13 @@ public class AccessGate : MonoBehaviour
         entry.offsetMin = entry.offsetMax = Vector2.zero;
         entryGroup = entryObject.GetComponent<CanvasGroup>();
         titleRect.SetParent(entry, true);
+        tagline.rectTransform.SetParent(entry, true);
+        placeRect.SetParent(entry, true);
+        issueRect.SetParent(entry, true);
         if (topBowImage != null)
             topBowImage.rectTransform.SetParent(entry, true);
         slotsRect.SetParent(entry, true);
-        BuildThanks(words, font);
+        BuildThanks(heavy, label);
     }
 
     void OnEnable()
@@ -231,7 +288,7 @@ public class AccessGate : MonoBehaviour
                 shakeTime = -1f;
         }
         if (slotsRect != null)
-            slotsRect.anchoredPosition = new Vector2(wave, -20f);
+            slotsRect.anchoredPosition = new Vector2(Margin + wave, SlotsY);
 
         PaintBoxes();
 
@@ -244,7 +301,12 @@ public class AccessGate : MonoBehaviour
             seen += step;
             if (seen > 1.2f)
             {
-                MainMenu.TakeOver();
+                Action done = admitted;
+                admitted = null;
+                if (done != null)
+                    done.Invoke();
+                else
+                    MainMenu.TakeOver();
                 Destroy(gameObject);
             }
         }
@@ -412,8 +474,6 @@ public class AccessGate : MonoBehaviour
         thanksName.text = "Thanks " + Pretty(code) + "!";
         if (board != null)
             board.active = false;
-        if (admitted != null)
-            admitted.Invoke();
     }
 
     void OnApplicationPause(bool pause)
@@ -463,8 +523,10 @@ public class AccessGate : MonoBehaviour
             if (fade != null)
                 fade.alpha = focused || thanks ? Mathf.Clamp01((Time.unscaledTime - revealAt - i * 0.03f) / 0.16f) : 0f;
 
-            fills[i].color = Paper;
-            borders[i].color = active ? Ink : Quiet;
+            fills[i].color = Color.clear;
+            borders[i].color = Color.clear;
+            if (lines[i] != null)
+                lines[i].color = refused ? Rose : active ? Rose : i < entered.Length ? Ink : Quiet;
 
             bool showCaret = active;
             carets[i].gameObject.SetActive(showCaret);
@@ -525,6 +587,14 @@ public class AccessGate : MonoBehaviour
         return kept.ToString();
     }
 
+    static void PinLeft(RectTransform rect, Vector2 size, float y)
+    {
+        rect.anchorMin = rect.anchorMax = new Vector2(0f, 0.5f);
+        rect.pivot = new Vector2(0f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = new Vector2(Margin, y);
+    }
+
     TMP_Text NewText(string value, TMP_FontAsset font, float size, Color color, FontStyles style)
     {
         var item = new GameObject("Text", typeof(RectTransform));
@@ -570,7 +640,7 @@ public class AccessGate : MonoBehaviour
         circleImage.color = Color.white;
         circleImage.raycastTarget = false;
 
-        thanksName = NewText("Thanks", nighty, 64f, Ink, FontStyles.Normal);
+        thanksName = NewText("Thanks", nighty, 96f, Ink, FontStyles.Bold);
         thanksName.overflowMode = TextOverflowModes.Overflow;
         thanksName.transform.SetParent(host.transform, false);
         thanksName.rectTransform.sizeDelta = new Vector2(920f, 130f);

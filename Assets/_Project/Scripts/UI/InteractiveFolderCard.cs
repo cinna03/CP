@@ -119,9 +119,9 @@ namespace Capstone.App.UI
 
             Write(front, "Title", title, font, 26f, Ink, FontStyles.Bold, 18f, 16f, 64f, 36f);
             Write(front, "Count", count + " " + unit, font, 16f, Ink, FontStyles.Normal, 18f, 50f, 64f, 28f);
-            TMP_Text mark = Write(front, "Mark", title == "Gallery" ? "◉" : "♥", font, 22f, Ink, FontStyles.Normal, 0f, 14f, 14f, 32f);
-            if (TMP_Settings.defaultFontAsset != null)
-                mark.font = TMP_Settings.defaultFontAsset;
+            TMP_Text mark = Write(front, "Mark", title == "Gallery" ? "●" : "♥", font, 22f, Ink, FontStyles.Normal, 0f, 14f, 14f, 32f);
+            if (Capstone.App.UI.AppType.BodyFont != null)
+                mark.font = Capstone.App.UI.AppType.BodyFont;
             mark.alignment = TextAlignmentOptions.TopRight;
             mark.rectTransform.anchorMin = new Vector2(1f, 1f);
             mark.rectTransform.anchorMax = new Vector2(1f, 1f);

@@ -471,8 +471,8 @@ public class TestDrive : MonoBehaviour
         backLabelRect.anchorMax = Vector2.one;
         backLabelRect.offsetMin = backLabelRect.offsetMax = Vector2.zero;
         var backText = backLabel.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            backText.font = TMP_Settings.defaultFontAsset;
+        if (Capstone.App.UI.AppType.BodyFont != null)
+            backText.font = Capstone.App.UI.AppType.BodyFont;
         backText.text = "Back";
         backText.fontSize = 32f;
         backText.fontStyle = FontStyles.Bold;
@@ -500,8 +500,8 @@ public class TestDrive : MonoBehaviour
         labelRect.offsetMin = new Vector2(24f, 12f);
         labelRect.offsetMax = new Vector2(-24f, -12f);
         var text = label.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            text.font = TMP_Settings.defaultFontAsset;
+        if (Capstone.App.UI.AppType.BodyFont != null)
+            text.font = Capstone.App.UI.AppType.BodyFont;
         text.fontSize = 40f;
         text.fontStyle = FontStyles.Bold;
         text.alignment = TextAlignmentOptions.Center;
@@ -534,8 +534,8 @@ public class TestDrive : MonoBehaviour
         labelRect.anchorMax = Vector2.one;
         labelRect.offsetMin = labelRect.offsetMax = Vector2.zero;
         var caption = label.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            caption.font = TMP_Settings.defaultFontAsset;
+        if (Capstone.App.UI.AppType.BodyFont != null)
+            caption.font = Capstone.App.UI.AppType.BodyFont;
         caption.text = "Place on Wall Here";
         caption.fontSize = 32f;
         caption.fontStyle = FontStyles.Bold;
@@ -638,6 +638,7 @@ public class TestDrive : MonoBehaviour
         if (hintHost != null)
             Destroy(hintHost);
         Destroy(gameObject);
+        SurveyFlow.OpenPost();
     }
 
     static bool OverInterface()

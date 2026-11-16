@@ -151,9 +151,9 @@ namespace Capstone.App.Services
             try
             {
                 string path = Path.Combine(Folder(), FileName);
-                if (File.Exists(path))
+                if (SafeFile.Exists(path))
                 {
-                    RegistryFile file = JsonUtility.FromJson<RegistryFile>(File.ReadAllText(path));
+                    RegistryFile file = SafeFile.ReadJson<RegistryFile>(path);
                     if (file != null)
                     {
                         if (file.Users == null)
@@ -208,7 +208,7 @@ namespace Capstone.App.Services
             try
             {
                 Directory.CreateDirectory(Folder());
-                File.WriteAllText(Path.Combine(Folder(), FileName), json);
+                SafeFile.WriteAllText(Path.Combine(Folder(), FileName), json);
             }
             catch (Exception error)
             {

@@ -4,7 +4,8 @@ using UnityEngine;
 namespace Capstone.App.Services
 {
     /// <summary>
-    /// Writes the user list and the current hearts when the phone goes to the background.
+    /// Writes the user list, hearts, and the per-code JSON profile when the phone goes to the background.
+    /// iOS often skips OnApplicationQuit, so the pause path is the one that matters.
     /// </summary>
     public sealed class UserProfileFlush : MonoBehaviour
     {

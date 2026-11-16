@@ -483,9 +483,10 @@ namespace Capstone.App.UI
             image.color = Accent;
             image.raycastTarget = false;
             Label(banner.transform, message, 26f, Ink, FontStyles.Bold, TextAlignmentOptions.Center);
+            UIMotion.Appear(banner, 0f, UIMotion.Quick);
             yield return new WaitForSecondsRealtime(1.6f);
             if (banner != null)
-                Destroy(banner);
+                UIMotion.Dismiss(banner);
         }
 
         void Build()
@@ -559,6 +560,7 @@ namespace Capstone.App.UI
         {
             var card = new GameObject(work.Title, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
             card.transform.SetParent(trayRow, false);
+            UIMotion.AppearInList(card);
             Image image = card.GetComponent<Image>();
             image.sprite = Rounded();
             image.type = Image.Type.Sliced;
@@ -634,8 +636,8 @@ namespace Capstone.App.UI
             textRect.anchorMax = Vector2.one;
             textRect.offsetMin = textRect.offsetMax = Vector2.zero;
             TMP_Text value = textObject.AddComponent<TextMeshProUGUI>();
-            if (TMP_Settings.defaultFontAsset != null)
-                value.font = TMP_Settings.defaultFontAsset;
+            if (Capstone.App.UI.AppType.BodyFont != null)
+                value.font = Capstone.App.UI.AppType.BodyFont;
             value.fontSize = 22f;
             value.color = Ink;
             value.alignment = TextAlignmentOptions.MidlineLeft;
@@ -646,8 +648,8 @@ namespace Capstone.App.UI
             placeholderRect.anchorMax = Vector2.one;
             placeholderRect.offsetMin = placeholderRect.offsetMax = Vector2.zero;
             TMP_Text placeholder = placeholderObject.AddComponent<TextMeshProUGUI>();
-            if (TMP_Settings.defaultFontAsset != null)
-                placeholder.font = TMP_Settings.defaultFontAsset;
+            if (Capstone.App.UI.AppType.BodyFont != null)
+                placeholder.font = Capstone.App.UI.AppType.BodyFont;
             placeholder.text = "Ask a question about this work...";
             placeholder.fontSize = 20f;
             placeholder.fontStyle = FontStyles.Italic;
@@ -1224,8 +1226,8 @@ namespace Capstone.App.UI
             rect.anchorMax = Vector2.one;
             rect.offsetMin = rect.offsetMax = Vector2.zero;
             var text = host.AddComponent<TextMeshProUGUI>();
-            if (TMP_Settings.defaultFontAsset != null)
-                text.font = TMP_Settings.defaultFontAsset;
+            if (Capstone.App.UI.AppType.BodyFont != null)
+                text.font = Capstone.App.UI.AppType.BodyFont;
             text.text = caption;
             text.fontSize = size;
             text.fontStyle = style;

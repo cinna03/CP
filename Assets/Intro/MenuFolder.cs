@@ -174,8 +174,8 @@ public class MenuPage : MonoBehaviour
         backLabelRect.anchorMax = Vector2.one;
         backLabelRect.offsetMin = backLabelRect.offsetMax = Vector2.zero;
         var backText = backLabel.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            backText.font = TMP_Settings.defaultFontAsset;
+        if (Capstone.App.UI.AppType.BodyFont != null)
+            backText.font = Capstone.App.UI.AppType.BodyFont;
         backText.text = "Back";
         backText.fontSize = 32f;
         backText.fontStyle = FontStyles.Bold;
@@ -187,8 +187,8 @@ public class MenuPage : MonoBehaviour
         heading.transform.SetParent(host.transform, false);
         var headingRect = heading.GetComponent<RectTransform>();
         var headingText = heading.AddComponent<TextMeshProUGUI>();
-        if (TMP_Settings.defaultFontAsset != null)
-            headingText.font = TMP_Settings.defaultFontAsset;
+        if (Capstone.App.UI.AppType.BodyFont != null)
+            headingText.font = Capstone.App.UI.AppType.BodyFont;
         headingText.text = title;
         headingText.fontStyle = FontStyles.Bold;
         headingText.color = new Color32(42, 34, 37, 255);

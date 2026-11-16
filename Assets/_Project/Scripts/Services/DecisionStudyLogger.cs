@@ -54,7 +54,7 @@ namespace Capstone.App.Services
             {
                 Directory.CreateDirectory(Folder());
                 WriteCsv();
-                File.WriteAllText(JsonPath(), JsonUtility.ToJson(new EntryFile { Items = entries }, true));
+                SafeFile.WriteAllText(JsonPath(), JsonUtility.ToJson(new EntryFile { Items = entries }, true));
             }
             catch (Exception error)
             {
@@ -94,12 +94,12 @@ namespace Capstone.App.Services
 
             loaded = true;
             entries = new List<DecisionConfidenceEntry>();
-            if (!File.Exists(JsonPath()))
+            if (!SafeFile.Exists(JsonPath()))
                 return;
 
             try
             {
-                EntryFile file = JsonUtility.FromJson<EntryFile>(File.ReadAllText(JsonPath()));
+                EntryFile file = SafeFile.ReadJson<EntryFile>(JsonPath(), f => f.Items != null);
                 if (file != null && file.Items != null)
                     entries = file.Items;
             }
@@ -136,7 +136,7 @@ namespace Capstone.App.Services
 
             try
             {
-                File.WriteAllText(CsvPath(), file.ToString());
+                SafeFile.WriteAllText(CsvPath(), file.ToString());
             }
             catch (Exception error)
             {
