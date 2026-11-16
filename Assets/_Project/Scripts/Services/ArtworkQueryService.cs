@@ -259,6 +259,16 @@ namespace Capstone.App.Services
             UserTasteProfile taste = visit != null ? visit.Taste : null;
             IReadOnlyList<TriedPiece> tried = visit != null ? visit.Tried : null;
             string asked = question ?? "";
+            // Open "which one / should I" questions get a clear pick with reasons, not a question back.
+            if (DecisionAdvisor.IsAdviceRequest(asked))
+            {
+                return new ConsultReply
+                {
+                    Text = DecisionAdvisor.Advise(work, sizeIndex, tried, taste),
+                    Options = new string[0]
+                };
+            }
+
             if (IsComparison(asked))
             {
                 return new ConsultReply
@@ -304,9 +314,11 @@ namespace Capstone.App.Services
 
             if (body == FixedLine)
             {
+                // An open question the table does not cover still gets a concrete read of this work,
+                // then the three quick follow-ups.
                 return new ConsultReply
                 {
-                    Text = PivotLine,
+                    Text = DecisionAdvisor.Verdict(work, sizeIndex, taste),
                     Options = new[] { SizeRedirect, VibeRedirect, ColourRedirect }
                 };
             }
