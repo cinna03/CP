@@ -331,9 +331,19 @@ public class AccessGate : MonoBehaviour
             for (int i = 0; i < Length; i++)
                 born[i] = -1f;
             if (TouchScreenKeyboard.isSupported)
-                board = TouchScreenKeyboard.Open("", TouchScreenKeyboardType.ASCIICapable, false, false, false, false, "", Length);
+                board = OpenKeyboard("", TouchScreenKeyboardType.ASCIICapable, false, false, false, false, "", Length);
             Refresh();
         }
+    }
+
+    /// <summary>
+    /// Opens the system keyboard without its own text box, so the letters only appear in the
+    /// underlined slots of the entrance screen (iOS otherwise adds a full-width input bar).
+    /// </summary>
+    static TouchScreenKeyboard OpenKeyboard(string text, TouchScreenKeyboardType type, bool autocorrect, bool multiline, bool secure, bool alert, string placeholder, int limit)
+    {
+        TouchScreenKeyboard.hideInput = true;
+        return TouchScreenKeyboard.Open(text, type, autocorrect, multiline, secure, alert, placeholder, limit);
     }
 
     static TMP_FontAsset pendingFont;
@@ -405,7 +415,7 @@ public class AccessGate : MonoBehaviour
         focused = true;
         revealAt = Time.unscaledTime;
         if (TouchScreenKeyboard.isSupported)
-            board = TouchScreenKeyboard.Open(entered, TouchScreenKeyboardType.ASCIICapable, false, false, false, false, "", Length);
+            board = OpenKeyboard(entered, TouchScreenKeyboardType.ASCIICapable, false, false, false, false, "", Length);
     }
 
     void ReadEntry()
