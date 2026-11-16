@@ -221,15 +221,21 @@ namespace Capstone.App.AR
             if (renderer == null)
                 return;
 
+            // Sprites/Default is always in the build and draws both faces, so it is the safe fallback on device.
             Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
             if (shader == null)
-                shader = Shader.Find("Unlit/Color");
-            if (shader == null)
                 shader = Shader.Find("Sprites/Default");
+            if (shader == null)
+                shader = Shader.Find("Unlit/Texture");
+            if (shader == null)
+                return;
 
             var material = new Material(shader);
             if (material.HasProperty("_BaseColor"))
                 material.SetColor("_BaseColor", color);
+            // Draw both faces: the painting must show whichever way the wall's normal points.
+            if (material.HasProperty("_Cull"))
+                material.SetFloat("_Cull", (float)UnityEngine.Rendering.CullMode.Off);
             material.color = color;
             renderer.material = material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

@@ -40,6 +40,10 @@ public class TestDrive : MonoBehaviour
     GameObject hintHost;
     GameObject placeHereButton;
     readonly List<Canvas> covered = new List<Canvas>();
+    // Other full-screen canvases that were open when the wall visit started; hidden so the camera feed shows.
+    readonly List<Canvas> screensBehind = new List<Canvas>();
+    public const string RigMissing = "The AR camera rig was not found in the scene, so the wall cannot be tracked.";
+    public const string NoAR = "This device does not support AR.";
     Vector2 pressedAt;
     Vector3 slideNormal = Vector3.forward;
     float waiting;
@@ -84,6 +88,12 @@ public class TestDrive : MonoBehaviour
             rays = pendingRays;
         pendingPlanes = null;
         pendingRays = null;
+        // Fall back to the rig in the scene if the links component did not register in time.
+        if (planes == null)
+            planes = Object.FindAnyObjectByType<ARPlaneManager>(FindObjectsInactive.Include);
+        if (rays == null)
+            rays = Object.FindAnyObjectByType<ARRaycastManager>(FindObjectsInactive.Include);
+        SilenceTemplateSpawner();
         if (planes != null)
         {
             planes.enabled = true;
@@ -201,19 +211,26 @@ public class TestDrive : MonoBehaviour
         if (hint == null)
             return;
 
+        if (!Application.isEditor && (planes == null || rays == null))
+        {
+            hint.text = RigMissing;
+            return;
+        }
+
+        if (!Application.isEditor && ARSession.state == ARSessionState.Unsupported)
+        {
+            hint.text = NoAR;
+            return;
+        }
+
 #if !UNITY_EDITOR
-        if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+        // Only blame the camera permission once AR itself has had a chance to start.
+        if (ARSession.state <= ARSessionState.CheckingAvailability && !Application.HasUserAuthorization(UserAuthorization.WebCam))
         {
             hint.text = CameraDenied;
             return;
         }
 #endif
-
-        if (!Application.isEditor && (planes == null || rays == null))
-        {
-            hint.text = CameraDenied;
-            return;
-        }
 
         if (!Application.isEditor && ARSession.state != ARSessionState.SessionTracking && ARSession.state != ARSessionState.None)
         {
@@ -608,10 +625,47 @@ public class TestDrive : MonoBehaviour
         decisions.RememberForPhoto(HintCanvas);
     }
 
+    // The AR template ships a tap-to-spawn demo (blue shapes). It competes with the painting for taps, so switch it off.
+    static void SilenceTemplateSpawner()
+    {
+        MonoBehaviour[] all = Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < all.Length; i++)
+        {
+            MonoBehaviour part = all[i];
+            if (part == null)
+                continue;
+            string kind = part.GetType().Name;
+            if (kind == "ObjectSpawner")
+                part.gameObject.SetActive(false);
+            else if (kind == "ARInteractorSpawnTrigger")
+                part.enabled = false;
+        }
+    }
+
     void CoverMenu()
     {
         Hide(MainMenu.OverlayCanvas);
         Hide(MenuPage.Page);
+        HideScreensBehind();
+    }
+
+    /// <summary>
+    /// Hides any other full-screen overlay canvas (catalogue, intro panels, studio screens) so nothing
+    /// paints over the live camera feed. They are shown again when the visit ends.
+    /// </summary>
+    void HideScreensBehind()
+    {
+        Canvas[] canvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Exclude);
+        for (int i = 0; i < canvases.Length; i++)
+        {
+            Canvas canvas = canvases[i];
+            if (canvas == null || !canvas.isRootCanvas || canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+                continue;
+            if (covered.Contains(canvas) || canvas.GetComponentInParent<TestDrive>() != null)
+                continue;
+            screensBehind.Add(canvas);
+            canvas.gameObject.SetActive(false);
+        }
     }
 
     void Hide(Canvas canvas)
@@ -658,6 +712,11 @@ public class TestDrive : MonoBehaviour
 
         if (restorePage && page != null)
             page.transform.SetAsLastSibling();
+        for (int i = 0; i < screensBehind.Count; i++)
+        {
+            if (screensBehind[i] != null)
+                screensBehind[i].gameObject.SetActive(true);
+        }
 
         if (planes != null)
             planes.enabled = false;
