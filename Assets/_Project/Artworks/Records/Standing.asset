@@ -27,3 +27,6 @@ MonoBehaviour:
   priceBand: 
   artworkSprite: {fileID: 21300000, guid: 9e20fec1d49d438d86c9d5aafc0ea58d, type: 3}
   storyNote: 
+  curatorNote: "An old man with a long white beard stands barefoot, painted in light washes. A gentle study of age and endurance."
+  artistNote: 
+  inspirationNote: 

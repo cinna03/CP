@@ -41,6 +41,17 @@ namespace Capstone.App.Data
         [TextArea(2, 5)]
         [SerializeField] string storyNote = "";
 
+        [Header("Storytelling")]
+        [Tooltip("The curator's interpretation of the work. Labelled as a curator's note wherever it is shown.")]
+        [TextArea(2, 6)]
+        [SerializeField] string curatorNote = "";
+        [Tooltip("The artist's own background, in their words. Leave empty until the artist provides it.")]
+        [TextArea(2, 6)]
+        [SerializeField] string artistNote = "";
+        [Tooltip("What inspired the work, from the artist. Leave empty until the artist provides it.")]
+        [TextArea(2, 6)]
+        [SerializeField] string inspirationNote = "";
+
         public string Identifier => identifier == null ? "" : identifier.Trim();
         public string Title => title ?? "";
         public string Artist => artist ?? "";
@@ -53,6 +64,9 @@ namespace Capstone.App.Data
         public string PriceBand => priceBand ?? "";
         public Sprite ArtworkSprite => artworkSprite;
         public string StoryNote => storyNote ?? "";
+        public string CuratorNote => curatorNote ?? "";
+        public string ArtistNote => artistNote ?? "";
+        public string InspirationNote => inspirationNote ?? "";
 
         /// <summary>Portrait, landscape, or square from the default size.</summary>
         public Orientation Orientation => OrientationAt(0);

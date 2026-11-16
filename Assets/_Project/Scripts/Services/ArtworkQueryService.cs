@@ -14,6 +14,9 @@ namespace Capstone.App.Services
     {
         public const string FixedLine = "I can only answer size, colour, or the story note from the written table.";
         public const string EmptyStory = "No story note is stored for this artwork.";
+        public const string CuratorLabel = "Curator's note: ";
+        public const string NoArtistNote = "A note from the artist has not been added yet.";
+        public const string NoInspiration = "The artist's inspiration has not been recorded yet.";
         public const string EmptyColour = "No colour is stored.";
         public const string SizeRedirect = "Check if the size fits";
         public const string VibeRedirect = "Match my room's vibe";
@@ -48,10 +51,27 @@ namespace Capstone.App.Services
         {
             if (work == null)
                 throw new ArgumentNullException(nameof(work));
+            if (!string.IsNullOrWhiteSpace(work.CuratorNote))
+                return CuratorLabel + work.CuratorNote.Trim();
             if (string.IsNullOrWhiteSpace(work.StoryNote))
                 return EmptyStory;
 
             return work.StoryNote;
+        }
+
+        /// <summary>
+        /// What inspired the work. Only the artist can say this, so an empty field is reported as empty
+        /// and the curator's interpretation is offered instead, clearly labelled.
+        /// </summary>
+        public string DescribeInspiration(ArtworkData work)
+        {
+            if (work == null)
+                throw new ArgumentNullException(nameof(work));
+            if (!string.IsNullOrWhiteSpace(work.InspirationNote))
+                return work.InspirationNote.Trim();
+            if (!string.IsNullOrWhiteSpace(work.CuratorNote))
+                return NoInspiration + " " + CuratorLabel + work.CuratorNote.Trim();
+            return NoInspiration;
         }
 
         public string DescribeFit(ArtworkData work, int sizeIndex)
@@ -180,9 +200,10 @@ namespace Capstone.App.Services
         {
             if (work == null)
                 throw new ArgumentNullException(nameof(work));
+            string note = string.IsNullOrWhiteSpace(work.ArtistNote) ? NoArtistNote : work.ArtistNote.Trim();
             if (string.IsNullOrWhiteSpace(work.Artist))
-                return "No artist is stored.";
-            return "The stored artist is " + work.Artist.Trim() + ".";
+                return "No artist is stored. " + note;
+            return "The stored artist is " + work.Artist.Trim() + ". " + note;
         }
 
         public string DescribeYear(ArtworkData work)
@@ -922,7 +943,9 @@ namespace Capstone.App.Services
                 return DescribeSize(work, sizeIndex);
             if (Contains(asked, "colour", "color"))
                 return DescribeColour(work);
-            if (Contains(asked, "story", "note", "meaning"))
+            if (Contains(asked, "inspiration", "inspired", "inspire", "why did"))
+                return DescribeInspiration(work);
+            if (Contains(asked, "story", "note", "meaning", "inkuru", "igisobanuro", "histoire", "signification"))
                 return DescribeStory(work);
 
             return FixedLine;

@@ -641,7 +641,8 @@ public static class CataloguePage
         if (!string.IsNullOrWhiteSpace(work.Medium))
             y = Line(panel.transform, work.Medium, 26f, Stone, FontStyles.Normal, y, 40f);
         y = Line(panel.transform, work.Colour, 26f, Ink, FontStyles.Normal, y, 40f);
-        Line(panel.transform, Replies.DescribeStory(work), 26f, Ink, FontStyles.Normal, y, 120f);
+        y = Line(panel.transform, "THE STORY", 20f, Stone, FontStyles.Bold, y - 8f, 30f);
+        Line(panel.transform, Replies.DescribeStory(work), 24f, Ink, FontStyles.Italic, y, 160f);
 
         bool saved = session != null && session.IsShortlisted(work);
         var bar = new GameObject("Actions", typeof(RectTransform));
