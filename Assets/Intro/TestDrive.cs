@@ -40,6 +40,11 @@ public class TestDrive : MonoBehaviour
     GameObject hintHost;
     GameObject placeHereButton;
     GameObject lockButton;
+    GameObject removeButton;
+    GameObject selectedPin;
+    WallCoach coach;
+    string lastSizeLabel;
+    const string CoachedKey = "cinnarios.wallCoached";
     WallPins pins;
     readonly List<Canvas> covered = new List<Canvas>();
     // Other full-screen canvases that were open when the wall visit started; hidden so the camera feed shows.
@@ -123,6 +128,7 @@ public class TestDrive : MonoBehaviour
 #endif
 
         pins = gameObject.AddComponent<WallPins>();
+        coach = new WallCoach(PlayerPrefs.GetInt(CoachedKey, 0) == 1);
         RoomLight.Attach(gameObject);
         CoverMenu();
         hint = Hint(out hintHost);
@@ -191,8 +197,16 @@ public class TestDrive : MonoBehaviour
             Slide(point);
         }
 
-        if (ended && !dragging && TryPlace(point, out Vector3 spot, out Quaternion turn))
-            Put(spot, turn);
+        if (ended && !dragging)
+        {
+            // Tapping a locked work selects it (to remove it); tapping the wall hangs the current work.
+            GameObject hitPin = piece == null && pins != null ? pins.Hit(point, Camera.main) : null;
+            Select(hitPin);
+            if (hitPin == null && TryPlace(point, out Vector3 spot, out Quaternion turn))
+                Put(spot, turn);
+        }
+
+        KeepSizeTag();
 
         if (!Application.isEditor && piece == null)
         {
@@ -238,13 +252,13 @@ public class TestDrive : MonoBehaviour
 
         if (!Application.isEditor && (planes == null || rays == null))
         {
-            hint.text = RigMissing;
+            Say(RigMissing);
             return;
         }
 
         if (!Application.isEditor && ARSession.state == ARSessionState.Unsupported)
         {
-            hint.text = NoAR;
+            Say(NoAR);
             return;
         }
 
@@ -252,23 +266,30 @@ public class TestDrive : MonoBehaviour
         // Only blame the camera permission once AR itself has had a chance to start.
         if (ARSession.state <= ARSessionState.CheckingAvailability && !Application.HasUserAuthorization(UserAuthorization.WebCam))
         {
-            hint.text = CameraDenied;
+            Say(CameraDenied);
             return;
         }
 #endif
 
         if (!Application.isEditor && ARSession.state != ARSessionState.SessionTracking && ARSession.state != ARSessionState.None)
         {
-            hint.text = TrackingPaused;
+            Say(TrackingPaused);
             return;
         }
 
-        if (piece != null)
-            hint.text = Application.isEditor ? "Drag to move it" : "Drag to move it, then lock it";
-        else if (pins != null && pins.Count > 0)
-            hint.text = WallSeen() ? "Locked. Tap the wall to add another work" : "Locked. Walk around, or find a wall to add another";
-        else
-            hint.text = WallSeen() ? "Tap the wall to place it" : "Move across a wall";
+        // First visit: numbered steps. Afterwards only short status lines, and none while a work is up.
+        Say(coach.Line(WallSeen(), piece != null, pins != null ? pins.Count : 0));
+    }
+
+    /// <summary>Shows a line in the hint bar, or hides the bar when there is nothing to say.</summary>
+    void Say(string line)
+    {
+        Transform bar = hintHost != null ? hintHost.transform.Find("Bar") : null;
+        bool show = !string.IsNullOrEmpty(line);
+        if (bar != null && bar.gameObject.activeSelf != show && !(Application.isEditor && presenter != null && presenter.InStudio))
+            bar.gameObject.SetActive(show);
+        if (show)
+            hint.text = line;
     }
 
     /// <summary>True when the screen point lands on the work (its quad is one unit square, scaled to size).</summary>
@@ -430,6 +451,7 @@ public class TestDrive : MonoBehaviour
 
     void ResetWall()
     {
+        Select(null);
         if (pins != null)
             pins.Clear();
         if (!Application.isEditor)
@@ -619,6 +641,7 @@ public class TestDrive : MonoBehaviour
         text.text = "Move across a wall";
         placeHereButton = PlaceHereButton(host.transform);
         lockButton = LockButton(host.transform);
+        removeButton = RemoveButton(host.transform);
         return text;
     }
 
@@ -665,10 +688,58 @@ public class TestDrive : MonoBehaviour
         PlacementSettle.Cancel(piece);
         pins.Pin(piece);
         piece.gameObject.SetActive(false);
+        if (!coach.Learned)
+        {
+            coach.MarkLearned();
+            PlayerPrefs.SetInt(CoachedKey, 1);
+            PlayerPrefs.Save();
+        }
         piece = null;
         dragging = false;
         dragSmoothing = false;
         waiting = 0f;
+    }
+
+    /// <summary>Keeps the size tag under the live work in step with the chosen work and print size.</summary>
+    void KeepSizeTag()
+    {
+        if (piece == null || !piece.gameObject.activeInHierarchy)
+            return;
+        CatalogueShelf shelf = Resources.Load<CatalogueShelf>("CatalogueShelf");
+        ArtworkSessionState visit = shelf != null ? shelf.Session : null;
+        string label = visit != null && visit.SelectedArtwork != null ? visit.SelectedArtwork.FormatSizeLabel(visit.SizeIndex) : "";
+        if (label == lastSizeLabel && piece.GetComponent<SizeTag>() != null)
+            return;
+        lastSizeLabel = label;
+        SizeTag.Show(piece, label);
+    }
+
+    void Select(GameObject holder)
+    {
+        selectedPin = holder;
+        if (removeButton != null)
+            removeButton.SetActive(holder != null);
+    }
+
+    void RemoveSelected()
+    {
+        if (pins != null && selectedPin != null)
+            pins.Remove(selectedPin);
+        Select(null);
+    }
+
+    GameObject RemoveButton(Transform parent)
+    {
+        GameObject host = LockButton(parent);
+        host.name = "Remove this work";
+        Button button = host.GetComponent<Button>();
+        button.onClick.RemoveAllListeners();
+        button.onClick.AddListener(RemoveSelected);
+        TMP_Text caption = host.GetComponentInChildren<TMP_Text>(true);
+        if (caption != null)
+            caption.text = "Take this work down";
+        host.SetActive(false);
+        return host;
     }
 
     GameObject LockButton(Transform parent)

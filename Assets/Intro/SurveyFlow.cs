@@ -245,25 +245,31 @@ public class SurveyFlow : MonoBehaviour
         rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0f);
         rect.pivot = new Vector2(0.5f, 0f);
         float w = Mathf.Min(968f, page.rect.width > 300f ? page.rect.width - 64f : 968f);
-        rect.sizeDelta = new Vector2(w, 720f);
+        VisitOutcome outcome = VisitOutcome.Last;
+        bool hasPick = outcome != null && outcome.Work != null;
+        float pickH = hasPick ? 260f : 0f;
+        rect.sizeDelta = new Vector2(w, 720f + pickH);
         rect.anchoredPosition = new Vector2(0f, 120f);
         QuestionCardView.Paint(result.GetComponent<Image>(), Color.white, 0.5f);
 
+        if (hasPick)
+            Pick(result.transform, outcome, w);
+
         float half = (w - 96f - 24f) / 2f;
-        QuestionCardView.Label(result.transform, "HOW READY YOU FEEL TO BUY", AppType.LabelFont, 22f, Stone, new Vector2(48f, -48f), new Vector2(w - 96f, 40f), TextAlignmentOptions.Left);
-        Score(result.transform, "Before", session.pre_confidence, new Vector2(48f, -108f), half, Petal, Ink);
-        Score(result.transform, "Now", session.post_confidence, new Vector2(48f + half + 24f, -108f), half, Rose, Color.white);
+        QuestionCardView.Label(result.transform, "HOW READY YOU FEEL TO BUY", AppType.LabelFont, 22f, Stone, new Vector2(48f, -48f - pickH), new Vector2(w - 96f, 40f), TextAlignmentOptions.Left);
+        Score(result.transform, "Before", session.pre_confidence, new Vector2(48f, -108f - pickH), half, Petal, Ink);
+        Score(result.transform, "Now", session.post_confidence, new Vector2(48f + half + 24f, -108f - pickH), half, Rose, Color.white);
 
         int? change = session.ConfidenceDelta;
         string shift = !change.HasValue ? "Thanks — your answers are saved."
             : change.Value > 0 ? "You feel " + change.Value + (change.Value == 1 ? " step" : " steps") + " more ready than when you arrived."
             : change.Value < 0 ? "You feel less ready than when you arrived. That is useful to know before spending."
             : "You feel as ready as when you arrived.";
-        QuestionCardView.Label(result.transform, shift, AppType.DisplayFont, 32f, Ink, new Vector2(48f, -392f), new Vector2(w - 96f, 110f), TextAlignmentOptions.TopLeft);
+        QuestionCardView.Label(result.transform, shift, AppType.DisplayFont, 32f, Ink, new Vector2(48f, -392f - pickH), new Vector2(w - 96f, 110f), TextAlignmentOptions.TopLeft);
         int? size = session.SizeClarityDelta;
         if (size.HasValue && size.Value != 0)
             QuestionCardView.Label(result.transform, "Picturing true size: " + (size.Value > 0 ? "+" : "") + size.Value + " on a 7-point scale.",
-                AppType.BodyFont, 26f, Stone, new Vector2(48f, -500f), new Vector2(w - 96f, 50f), TextAlignmentOptions.TopLeft);
+                AppType.BodyFont, 26f, Stone, new Vector2(48f, -500f - pickH), new Vector2(w - 96f, 50f), TextAlignmentOptions.TopLeft);
 
         Button close = QuestionCardView.Pill(result.transform, "Back to the catalogue", new Vector2(w - 96f, 96f), Close);
         var closeRect = (RectTransform)close.transform;
@@ -271,6 +277,28 @@ public class SurveyFlow : MonoBehaviour
         closeRect.pivot = new Vector2(0.5f, 0f);
         closeRect.anchoredPosition = new Vector2(0f, 48f);
         UIMotion.Appear(result);
+    }
+
+    /// <summary>"Your pick": the work the visit points to, with its size, so the buyer leaves with a decision.</summary>
+    static void Pick(Transform parent, VisitOutcome outcome, float width)
+    {
+        QuestionCardView.Label(parent, "YOUR PICK FROM THIS VISIT", AppType.LabelFont, 22f, Stone, new Vector2(48f, -48f), new Vector2(width - 96f, 40f), TextAlignmentOptions.Left);
+        var picture = new GameObject("Pick", typeof(RectTransform), typeof(Image));
+        picture.transform.SetParent(parent, false);
+        var rect = (RectTransform)picture.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(48f, -96f);
+        rect.sizeDelta = new Vector2(150f, 150f);
+        Image image = picture.GetComponent<Image>();
+        image.sprite = outcome.Work.ArtworkSprite;
+        image.preserveAspect = true;
+        image.color = outcome.Work.ArtworkSprite != null ? Color.white : Petal;
+        QuestionCardView.Label(parent, outcome.Work.Title, AppType.DisplayFont, 40f, Ink, new Vector2(222f, -96f), new Vector2(width - 270f, 60f), TextAlignmentOptions.TopLeft);
+        string why = outcome.Status == "Kept" ? "You kept it" : outcome.Status == "Saved" ? "You saved it" : "Your closest match";
+        string tried = outcome.Tried > 1 ? " out of " + outcome.Tried + " works you tried" : "";
+        QuestionCardView.Label(parent, outcome.Work.FormatSizeLabel(outcome.SizeIndex) + "\n" + why + tried + ".", AppType.BodyFont, 26f, Stone,
+            new Vector2(222f, -160f), new Vector2(width - 270f, 90f), TextAlignmentOptions.TopLeft);
     }
 
     void Close()

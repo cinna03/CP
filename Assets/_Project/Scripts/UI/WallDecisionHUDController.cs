@@ -253,6 +253,13 @@ namespace Capstone.App.UI
                 PrimaryConfidenceDriver = driver
             });
 
+            // Remember what the visit points to before it is cleared, for "Your pick" on the closing screen.
+            if (session != null)
+            {
+                UserTasteProfile taste = session.Taste;
+                VisitOutcome.Last = VisitOutcome.From(session.Tried, piece => DecisionAdvisor.Score(piece, taste));
+            }
+
             if (session != null)
                 session.ClearVisit();
             if (checkIn != null)

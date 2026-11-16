@@ -73,6 +73,43 @@ namespace Capstone.Placement
             return removed;
         }
 
+        /// <summary>The locked work under a screen point, or null. Works are unit quads scaled to size.</summary>
+        public GameObject Hit(Vector2 screen, Camera camera)
+        {
+            if (camera == null)
+                return null;
+            Ray ray = camera.ScreenPointToRay(screen);
+            GameObject nearest = null;
+            float closest = float.MaxValue;
+            foreach (GameObject holder in pinned)
+            {
+                if (holder == null)
+                    continue;
+                Transform work = holder.transform.childCount > 0 ? holder.transform.GetChild(0) : null;
+                if (work == null)
+                    continue;
+                var surface = new Plane(work.forward, work.position);
+                if (!surface.Raycast(ray, out float distance) || distance > closest)
+                    continue;
+                Vector3 local = work.InverseTransformPoint(ray.GetPoint(distance));
+                if (Mathf.Abs(local.x) <= 0.55f && Mathf.Abs(local.y) <= 0.55f)
+                {
+                    closest = distance;
+                    nearest = holder;
+                }
+            }
+
+            return nearest;
+        }
+
+        /// <summary>Takes one locked work down.</summary>
+        public void Remove(GameObject holder)
+        {
+            if (holder == null || !pinned.Remove(holder))
+                return;
+            Destroy(holder);
+        }
+
         public void Clear()
         {
             for (int i = 0; i < pinned.Count; i++)
