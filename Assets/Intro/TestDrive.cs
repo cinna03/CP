@@ -39,6 +39,8 @@ public class TestDrive : MonoBehaviour
     TMP_Text hint;
     GameObject hintHost;
     GameObject placeHereButton;
+    GameObject lockButton;
+    WallPins pins;
     readonly List<Canvas> covered = new List<Canvas>();
     // Other full-screen canvases that were open when the wall visit started; hidden so the camera feed shows.
     readonly List<Canvas> screensBehind = new List<Canvas>();
@@ -109,6 +111,9 @@ public class TestDrive : MonoBehaviour
             rays.enabled = true;
             if (!Application.isEditor && rays.GetComponent<ARPointCloudManager>() == null)
                 rays.gameObject.AddComponent<ARPointCloudManager>();
+            // Locked works hang on AR anchors, which need an anchor manager on the rig.
+            if (!Application.isEditor && rays.GetComponent<ARAnchorManager>() == null)
+                rays.gameObject.AddComponent<ARAnchorManager>();
         }
 
 #if !UNITY_EDITOR
@@ -116,6 +121,8 @@ public class TestDrive : MonoBehaviour
             StartCoroutine(AskForCamera());
 #endif
 
+        pins = gameObject.AddComponent<WallPins>();
+        RoomLight.Attach(gameObject);
         CoverMenu();
         hint = Hint(out hintHost);
         AttachVisit();
@@ -149,7 +156,7 @@ public class TestDrive : MonoBehaviour
                     continue;
                 Renderer[] drawn = plane.GetComponentsInChildren<Renderer>(true);
                 for (int i = 0; i < drawn.Length; i++)
-                    drawn[i].enabled = wall;
+                    drawn[i].enabled = wall && piece == null;
             }
         }
 
@@ -192,6 +199,13 @@ public class TestDrive : MonoBehaviour
             placeHereButton.SetActive(false);
         }
 
+        if (lockButton != null)
+        {
+            bool canLock = !Application.isEditor && piece != null && piece.gameObject.activeInHierarchy;
+            if (lockButton.activeSelf != canLock)
+                lockButton.SetActive(canLock);
+        }
+
         if (ended)
             dragSmoothing = false;
         wasDown = down;
@@ -205,7 +219,8 @@ public class TestDrive : MonoBehaviour
         WallSessionState next = piece != null && piece.gameObject.activeInHierarchy
             ? WallSessionState.Placed
             : WallSeen() ? WallSessionState.Settling : WallSessionState.Scanning;
-        if (wallState.Current == WallSessionState.Idle && next == WallSessionState.Settling)
+        if ((wallState.Current == WallSessionState.Idle || wallState.Current == WallSessionState.Placed)
+            && next == WallSessionState.Settling)
             wallState.MoveTo(WallSessionState.Scanning);
         wallState.MoveTo(next);
     }
@@ -242,7 +257,12 @@ public class TestDrive : MonoBehaviour
             return;
         }
 
-        hint.text = piece != null ? "Drag to move it" : WallSeen() ? "Tap the wall to place it" : "Move across a wall";
+        if (piece != null)
+            hint.text = Application.isEditor ? "Drag to move it" : "Drag to move it, then lock it";
+        else if (pins != null && pins.Count > 0)
+            hint.text = WallSeen() ? "Locked. Tap the wall to add another work" : "Locked. Walk around, or find a wall to add another";
+        else
+            hint.text = WallSeen() ? "Tap the wall to place it" : "Move across a wall";
     }
 
     bool TryPlace(Vector2 screen, out Vector3 position, out Quaternion rotation)
@@ -373,6 +393,7 @@ public class TestDrive : MonoBehaviour
             return;
 
         piece.gameObject.SetActive(true);
+        RoomLight.Register(piece.GetComponent<Renderer>());
         Vector3 scale = piece.localScale;
         piece.SetPositionAndRotation(position, rotation);
         piece.localScale = scale;
@@ -386,6 +407,16 @@ public class TestDrive : MonoBehaviour
 
     void ResetWall()
     {
+        if (pins != null)
+            pins.Clear();
+        if (!Application.isEditor)
+        {
+            // Forget the old wall so the phone scans afresh for a new one.
+            ARSession arSession = Object.FindAnyObjectByType<ARSession>();
+            if (arSession != null)
+                arSession.Reset();
+        }
+
         if (Application.isEditor && presenter != null && presenter.InStudio)
         {
             presenter.BeginStudio();
@@ -562,6 +593,7 @@ public class TestDrive : MonoBehaviour
         text.raycastTarget = false;
         text.text = "Move across a wall";
         placeHereButton = PlaceHereButton(host.transform);
+        lockButton = LockButton(host.transform);
         return text;
     }
 
@@ -596,6 +628,36 @@ public class TestDrive : MonoBehaviour
         caption.color = new Color32(42, 34, 37, 255);
         caption.raycastTarget = false;
         host.SetActive(false);
+        return host;
+    }
+
+    /// <summary>Fixes the work where it is: it stays put as the buyer walks around, and the next work can be added beside it.</summary>
+    void LockHere()
+    {
+        if (piece == null || pins == null)
+            return;
+
+        PlacementSettle.Cancel(piece);
+        pins.Pin(piece);
+        piece.gameObject.SetActive(false);
+        piece = null;
+        dragging = false;
+        dragSmoothing = false;
+        waiting = 0f;
+    }
+
+    GameObject LockButton(Transform parent)
+    {
+        GameObject host = PlaceHereButton(parent);
+        host.name = "Lock it here";
+        var rect = host.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(420f, 88f);
+        Button button = host.GetComponent<Button>();
+        button.onClick.RemoveAllListeners();
+        button.onClick.AddListener(LockHere);
+        TMP_Text caption = host.GetComponentInChildren<TMP_Text>(true);
+        if (caption != null)
+            caption.text = "Lock it here";
         return host;
     }
 
