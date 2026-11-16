@@ -52,8 +52,10 @@ public sealed class PreVisitSurvey
         if (card != null)
             Object.Destroy(card.gameObject);
         cardPanel = panel;
-        card = QuestionCardView.Show(panel, questions[next], null, next + 1, questions.Length,
-            answer => Answered(panel, index, next, answer));
+        StudyQuestion asked = questions[next];
+        card = QuestionCardView.Show(panel, asked, null, next + 1, questions.Length,
+            answer => Answered(panel, index, next, answer),
+            onMany: picks => SurveyDataManager.Ensure().RecordMany(asked, picks));
     }
 
     /// <summary>Returns true once, after the slide's last question is answered.</summary>

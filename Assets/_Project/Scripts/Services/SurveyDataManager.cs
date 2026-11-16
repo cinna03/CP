@@ -30,6 +30,7 @@ namespace Capstone.App.Services
         public static SurveyDataManager Instance { get; private set; }
 
         readonly Dictionary<string, int> answers = new Dictionary<string, int>();
+        readonly Dictionary<string, List<int>> many = new Dictionary<string, List<int>>();
         Store store;
 
         public static SurveyDataManager Ensure()
@@ -62,6 +63,15 @@ namespace Capstone.App.Services
                 answers[question.Id] = answer;
         }
 
+        /// <summary>Remembers several answers to a pick-all-that-apply question.</summary>
+        public void RecordMany(StudyQuestion question, IReadOnlyList<int> picks)
+        {
+            if (question == null || picks == null || picks.Count == 0)
+                return;
+            many[question.Id] = new List<int>(picks);
+            answers[question.Id] = picks[0];
+        }
+
         public int Answer(StudyQuestion question)
         {
             return question != null && answers.TryGetValue(question.Id, out int value) ? value : 0;
@@ -78,7 +88,7 @@ namespace Capstone.App.Services
         {
             int here = Answer(StudyQuestions.PreBlocker);
             if (here > 0)
-                return StudyQuestions.PreBlocker.Key(here);
+                return Key(StudyQuestions.PreBlocker);
             StudySession open = Open();
             return open != null ? open.pre_blocker : null;
         }
@@ -123,6 +133,7 @@ namespace Capstone.App.Services
             answers.Remove(StudyQuestions.PostSizeClarity.Id);
             answers.Remove(StudyQuestions.BlockerResolution.Id);
             answers.Remove(StudyQuestions.PostHelpfulFeature.Id);
+            many.Remove(StudyQuestions.PostHelpfulFeature.Id);
         }
 
         /// <summary>Every saved session, newest last.</summary>
@@ -144,6 +155,8 @@ namespace Capstone.App.Services
 
         string Key(StudyQuestion question)
         {
+            if (question is MultiChoiceQuestion multi && many.TryGetValue(question.Id, out List<int> picks))
+                return multi.Codes(picks);
             string key = question.Key(Answer(question));
             return string.IsNullOrEmpty(key) ? null : key;
         }

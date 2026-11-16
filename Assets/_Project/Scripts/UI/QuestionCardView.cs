@@ -30,6 +30,8 @@ namespace Capstone.App.UI
         StudyQuestion question;
         Action<int> answered;
         Action<int> picked;
+        Action<IReadOnlyList<int>> answeredMany;
+        readonly List<int> picks = new List<int>();
         readonly List<Image> marks = new List<Image>();
         readonly List<TMP_Text> markLabels = new List<TMP_Text>();
         RectTransform rect;
@@ -50,14 +52,34 @@ namespace Capstone.App.UI
         /// needsDone: choices wait for a Done tap (onPick fires on each tap) instead of moving on.
         /// </summary>
         public static QuestionCardView Show(RectTransform parent, StudyQuestion question, string prompt,
-            int step, int total, Action<int> onAnswer, bool needsDone = false, Action<int> onPick = null)
+            int step, int total, Action<int> onAnswer, bool needsDone = false, Action<int> onPick = null,
+            Action<IReadOnlyList<int>> onMany = null)
         {
             var root = new GameObject("Question " + question.Id, typeof(RectTransform), typeof(Image));
             root.transform.SetParent(parent, false);
+            MakeTouchable(root);
             var view = root.AddComponent<QuestionCardView>();
+            view.answeredMany = onMany;
             view.Build(question, string.IsNullOrEmpty(prompt) ? question.Prompt : prompt, step, total, onAnswer, needsDone, onPick);
             UIMotion.Appear(root);
             return view;
+        }
+
+        /// <summary>
+        /// The intro slides switch off touches for everything on them (a CanvasGroup with blocksRaycasts
+        /// off, so a tap anywhere advances the slide). The card gets its own canvas, raycaster and group
+        /// that ignores those parents, so its slider and buttons always receive the finger.
+        /// </summary>
+        static void MakeTouchable(GameObject root)
+        {
+            Canvas canvas = root.AddComponent<Canvas>();
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = 950;
+            root.AddComponent<GraphicRaycaster>();
+            CanvasGroup group = root.AddComponent<CanvasGroup>();
+            group.ignoreParentGroups = true;
+            group.blocksRaycasts = true;
+            group.interactable = true;
         }
 
         void Build(StudyQuestion asked, string prompt, int step, int total, Action<int> onAnswer, bool needsDone, Action<int> onPick)
@@ -94,10 +116,10 @@ namespace Capstone.App.UI
 
             y = asked.IsScale ? BuildSlider(y) : BuildCards(y);
 
-            bool withButton = asked.IsScale || needsDone;
+            bool withButton = asked.IsScale || needsDone || asked.AllowsMany;
             if (withButton)
             {
-                done = Pill(transform, asked.IsScale ? "Next" : "Done", new Vector2(width - Pad * 2f, ButtonHeight), Finish);
+                done = Pill(transform, needsDone ? "Done" : "Next", new Vector2(width - Pad * 2f, ButtonHeight), Finish);
                 var doneRect = (RectTransform)done.transform;
                 doneRect.anchorMin = doneRect.anchorMax = new Vector2(0.5f, 0f);
                 doneRect.pivot = new Vector2(0.5f, 0f);
@@ -220,6 +242,12 @@ namespace Capstone.App.UI
         {
             if (locked)
                 return;
+            if (question.AllowsMany)
+            {
+                Toggle(value);
+                return;
+            }
+
             choice = value;
             for (int i = 0; i < marks.Count; i++)
             {
@@ -239,11 +267,41 @@ namespace Capstone.App.UI
             StartCoroutine(After(AutoAdvanceSeconds, () => answered?.Invoke(value)));
         }
 
+        /// <summary>Pick-all-that-apply: tap to add or remove; the exclusive answer clears the rest.</summary>
+        void Toggle(int value)
+        {
+            int exclusive = question is MultiChoiceQuestion multi ? multi.Exclusive : 0;
+            if (picks.Contains(value))
+                picks.Remove(value);
+            else
+            {
+                if (value == exclusive)
+                    picks.Clear();
+                else
+                    picks.Remove(exclusive);
+                picks.Add(value);
+            }
+
+            for (int i = 0; i < marks.Count; i++)
+            {
+                bool on = picks.Contains(i + 1);
+                marks[i].color = on ? Rose : Petal;
+                markLabels[i].color = on ? Color.white : Ink;
+            }
+
+            choice = picks.Count > 0 ? picks[0] : 0;
+            if (done != null)
+                done.interactable = picks.Count > 0;
+            picked?.Invoke(value);
+        }
+
         void Finish()
         {
             if (locked || !question.Accepts(choice))
                 return;
             locked = true;
+            if (question.AllowsMany)
+                answeredMany?.Invoke(picks.ToArray());
             answered?.Invoke(choice);
         }
 

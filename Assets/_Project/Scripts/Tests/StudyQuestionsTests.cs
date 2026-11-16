@@ -57,6 +57,25 @@ namespace Capstone.App.Tests
         }
 
         [Test]
+        public void SeveralBlockersAreQuotedTogether()
+        {
+            string prompt = StudyQuestions.ResolutionPrompt("size;room_fit");
+            StringAssert.Contains("getting the size right and knowing how it fits my room", prompt);
+            StringAssert.Contains("usually make you pause", prompt);
+        }
+
+        [Test]
+        public void PickAllThatApplyJoinsCodesAndNoneStandsAlone()
+        {
+            Assert.IsTrue(StudyQuestions.PreBlocker.AllowsMany);
+            Assert.IsTrue(StudyQuestions.PostHelpfulFeature.AllowsMany);
+            Assert.IsFalse(StudyQuestions.PreIntent.AllowsMany);
+            Assert.AreEqual("size;room_fit", StudyQuestions.PreBlocker.Codes(new[] { 1, 2, 1 }));
+            Assert.AreEqual(5, StudyQuestions.PreBlocker.Exclusive);
+            Assert.AreSame(StudyQuestions.HesitationCheck, StudyQuestions.Resolution("none"));
+        }
+
+        [Test]
         public void FollowUpOnlyForLowConfidenceOrUnresolvedDoubt()
         {
             Assert.IsTrue(StudyQuestions.NeedsFollowUp(3, "resolved"));

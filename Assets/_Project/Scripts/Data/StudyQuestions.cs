@@ -20,6 +20,8 @@ namespace Capstone.App.Data
         /// <summary>What the buyer sees for each answer.</summary>
         public abstract IReadOnlyList<string> Labels { get; }
         public virtual bool IsScale => false;
+        /// <summary>True when the buyer may pick several answers.</summary>
+        public virtual bool AllowsMany => false;
         /// <summary>Where a slider starts.</summary>
         public virtual int Default => 0;
 
@@ -49,7 +51,7 @@ namespace Capstone.App.Data
     }
 
     /// <summary>A single tap on one of a few cards.</summary>
-    public sealed class ChoiceQuestion : StudyQuestion
+    public class ChoiceQuestion : StudyQuestion
     {
         readonly string[] keys;
         readonly string[] labels;
@@ -73,6 +75,38 @@ namespace Capstone.App.Data
     }
 
     /// <summary>
+    /// A choice where several answers can be true at once ("pick all that apply"). One code, usually
+    /// "none", is exclusive: picking it clears the others. Several picks export as codes joined by ";".
+    /// </summary>
+    public sealed class MultiChoiceQuestion : ChoiceQuestion
+    {
+        public const char Separator = ';';
+
+        public MultiChoiceQuestion(string id, string prompt, string exclusiveKey, params string[] pairs) : base(id, prompt, pairs)
+        {
+            Exclusive = Find(exclusiveKey);
+        }
+
+        public override bool AllowsMany => true;
+        /// <summary>Position of the answer that cannot be combined with others, or 0.</summary>
+        public int Exclusive { get; }
+
+        /// <summary>The picks in order, joined as one export value, e.g. "size;room_fit".</summary>
+        public string Codes(IEnumerable<int> picks)
+        {
+            var codes = new List<string>();
+            foreach (int pick in picks)
+            {
+                string code = Key(pick);
+                if (code.Length > 0 && !codes.Contains(code))
+                    codes.Add(code);
+            }
+
+            return string.Join(Separator.ToString(), codes);
+        }
+    }
+
+    /// <summary>
     /// The paired before/after assessment. Confidence and size clarity use the same 1-7 scale both times,
     /// so each buyer's change can be tested with a paired t-test; the buyer's own blocker is named before
     /// and checked after, and the after set asks which feature helped.
@@ -90,8 +124,8 @@ namespace Capstone.App.Data
         public static readonly ScaleQuestion PreConfidence = new ScaleQuestion("pre_confidence",
             "Imagine finding a painting you love online today. How confident would you feel hitting 'Buy'?", Confidence);
 
-        public static readonly ChoiceQuestion PreBlocker = new ChoiceQuestion("pre_blocker",
-            "When shopping for art online, what usually makes you pause?",
+        public static readonly MultiChoiceQuestion PreBlocker = new MultiChoiceQuestion("pre_blocker",
+            "When shopping for art online, what usually makes you pause? Pick all that apply.", None,
             "size", "Getting the size right",
             "room_fit", "Knowing how it fits my room",
             "story", "Connecting with the artist's story",
@@ -102,10 +136,10 @@ namespace Capstone.App.Data
             "Looking at standard online art photos, how easy is it to picture a painting's true size?", Clarity);
 
         public static readonly ChoiceQuestion PreIntent = new ChoiceQuestion("pre_intent",
-            "Where are you in your art search right now?",
-            "specific_wall", "I have a specific wall ready",
-            "general_room", "Shopping for a general room",
-            "browsing", "Just browsing for inspiration");
+            "What brings you here today?",
+            "specific_wall", "I have a wall that needs a piece",
+            "general_room", "I'm decorating a room",
+            "browsing", "Just exploring art");
 
         public static readonly ScaleQuestion PostConfidence = new ScaleQuestion("post_confidence",
             "Now that you've explored the pieces here, how confident would you feel buying one?", Confidence);
@@ -127,8 +161,8 @@ namespace Capstone.App.Data
             "somewhat", "A little bit",
             Unsure, "Yes, had doubts");
 
-        public static readonly ChoiceQuestion PostHelpfulFeature = new ChoiceQuestion("post_helpful_feature",
-            "What helped you the most during this visit?",
+        public static readonly MultiChoiceQuestion PostHelpfulFeature = new MultiChoiceQuestion("post_helpful_feature",
+            "What helped you during this visit? Pick all that apply.", None,
             "true_scale", "Seeing the true scale",
             "room_preview", "Viewing it in a room",
             "story", "Reading the artwork's story",
@@ -149,15 +183,33 @@ namespace Capstone.App.Data
             new StudyQuestion[] { PostConfidence, PostSizeClarity, Resolution(preBlocker), PostHelpfulFeature };
 
         public static ChoiceQuestion Resolution(string preBlocker) =>
-            string.IsNullOrEmpty(preBlocker) || preBlocker == None ? HesitationCheck : BlockerResolution;
+            Blockers(preBlocker).Count == 0 ? HesitationCheck : BlockerResolution;
+
+        /// <summary>The buyer's named blockers in their words, without "nothing holds me back".</summary>
+        public static List<string> Blockers(string preBlocker)
+        {
+            var words = new List<string>();
+            if (string.IsNullOrEmpty(preBlocker))
+                return words;
+            foreach (string code in preBlocker.Split(MultiChoiceQuestion.Separator))
+            {
+                int index = PreBlocker.Find(code.Trim());
+                if (index > 0 && code.Trim() != None)
+                    words.Add(PreBlocker.Describe(index).ToLowerInvariant());
+            }
+
+            return words;
+        }
 
         public static string ResolutionPrompt(string preBlocker)
         {
-            int index = PreBlocker.Find(preBlocker);
-            if (index < 1 || preBlocker == None)
+            List<string> words = Blockers(preBlocker);
+            if (words.Count == 0)
                 return HesitationCheck.Prompt;
-            return "Earlier you mentioned <b>" + PreBlocker.Describe(index).ToLowerInvariant()
-                + "</b> usually makes you pause. How do you feel about that now?";
+            string named = words.Count == 1 ? words[0]
+                : string.Join(", ", words.GetRange(0, words.Count - 1)) + " and " + words[words.Count - 1];
+            return "Earlier you mentioned <b>" + named + "</b> usually " + (words.Count == 1 ? "makes" : "make")
+                + " you pause. How do you feel about that now?";
         }
 
         /// <summary>The optional follow-up appears only for low confidence or an unresolved doubt.</summary>

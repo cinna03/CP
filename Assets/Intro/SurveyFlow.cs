@@ -94,7 +94,8 @@ public class SurveyFlow : MonoBehaviour
         QuestionCardView previous = card;
         card = QuestionCardView.Show(page, question, prompt, index + 1, after.Length,
             answer => Answered(question, answer),
-            last, last ? (System.Action<int>)(pick => Picked(question, pick)) : null);
+            last, last ? (System.Action<int>)(pick => Picked(question, pick)) : null,
+            picks => SurveyDataManager.Instance.RecordMany(question, picks));
         if (previous != null)
             StartCoroutine(Slide(previous, card));
     }

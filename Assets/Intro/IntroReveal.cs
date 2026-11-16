@@ -71,6 +71,8 @@ public class IntroReveal : MonoBehaviour
     bool copyOpening;
     readonly List<RectTransform> intros = new List<RectTransform>();
     int introIndex;
+    // The "before" study questions, one per intro slide.
+    PreVisitSurvey survey;
     RectTransform leavingPanel;
 
     enum Beat { Wait, Drop, Hold, Settle, Rest, Period, Tilt, Ready, Fill, Shown, Slide, ReturnReady, Done }
@@ -123,6 +125,7 @@ public class IntroReveal : MonoBehaviour
         for (int i = 0; i < paintingPanel.childCount; i++)
             paintingPanel.GetChild(i).gameObject.SetActive(true);
         CollectIntros();
+        survey = new PreVisitSurvey(intros.Count);
 
         PaintWhite(beginningPanel, PhotoWhite);
         PaintWhite(paintingPanel, PhotoWhite);
@@ -199,7 +202,14 @@ public class IntroReveal : MonoBehaviour
             StepFill();
         else if (beat == Beat.Shown)
         {
-            if (ScreenAdvance.Tapped())
+            bool tapped = ScreenAdvance.Tapped();
+            if (survey != null && survey.Asks(introIndex))
+            {
+                survey.ShowOn(intros[introIndex], introIndex);
+                tapped = survey.TakeAdvance();
+            }
+
+            if (tapped)
             {
                 if (introIndex + 1 < intros.Count)
                     BeginSlide();
@@ -211,7 +221,14 @@ public class IntroReveal : MonoBehaviour
             StepSlide();
         else if (beat == Beat.ReturnReady)
         {
-            if (ScreenAdvance.Tapped())
+            bool tapped = ScreenAdvance.Tapped();
+            if (survey != null && introIndex < intros.Count && survey.Asks(introIndex))
+            {
+                survey.ShowOn(intros[introIndex], introIndex);
+                tapped = survey.TakeAdvance();
+            }
+
+            if (tapped)
                 BeginReturn();
         }
 
@@ -731,6 +748,8 @@ public class IntroReveal : MonoBehaviour
         leavingSlot = MakeSlot(0f);
         arrivingSlot = MakeSlot(slideWidth);
         arriving.gameObject.SetActive(true);
+        if (survey != null)
+            survey.ShowOn(arriving, introIndex + 1);
         leavingPanel.SetParent(leavingSlot, false);
         arriving.SetParent(arrivingSlot, false);
         arrivingSlot.SetAsLastSibling();
