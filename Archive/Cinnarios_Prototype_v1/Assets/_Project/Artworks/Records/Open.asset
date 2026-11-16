@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 59296bba3453c47fca682ad2ed736129, type: 3}
+  m_Name: Open
+  m_EditorClassIdentifier: Capstone.App::Capstone.App.Data.ArtworkData
+  identifier: open
+  title: Arms open
+  artist: 
+  year: 2025
+  medium: Acrylic
+  availableSizes:
+  - {x: 85, y: 53}
+  - {x: 61, y: 38}
+  - {x: 110, y: 69}
+  style: Soft
+  mood: Still
+  colour: Green
+  priceBand: 
+  artworkSprite: {fileID: 21300000, guid: 3831a0f360584869bdec3f643e75af87, type: 3}
+  storyNote: 
+  curatorNote: "A figure leans back with arms open, its edges dissolving into loose grey and green paint. It reads as release, or letting go."
+  artistNote: 
+  inspirationNote: 

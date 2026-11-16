@@ -1,0 +1,23 @@
+{
+    "name": "Capstone.Placement",
+    "rootNamespace": "Capstone.Placement",
+    "references": [
+        "Capstone.Catalogue",
+        "Capstone.Dialogue",
+        "Capstone.Ranking",
+        "Capstone.Session",
+        "Unity.InputSystem",
+        "Unity.TextMeshPro",
+        "Unity.XR.ARFoundation",
+        "Unity.XR.ARSubsystems"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
