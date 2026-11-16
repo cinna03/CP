@@ -508,6 +508,7 @@ namespace Capstone.Placement
                 placed.transform.SetParent(room, true);
             placed.transform.SetPositionAndRotation(pose.Position, pose.Rotation);
             ApplyArtwork(current);
+            PlacementSettle.Begin(placed.transform, pose.Position, pose.Rotation);
             arState.MoveTo(WallSessionState.Placed);
             scanning = false;
             wallReady = false;

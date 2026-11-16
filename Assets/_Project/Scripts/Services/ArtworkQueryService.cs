@@ -927,8 +927,9 @@ namespace Capstone.App.Services
                 return DescribeOrientation(work);
             if (Contains(asked, "medium", "paint", "oil", "acrylic", "watercolour", "watercolor", "ink"))
                 return DescribeMedium(work);
-            if (Contains(asked, "artist", "painter", "who painted", "who made"))
-                return DescribeArtist(work);
+            ReplyRule storyRule = StoryRules.Find(asked);
+            if (storyRule is ArtistRule)
+                return storyRule.Answer(work, this);
             if (Contains(asked, "year", "painted in", "made in"))
                 return DescribeYear(work);
             if (Contains(asked, "mood"))
@@ -943,10 +944,8 @@ namespace Capstone.App.Services
                 return DescribeSize(work, sizeIndex);
             if (Contains(asked, "colour", "color"))
                 return DescribeColour(work);
-            if (Contains(asked, "inspiration", "inspired", "inspire", "why did"))
-                return DescribeInspiration(work);
-            if (Contains(asked, "story", "note", "meaning", "inkuru", "igisobanuro", "histoire", "signification"))
-                return DescribeStory(work);
+            if (storyRule != null)
+                return storyRule.Answer(work, this);
 
             return FixedLine;
         }

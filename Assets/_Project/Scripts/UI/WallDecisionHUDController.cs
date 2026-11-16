@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using Capstone.App.AR;
+using Capstone.App.Core;
 using Capstone.App.Data;
 using Capstone.App.Services;
 using TMPro;
@@ -38,6 +39,10 @@ namespace Capstone.App.UI
         ScrollRect historyScroll;
         RectTransform tray;
         RectTransform trayRow;
+        // The tray shows three works at a time; the same three cards are rebound after every decision.
+        ReusePool<RecommendationCardView> cardPool;
+
+        bool HasCards => cardPool != null && cardPool.ActiveCount > 0;
         TMP_Text trayHeading;
         GameObject suggestionPill;
         TMP_Text keptLabel;
@@ -342,8 +347,9 @@ namespace Capstone.App.UI
             if (trayRow == null)
                 return;
 
-            for (int i = trayRow.childCount - 1; i >= 0; i--)
-                Destroy(trayRow.GetChild(i).gameObject);
+            if (cardPool == null)
+                cardPool = new ReusePool<RecommendationCardView>(BuildCard, ShowCard, HideCard);
+            cardPool.ReleaseAll();
 
             if (works != null)
             {
@@ -362,7 +368,7 @@ namespace Capstone.App.UI
 
         void ShowSuggestions()
         {
-            if (trayRow == null || trayRow.childCount == 0)
+            if (trayRow == null || !HasCards)
                 return;
             if (suggestionPill != null)
                 suggestionPill.SetActive(false);
@@ -375,7 +381,7 @@ namespace Capstone.App.UI
             if (tray != null)
                 tray.gameObject.SetActive(false);
             if (suggestionPill != null)
-                suggestionPill.SetActive(trayRow != null && trayRow.childCount > 0);
+                suggestionPill.SetActive(trayRow != null && HasCards);
         }
 
         void ChooseRecommendation(ArtworkData work)
@@ -558,42 +564,58 @@ namespace Capstone.App.UI
 
         void AddRecommendation(ArtworkData work)
         {
-            var card = new GameObject(work.Title, typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            RecommendationCardView card = cardPool.Get();
+            card.Bind(work, OpenDetails, ChooseRecommendation);
+            UIMotion.AppearInList(card.gameObject);
+        }
+
+        static void ShowCard(RecommendationCardView card)
+        {
+            card.gameObject.SetActive(true);
+            card.transform.SetAsLastSibling();
+        }
+
+        static void HideCard(RecommendationCardView card)
+        {
+            card.gameObject.SetActive(false);
+        }
+
+        /// <summary>Builds one tray card. Called at most three times per visit thanks to the pool.</summary>
+        RecommendationCardView BuildCard()
+        {
+            var card = new GameObject("Card", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
             card.transform.SetParent(trayRow, false);
-            UIMotion.AppearInList(card);
             Image image = card.GetComponent<Image>();
             image.sprite = Rounded();
             image.type = Image.Type.Sliced;
             image.color = Blush;
             card.GetComponent<LayoutElement>().preferredWidth = 300f;
-            ArtworkData chosen = work;
+            var view = card.AddComponent<RecommendationCardView>();
 
-            if (work.ArtworkSprite != null)
-            {
-                var picture = new GameObject("Picture", typeof(RectTransform), typeof(Image));
-                picture.transform.SetParent(card.transform, false);
-                var pictureRect = picture.GetComponent<RectTransform>();
-                pictureRect.anchorMin = new Vector2(0f, 0.52f);
-                pictureRect.anchorMax = new Vector2(1f, 1f);
-                pictureRect.offsetMin = new Vector2(12f, 4f);
-                pictureRect.offsetMax = new Vector2(-12f, -8f);
-                Image sprite = picture.GetComponent<Image>();
-                sprite.sprite = work.ArtworkSprite;
-                sprite.preserveAspect = true;
-                sprite.raycastTarget = false;
-            }
+            var picture = new GameObject("Picture", typeof(RectTransform), typeof(Image));
+            picture.transform.SetParent(card.transform, false);
+            var pictureRect = picture.GetComponent<RectTransform>();
+            pictureRect.anchorMin = new Vector2(0f, 0.52f);
+            pictureRect.anchorMax = new Vector2(1f, 1f);
+            pictureRect.offsetMin = new Vector2(12f, 4f);
+            pictureRect.offsetMax = new Vector2(-12f, -8f);
+            Image sprite = picture.GetComponent<Image>();
+            sprite.preserveAspect = true;
+            sprite.raycastTarget = false;
 
-            TMP_Text title = Label(card.transform, work.Title, 20f, Ink, FontStyles.Bold, TextAlignmentOptions.Center);
+            TMP_Text title = Label(card.transform, "", 20f, Ink, FontStyles.Bold, TextAlignmentOptions.Center);
             title.rectTransform.anchorMin = new Vector2(0f, 0.38f);
             title.rectTransform.anchorMax = new Vector2(1f, 0.52f);
             title.rectTransform.offsetMin = title.rectTransform.offsetMax = Vector2.zero;
-            TMP_Text size = Label(card.transform, work.FormatSizeLabel(0), 16f, Stone, FontStyles.Normal, TextAlignmentOptions.Center);
+            TMP_Text size = Label(card.transform, "", 16f, Stone, FontStyles.Normal, TextAlignmentOptions.Center);
             size.rectTransform.anchorMin = new Vector2(0f, 0.26f);
             size.rectTransform.anchorMax = new Vector2(1f, 0.38f);
             size.rectTransform.offsetMin = size.rectTransform.offsetMax = Vector2.zero;
 
-            Pill(card.transform, "Details", new Vector2(0.27f, 0.12f), new Vector2(130f, 48f), Vector2.zero, Card, delegate { OpenDetails(chosen); });
-            Pill(card.transform, "Try on Wall", new Vector2(0.73f, 0.12f), new Vector2(150f, 48f), Vector2.zero, Accent, delegate { ChooseRecommendation(chosen); });
+            Pill(card.transform, "Details", new Vector2(0.27f, 0.12f), new Vector2(130f, 48f), Vector2.zero, Card, view.ShowDetails);
+            Pill(card.transform, "Try on Wall", new Vector2(0.73f, 0.12f), new Vector2(150f, 48f), Vector2.zero, Accent, view.TryOnWall);
+            view.Wire(sprite, title, size);
+            return view;
         }
 
         RectTransform Row(string name, float y)
