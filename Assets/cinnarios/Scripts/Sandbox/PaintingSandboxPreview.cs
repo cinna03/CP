@@ -1,108 +1,40 @@
 using Cinnarios.Painting.Data;
-using Cinnarios.Painting.Geometry;
+using Cinnarios.Painting.Presentation;
 using Cinnarios.Painting.Validation;
 using UnityEngine;
 
 namespace Cinnarios.Sandbox
 {
     /// <summary>
-    /// Test harness only, not part of the app: builds one 3D painting in the Editor
-    /// from a test image and real dimensions, so the geometry can be checked before AR.
-    /// Showing the image here is a temporary shortcut until the Surface step exists.
+    /// Test harness only, not part of the app: shows one painting asset in the Editor so the
+    /// validation and geometry can be checked before AR.
     /// </summary>
-    [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
+    [RequireComponent(typeof(PaintingView))]
     public sealed class PaintingSandboxPreview : MonoBehaviour
     {
-        private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
-        private static readonly int BaseMapTilingOffsetId = Shader.PropertyToID("_BaseMap_ST");
-        private static readonly ImageFitCheck FitCheck = new ImageFitCheck();
-
-        [Header("Artwork")]
-        [SerializeField] private Texture2D image;
-        [SerializeField] private string title = "Repose";
-        [SerializeField] private string artist = "John White Alexander";
-
-        [Header("Real size (cm)")]
-        [SerializeField, Min(0.1f)] private float widthCm = 161.6f;
-        [SerializeField, Min(0.1f)] private float heightCm = 132.7f;
-        [Tooltip("Leave at 0 to use the default depth for the medium.")]
-        [SerializeField, Min(0f)] private float depthCm;
-        [SerializeField] private PaintingMedium medium = PaintingMedium.Canvas;
-
-        private Mesh _generatedMesh;
+        [SerializeField] private PaintingSpecAsset painting;
 
         private void Start() => Rebuild();
-
-        private void OnDestroy() => DestroyGeneratedMesh();
 
         [ContextMenu("Rebuild Painting")]
         public void Rebuild()
         {
-            if (image == null)
+            if (painting == null)
             {
-                Debug.LogWarning("PaintingSandboxPreview: assign a test image first.", this);
+                Debug.LogWarning("PaintingSandboxPreview: assign a painting asset first.", this);
                 return;
             }
 
-            float depth = depthCm > 0f ? depthCm : medium.DefaultDepthCm();
-            var recorded = new PaintingDimensions(widthCm, heightCm, depth);
-
-            ImageFitResult fit = FitCheck.Evaluate(image.width, image.height, recorded);
-            Debug.Log($"Image fit for {image.width} x {image.height} px image: {fit}", this);
-            if (!fit.IsUsable)
+            PaintingSpec recorded = painting.ToSpec();
+            if (!PaintingPreparation.TryPrepare(recorded, out PaintingSpec ready, out ImageFitResult fit))
             {
-                Debug.LogWarning("PaintingSandboxPreview: the image does not fit these dimensions, so nothing was built.", this);
+                Debug.LogWarning($"Not built: {fit}", this);
                 return;
             }
 
-            var spec = new PaintingSpec(
-                "sandbox", title, artist, string.Empty, string.Empty,
-                image, fit.Dimensions, medium);
-
-            Mesh mesh = PaintingMeshBuilderFactory.For(spec.Medium).Build(spec.Dimensions);
-            ReplaceMesh(mesh);
-            ShowImageOnFront(spec.Image, fit.CropRect);
-
-            Vector3 builtSizeCm = mesh.bounds.size * 100f;
-            Debug.Log($"Built {spec}. Mesh measures {builtSizeCm.x:0.0} x {builtSizeCm.y:0.0} x {builtSizeCm.z:0.0} cm.", this);
-        }
-
-        private void ReplaceMesh(Mesh mesh)
-        {
-            DestroyGeneratedMesh();
-            _generatedMesh = mesh;
-            _generatedMesh.hideFlags = HideFlags.DontSave; // generated, so never saved into the scene file
-            GetComponent<MeshFilter>().sharedMesh = _generatedMesh;
-        }
-
-        private void ShowImageOnFront(Texture2D frontImage, Rect cropRect)
-        {
-            var meshRenderer = GetComponent<MeshRenderer>();
-            var block = new MaterialPropertyBlock();
-            meshRenderer.GetPropertyBlock(block, (int)PaintingSubmesh.Front);
-            block.SetTexture(BaseMapId, frontImage);
-            // Tiling = how much of the image to show, offset = where that part starts.
-            block.SetVector(BaseMapTilingOffsetId, new Vector4(cropRect.width, cropRect.height, cropRect.x, cropRect.y));
-            meshRenderer.SetPropertyBlock(block, (int)PaintingSubmesh.Front);
-        }
-
-        private void DestroyGeneratedMesh()
-        {
-            if (_generatedMesh == null)
-            {
-                return;
-            }
-
-            if (Application.isPlaying)
-            {
-                Destroy(_generatedMesh);
-            }
-            else
-            {
-                DestroyImmediate(_generatedMesh);
-            }
-
-            _generatedMesh = null;
+            GetComponent<PaintingView>().Show(ready, fit.CropRect);
+            Vector3 sizeCm = GetComponent<MeshFilter>().sharedMesh.bounds.size * 100f;
+            Debug.Log($"Built {ready}. Image fit: {fit}. Mesh measures {sizeCm.x:0.0} x {sizeCm.y:0.0} x {sizeCm.z:0.0} cm.", this);
         }
     }
 }

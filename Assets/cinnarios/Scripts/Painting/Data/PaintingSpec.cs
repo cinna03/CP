@@ -50,6 +50,13 @@ namespace Cinnarios.Painting.Data
             SideTreatment = sideTreatment;
         }
 
+        /// <summary>
+        /// A copy of this painting with corrected dimensions, used when validation finds the
+        /// recorded width and height were the wrong way round. The original stays unchanged.
+        /// </summary>
+        public PaintingSpec WithDimensions(PaintingDimensions correctedDimensions) =>
+            new PaintingSpec(SourceId, Title, Artist, Date, CreditLine, Image, correctedDimensions, Medium, SideTreatment);
+
         public override string ToString() => $"{Title} by {Artist} ({Dimensions})";
 
         private static string RequireText(string value, string parameterName)
