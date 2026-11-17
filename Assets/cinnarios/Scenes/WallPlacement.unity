@@ -354,6 +354,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Cinnarios.Placement.ARWallRaycaster
   raycastManager: {fileID: 2512387470422636671}
+  arCamera: {fileID: 0}
 --- !u!4 &1380569114
 Transform:
   m_ObjectHideFlags: 0
@@ -477,27 +478,43 @@ MonoBehaviour:
   m_UpdateType: 0
   m_IgnoreTrackingState: 1
   m_PositionInput:
-    m_UseReference: 1
+    m_UseReference: 0
     m_Action:
-      m_Name: 
+      m_Name: Position Input
       m_Type: 0
       m_ExpectedControlType: 
-      m_Id: 
+      m_Id: aa2ffc6e-040c-4654-b451-a71195c26660
       m_Processors: 
       m_Interactions: 
-      m_SingletonActionBindings: []
+      m_SingletonActionBindings:
+      - m_Name: 
+        m_Id: f916c90b-c659-4339-8e38-4a029bb77e7a
+        m_Path: <HandheldARInputDevice>/devicePosition
+        m_Interactions: 
+        m_Processors: 
+        m_Groups: 
+        m_Action: Position Input
+        m_Flags: 0
       m_Flags: 0
-    m_Reference: {fileID: 7862207684358717888, guid: c348712bda248c246b8c49b3db54643f, type: 3}
+    m_Reference: {fileID: 0}
   m_RotationInput:
-    m_UseReference: 1
+    m_UseReference: 0
     m_Action:
-      m_Name: 
+      m_Name: Rotation Input
       m_Type: 0
       m_ExpectedControlType: 
-      m_Id: 
+      m_Id: d0ad6fc9-d758-47ff-8eee-1fe9f87163fe
       m_Processors: 
       m_Interactions: 
-      m_SingletonActionBindings: []
+      m_SingletonActionBindings:
+      - m_Name: 
+        m_Id: 582fdf18-c3e1-496b-94d4-ff7d4466b5da
+        m_Path: <HandheldARInputDevice>/deviceRotation
+        m_Interactions: 
+        m_Processors: 
+        m_Groups: 
+        m_Action: Rotation Input
+        m_Flags: 0
       m_Flags: 0
     m_Reference: {fileID: -530380113134220495, guid: c348712bda248c246b8c49b3db54643f, type: 3}
   m_TrackingStateInput:
@@ -727,7 +744,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_PlanePrefab: {fileID: 4828036036408227074, guid: aba5af6e9da424e3587c3502cc0b8a49, type: 3}
-  m_DetectionMode: 3
+  m_DetectionMode: 2
 --- !u!4 &2512387470860572925
 Transform:
   m_ObjectHideFlags: 0
