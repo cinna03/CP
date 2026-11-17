@@ -117,3 +117,6 @@ InitTestScene*.unity*
 
 # Report drafts and study data stay on this computer, not in the repository
 Report/
+
+# VS Code personal settings
+.vscode/
