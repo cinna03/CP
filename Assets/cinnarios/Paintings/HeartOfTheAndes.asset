@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 91fb938d76dd84e04b4ac27ce2ebca50, type: 3}
+  m_Name: HeartOfTheAndes
+  m_EditorClassIdentifier: Assembly-CSharp::Cinnarios.Painting.Data.PaintingSpecAsset
+  sourceId: local
+  title: Heart Of The Andes
+  artist: Frederic Edwin Church
+  date: 1859
+  creditLine: Bequest of Margaret E. Dows, 1909
+  image: {fileID: 2800000, guid: 67dc0f0ab5fd441149079bd6af83bd06, type: 3}
+  widthCm: 302.9
+  heightCm: 168
+  depthCm: 0
+  medium: 0
+  sideTreatment: 0
