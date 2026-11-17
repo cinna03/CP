@@ -1,5 +1,6 @@
 using Cinnarios.Painting.Data;
 using Cinnarios.Painting.Geometry;
+using Cinnarios.Painting.Validation;
 using UnityEngine;
 
 namespace Cinnarios.Sandbox
@@ -13,6 +14,8 @@ namespace Cinnarios.Sandbox
     public sealed class PaintingSandboxPreview : MonoBehaviour
     {
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
+        private static readonly int BaseMapTilingOffsetId = Shader.PropertyToID("_BaseMap_ST");
+        private static readonly ImageFitCheck FitCheck = new ImageFitCheck();
 
         [Header("Artwork")]
         [SerializeField] private Texture2D image;
@@ -42,13 +45,23 @@ namespace Cinnarios.Sandbox
             }
 
             float depth = depthCm > 0f ? depthCm : medium.DefaultDepthCm();
+            var recorded = new PaintingDimensions(widthCm, heightCm, depth);
+
+            ImageFitResult fit = FitCheck.Evaluate(image.width, image.height, recorded);
+            Debug.Log($"Image fit for {image.width} x {image.height} px image: {fit}", this);
+            if (!fit.IsUsable)
+            {
+                Debug.LogWarning("PaintingSandboxPreview: the image does not fit these dimensions, so nothing was built.", this);
+                return;
+            }
+
             var spec = new PaintingSpec(
                 "sandbox", title, artist, string.Empty, string.Empty,
-                image, new PaintingDimensions(widthCm, heightCm, depth), medium);
+                image, fit.Dimensions, medium);
 
             Mesh mesh = PaintingMeshBuilderFactory.For(spec.Medium).Build(spec.Dimensions);
             ReplaceMesh(mesh);
-            ShowImageOnFront(spec.Image);
+            ShowImageOnFront(spec.Image, fit.CropRect);
 
             Vector3 builtSizeCm = mesh.bounds.size * 100f;
             Debug.Log($"Built {spec}. Mesh measures {builtSizeCm.x:0.0} x {builtSizeCm.y:0.0} x {builtSizeCm.z:0.0} cm.", this);
@@ -62,12 +75,14 @@ namespace Cinnarios.Sandbox
             GetComponent<MeshFilter>().sharedMesh = _generatedMesh;
         }
 
-        private void ShowImageOnFront(Texture2D frontImage)
+        private void ShowImageOnFront(Texture2D frontImage, Rect cropRect)
         {
             var meshRenderer = GetComponent<MeshRenderer>();
             var block = new MaterialPropertyBlock();
             meshRenderer.GetPropertyBlock(block, (int)PaintingSubmesh.Front);
             block.SetTexture(BaseMapId, frontImage);
+            // Tiling = how much of the image to show, offset = where that part starts.
+            block.SetVector(BaseMapTilingOffsetId, new Vector4(cropRect.width, cropRect.height, cropRect.x, cropRect.y));
             meshRenderer.SetPropertyBlock(block, (int)PaintingSubmesh.Front);
         }
 
