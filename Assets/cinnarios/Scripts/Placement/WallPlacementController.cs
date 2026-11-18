@@ -2,17 +2,20 @@ using System;
 using Cinnarios.Painting.Data;
 using Cinnarios.Painting.Presentation;
 using Cinnarios.Painting.Validation;
+using Cinnarios.Placement.Input;
+using Cinnarios.Placement.Session;
+using Cinnarios.Placement.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
 using UnityEngine.XR.ARFoundation;
 
 namespace Cinnarios.Placement
 {
     /// <summary>
-    /// Runs the hanging flow. While aiming, the painting previews on the wall under the centre
-    /// of the screen, smoothed and at gallery height. A tap anchors it there. It coordinates the
-    /// other placement classes but does none of their work itself.
+    /// Runs one hanging session: aim at a wall, tap to hang the painting there, drag to slide
+    /// it along that wall, Lock it, Move it again, or Scan again to start over. It coordinates
+    /// the placement pieces (wall finder, slider, anchor, plane search, gestures) and does
+    /// none of their work itself.
     /// </summary>
     public sealed class WallPlacementController : MonoBehaviour
     {
@@ -23,24 +26,36 @@ namespace Cinnarios.Placement
         [SerializeField] private ARPlaneManager planeManager;
         [SerializeField] private PaintingView paintingPrefab;
         [SerializeField] private PaintingSpecAsset startingPainting;
+        [Tooltip("The on-screen buttons and hint. Presses on them never count as wall taps or drags.")]
+        [SerializeField] private PlacementHud hud;
         [Tooltip("Higher follows the aim faster; lower is steadier.")]
         [SerializeField, Min(1f)] private float smoothingSharpness = 12f;
+        [Tooltip("How far a finger must move, in pixels, before a press counts as a drag rather than a tap.")]
+        [SerializeField, Min(1f)] private float dragThresholdPixels = 12f;
 
         private readonly PlacementStateMachine _stateMachine = new PlacementStateMachine();
         private readonly HangingHeightRule _hangingHeight = new HangingHeightRule();
+        private readonly WallSlider _slider = new WallSlider();
+        private readonly PlacementAnchor _anchor = new PlacementAnchor();
         private IWallHitProvider _walls;
+        private IScreenHitTest _uiHitTest;
+        private PlaneDetectionToggle _planeSearch;
+        private PointerGestureTracker _gestures;
         private PoseSmoother _smoother;
         private PaintingView _painting;
-        private GameObject _anchorObject;
+        private Camera _camera;
 
         public PlacementState State => _stateMachine.Current;
 
-        /// <summary>Raised whenever the placement stage changes, for UI hints.</summary>
+        /// <summary>Raised whenever the placement stage changes, for the hint and buttons.</summary>
         public event Action<PlacementState> StateChanged;
 
         private void Awake()
         {
             _walls = wallRaycaster;
+            _uiHitTest = hud;
+            _planeSearch = new PlaneDetectionToggle(planeManager);
+            _gestures = new PointerGestureTracker(dragThresholdPixels);
             _smoother = new PoseSmoother(smoothingSharpness);
             _painting = Instantiate(paintingPrefab);
             _painting.gameObject.SetActive(false);
@@ -49,6 +64,7 @@ namespace Cinnarios.Placement
 
         private void Start()
         {
+            _camera = Camera.main;
             if (startingPainting != null)
             {
                 ShowPainting(startingPainting.ToSpec());
@@ -57,11 +73,87 @@ namespace Cinnarios.Placement
 
         private void Update()
         {
-            if (_stateMachine.Current == PlacementState.Placed || _painting.Spec == null)
+            if (_painting.Spec == null)
             {
                 return;
             }
 
+            PointerGesture gesture = _gestures.Update(IsOverUi);
+
+            switch (_stateMachine.Current)
+            {
+                case PlacementState.Scanning:
+                case PlacementState.Aiming:
+                    UpdateAiming(gesture);
+                    break;
+                case PlacementState.Positioning:
+                    UpdateSliding(gesture);
+                    break;
+                case PlacementState.Locked:
+                    break; // fixed on the wall until Move or Scan again
+            }
+        }
+
+        /// <summary>
+        /// Shows a painting in the same holder. Position and stage stay as they are, and the new
+        /// painting uses its own real size, which is what swapping will rely on.
+        /// </summary>
+        public bool ShowPainting(PaintingSpec recorded)
+        {
+            if (!PaintingPreparation.TryPrepare(recorded, out PaintingSpec ready, out ImageFitResult fit))
+            {
+                Debug.LogWarning($"Painting not shown: {fit}", this);
+                return false;
+            }
+
+            _painting.Show(ready, fit.CropRect);
+            return true;
+        }
+
+        /// <summary>Fixes the painting where it is: anchors it and stops searching for walls.</summary>
+        public void Lock()
+        {
+            if (!_stateMachine.TryTransition(PlacementState.Locked))
+            {
+                return;
+            }
+
+            _anchor.Attach(_painting.transform);
+            _planeSearch.SetSearching(false);
+        }
+
+        /// <summary>Lets the painting be slid again on the same wall. Wall search stays off.</summary>
+        public void Move()
+        {
+            if (!_stateMachine.TryTransition(PlacementState.Positioning))
+            {
+                return;
+            }
+
+            // The anchor would fight the drag, so it is removed before sliding starts.
+            _anchor.Detach(_painting.transform);
+            _smoother.Reset();
+            _smoother.Step(new Pose(_painting.transform.position, _painting.transform.rotation), 0f);
+        }
+
+        /// <summary>Takes the painting off the wall and starts placement from the beginning.</summary>
+        public void ScanAgain()
+        {
+            if (!_stateMachine.TryTransition(PlacementState.Scanning))
+            {
+                return;
+            }
+
+            _anchor.Detach(_painting.transform);
+            _slider.Clear();
+            _gestures.Reset();
+            _smoother.Reset();
+            _painting.gameObject.SetActive(false);
+            _planeSearch.SetSearching(true);
+        }
+
+        private void UpdateAiming(PointerGesture gesture)
+        {
             var screenCentre = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
             if (!_walls.TryGetWallHit(screenCentre, out Pose wallPose))
             {
@@ -79,59 +171,43 @@ namespace Cinnarios.Placement
             _painting.transform.SetPositionAndRotation(smoothed.position, smoothed.rotation);
             _painting.gameObject.SetActive(true);
 
-            if (TapStartedThisFrame())
+            if (gesture == PointerGesture.Tap)
             {
-                Place(smoothed);
+                HangHere(smoothed);
             }
         }
 
-        /// <summary>
-        /// Shows a painting in the same holder. When it is already on the wall, the new one
-        /// appears in the same spot, centred, which is what makes compare-in-place work.
-        /// </summary>
-        public bool ShowPainting(PaintingSpec recorded)
+        // The tap only hangs the painting: no anchor yet, the person is still choosing the spot.
+        private void HangHere(Pose pose)
         {
-            if (!PaintingPreparation.TryPrepare(recorded, out PaintingSpec ready, out ImageFitResult fit))
-            {
-                Debug.LogWarning($"Painting not shown: {fit}", this);
-                return false;
-            }
-
-            _painting.Show(ready, fit.CropRect);
-            return true;
-        }
-
-        /// <summary>Takes the painting off the wall so it can be aimed and placed again.</summary>
-        public void Reposition()
-        {
-            if (!_stateMachine.TryTransition(PlacementState.Scanning))
+            if (!_stateMachine.TryTransition(PlacementState.Positioning))
             {
                 return;
             }
 
-            _painting.transform.SetParent(null, true);
-            if (_anchorObject != null)
-            {
-                Destroy(_anchorObject);
-                _anchorObject = null;
-            }
-
-            _painting.gameObject.SetActive(false);
+            _painting.transform.SetPositionAndRotation(pose.position, pose.rotation);
+            _slider.Capture(pose);
             _smoother.Reset();
+            _smoother.Step(pose, 0f);
         }
 
-        private void Place(Pose pose)
+        // Only a drag moves the painting; between drags it stays fixed in the room.
+        private void UpdateSliding(PointerGesture gesture)
         {
-            if (!_stateMachine.TryTransition(PlacementState.Placed))
+            switch (gesture)
             {
-                return;
-            }
+                case PointerGesture.DragStarted:
+                    _slider.BeginDrag(_gestures.Position, _camera, _painting.transform.position);
+                    break;
+                case PointerGesture.Dragging:
+                    if (_slider.TryDrag(_gestures.Position, _camera, out Vector3 target))
+                    {
+                        Pose smoothed = _smoother.Step(new Pose(target, _slider.Rotation), Time.deltaTime);
+                        _painting.transform.SetPositionAndRotation(smoothed.position, _slider.Rotation);
+                    }
 
-            // An anchor tells AR to keep this exact spot fixed in the real room as tracking improves.
-            _anchorObject = new GameObject("Painting Anchor");
-            _anchorObject.transform.SetPositionAndRotation(pose.position, pose.rotation);
-            _anchorObject.AddComponent<ARAnchor>();
-            _painting.transform.SetParent(_anchorObject.transform, true);
+                    break;
+            }
         }
 
         // Turns a point on the wall into the painting's pose: facing out of the wall, kept
@@ -155,16 +231,15 @@ namespace Cinnarios.Placement
             return new Pose(position, rotation);
         }
 
-        private static bool TapStartedThisFrame()
+        // Presses on the on-screen buttons (UI Toolkit) or any uGUI element are not wall gestures.
+        private bool IsOverUi(Vector2 screenPosition)
         {
-            Pointer pointer = Pointer.current;
-            if (pointer == null || !pointer.press.wasPressedThisFrame)
+            if (_uiHitTest != null && _uiHitTest.IsOverUi(screenPosition))
             {
-                return false;
+                return true;
             }
 
-            // Ignore taps on buttons and other UI.
-            return EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject();
+            return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
         }
     }
 }

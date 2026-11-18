@@ -3,10 +3,11 @@ using System;
 namespace Cinnarios.Placement
 {
     /// <summary>
-    /// Keeps track of the placement stage and allows only sensible moves between stages:
-    /// Scanning -> Aiming, Aiming -> Scanning, Aiming -> Placed, Placed -> Scanning.
-    /// Anything else (for example Scanning -> Placed) is refused, so the app can never place
-    /// a painting without a wall.
+    /// Keeps track of the placement stage and allows only these moves:
+    /// Scanning -> Aiming and back, Aiming -> Positioning (tap), Positioning -> Locked (Lock),
+    /// Locked -> Positioning (Move), and Aiming / Positioning / Locked -> Scanning (Scan again).
+    /// Anything else, such as Aiming -> Locked or Scanning -> Positioning, is refused, so a
+    /// painting can never be locked without first being hung and positioned.
     /// </summary>
     public sealed class PlacementStateMachine
     {
@@ -35,9 +36,11 @@ namespace Cinnarios.Placement
                 case PlacementState.Scanning:
                     return to == PlacementState.Aiming;
                 case PlacementState.Aiming:
-                    return to == PlacementState.Scanning || to == PlacementState.Placed;
-                case PlacementState.Placed:
-                    return to == PlacementState.Scanning;
+                    return to == PlacementState.Scanning || to == PlacementState.Positioning;
+                case PlacementState.Positioning:
+                    return to == PlacementState.Locked || to == PlacementState.Scanning;
+                case PlacementState.Locked:
+                    return to == PlacementState.Positioning || to == PlacementState.Scanning;
                 default:
                     return false;
             }
