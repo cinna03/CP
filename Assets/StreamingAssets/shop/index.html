@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Marketplace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;560;650&family=Newsreader:opsz,wght@6..72,450;6..72,560&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=13" />
+</head>
+<body>
+  <header class="bar">
+    <a class="mark" href="#gallery">Marketplace</a>
+    <div class="bar-tools">
+      <nav class="top-nav" aria-label="Cart">
+        <a href="#cart">Cart <span id="cart-count"></span></a>
+      </nav>
+      <div class="currency" role="group" aria-label="Currency">
+        <button type="button" data-currency="RWF" aria-pressed="true">RWF</button>
+        <button type="button" data-currency="USD" aria-pressed="false">USD</button>
+      </div>
+    </div>
+  </header>
+  <main id="app"></main>
+  <nav class="tabs" aria-label="Sections">
+    <a data-tab href="#gallery">Discover</a>
+    <a data-tab href="#search">Search</a>
+    <a data-tab href="#saved">Saved</a>
+    <a data-tab href="#account">Account</a>
+  </nav>
+  <script>
+    window.addEventListener('error', (event) => {
+      const node = document.querySelector('#app');
+      if (node && !node.textContent) node.textContent = event.message;
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const node = document.querySelector('#app');
+      if (node && !node.textContent) node.textContent = event.reason && event.reason.message ? event.reason.message : String(event.reason);
+    });
+  </script>
+  <script>window.CINNARIOS_PHONE = true;</script>
+  <script src="/guides.js?v=1"></script>
+  <script src="/rooms.js?v=8"></script>
+  <script src="/app.js?v=25"></script>
+</body>
+</html>
