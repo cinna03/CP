@@ -239,7 +239,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.xr.arfoundation": {
-      "version": "6.5.0",
+      "version": "6.7.1",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -247,7 +247,7 @@
         "com.unity.modules.ui": "1.0.0",
         "com.unity.inputsystem": "1.6.3",
         "com.unity.mathematics": "1.2.6",
-        "com.unity.xr.core-utils": "2.5.1",
+        "com.unity.xr.core-utils": "2.6.0",
         "com.unity.xr.management": "4.4.0",
         "com.unity.editorcoroutines": "1.0.0",
         "com.unity.modules.particlesystem": "1.0.0",
@@ -257,13 +257,13 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.xr.arkit": {
-      "version": "6.5.0",
+      "version": "6.7.1",
       "depth": 0,
       "source": "registry",
       "dependencies": {
         "com.unity.xr.core-utils": "2.2.2",
         "com.unity.xr.management": "4.4.0",
-        "com.unity.xr.arfoundation": "6.5.0",
+        "com.unity.xr.arfoundation": "6.7.1",
         "com.unity.editorcoroutines": "1.0.0"
       },
       "url": "https://packages.unity.com"
@@ -313,6 +313,13 @@
         "com.unity.xr.legacyinputhelpers": "2.1.11"
       },
       "url": "https://packages.unity.com"
+    },
+    "net.gree.unity-webview": {
+      "version": "https://github.com/gree/unity-webview.git?path=/dist/package",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "950cfbac14dbbf72e87548e77ef11ecc8843988e"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
