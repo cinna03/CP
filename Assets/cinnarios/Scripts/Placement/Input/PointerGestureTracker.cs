@@ -13,9 +13,13 @@ namespace Cinnarios.Placement.Input
     public sealed class PointerGestureTracker
     {
         private readonly float _dragThresholdPixels;
+        private const float HoldSeconds = 0.45f;
+
         private bool _pressed;
         private bool _dragging;
+        private bool _held;
         private bool _startedOnUi;
+        private float _pressTime;
         private Vector2 _pressStart;
 
         /// <summary>Current pointer position in screen pixels.</summary>
@@ -41,6 +45,8 @@ namespace Cinnarios.Placement.Input
             {
                 _pressed = true;
                 _dragging = false;
+                _held = false;
+                _pressTime = Time.unscaledTime;
                 _pressStart = Position;
                 _startedOnUi = isOverUi != null && isOverUi(Position);
                 return PointerGesture.None;
@@ -57,7 +63,7 @@ namespace Cinnarios.Placement.Input
                 bool wasDragging = _dragging;
                 _dragging = false;
 
-                if (_startedOnUi)
+                if (_startedOnUi || _held)
                 {
                     return PointerGesture.None;
                 }
@@ -76,6 +82,12 @@ namespace Cinnarios.Placement.Input
                 return PointerGesture.DragStarted;
             }
 
+            if (!_dragging && !_held && Time.unscaledTime - _pressTime >= HoldSeconds)
+            {
+                _held = true;
+                return PointerGesture.Hold;
+            }
+
             return _dragging ? PointerGesture.Dragging : PointerGesture.None;
         }
 
@@ -84,6 +96,7 @@ namespace Cinnarios.Placement.Input
         {
             _pressed = false;
             _dragging = false;
+            _held = false;
             _startedOnUi = false;
         }
     }

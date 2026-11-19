@@ -15,6 +15,9 @@ namespace Cinnarios.Placement.Input
         Dragging,
 
         /// <summary>Released after a drag.</summary>
-        DragEnded
+        DragEnded,
+
+        /// <summary>Held still, once, before release. Used to open details on the painting.</summary>
+        Hold
     }
 }
