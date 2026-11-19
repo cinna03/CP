@@ -8,6 +8,7 @@ using Cinnarios.Placement.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.XR.ARFoundation;
+using UnityEngine.XR.ARSubsystems;
 
 namespace Cinnarios.Placement
 {
@@ -25,7 +26,6 @@ namespace Cinnarios.Placement
         [SerializeField] private ARWallRaycaster wallRaycaster;
         [SerializeField] private ARPlaneManager planeManager;
         [SerializeField] private PaintingView paintingPrefab;
-        [SerializeField] private PaintingSpecAsset startingPainting;
         [Tooltip("The on-screen buttons and hint. Presses on them never count as wall taps or drags.")]
         [SerializeField] private PlacementHud hud;
         [Tooltip("Higher follows the aim faster; lower is steadier.")]
@@ -34,7 +34,6 @@ namespace Cinnarios.Placement
         [SerializeField, Min(1f)] private float dragThresholdPixels = 12f;
 
         private readonly PlacementStateMachine _stateMachine = new PlacementStateMachine();
-        private readonly HangingHeightRule _hangingHeight = new HangingHeightRule();
         private readonly WallSlider _slider = new WallSlider();
         private readonly PlacementAnchor _anchor = new PlacementAnchor();
         private IWallHitProvider _walls;
@@ -44,11 +43,19 @@ namespace Cinnarios.Placement
         private PoseSmoother _smoother;
         private PaintingView _painting;
         private Camera _camera;
+        private bool _listeningForPlanes;
+        private bool _coachingReady;
 
         public PlacementState State => _stateMachine.Current;
 
+        /// <summary>The painting holder, for read-only diagnostics.</summary>
+        public Transform PaintingTransform => _painting != null ? _painting.transform : null;
+
         /// <summary>Raised whenever the placement stage changes, for the hint and buttons.</summary>
         public event Action<PlacementState> StateChanged;
+
+        /// <summary>Raised when a finger holds still on the painting that is already on the wall.</summary>
+        public event Action HeldOnPainting;
 
         private void Awake()
         {
@@ -62,17 +69,41 @@ namespace Cinnarios.Placement
             _stateMachine.Changed += (_, next) => StateChanged?.Invoke(next);
         }
 
+        private void OnEnable()
+        {
+            _coachingReady = false;
+            if (planeManager == null)
+            {
+                return;
+            }
+
+            // A floor gives ARKit a stable room, which makes the wall appear sooner.
+            // The floor itself is not drawn, and it is not a place a painting can hang.
+            planeManager.requestedDetectionMode = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
+            if (!_listeningForPlanes)
+            {
+                planeManager.trackablesChanged.AddListener(HideFloors);
+                _listeningForPlanes = true;
+            }
+        }
+
         private void Start()
         {
             _camera = Camera.main;
-            if (startingPainting != null)
-            {
-                ShowPainting(startingPainting.ToSpec());
-            }
+        }
+
+        private void OnDisable()
+        {
+            _coachingReady = false;
         }
 
         private void Update()
         {
+            if (!_coachingReady)
+            {
+                _coachingReady = WallCoaching.AskForAWall();
+            }
+
             if (_painting.Spec == null)
             {
                 return;
@@ -90,7 +121,23 @@ namespace Cinnarios.Placement
                     UpdateSliding(gesture);
                     break;
                 case PlacementState.Locked:
+                    NoticeHold(gesture);
                     break; // fixed on the wall until Move or Scan again
+            }
+        }
+
+        // A still press on the canvas opens its details. A press on the wall does not.
+        private void NoticeHold(PointerGesture gesture)
+        {
+            if (gesture != PointerGesture.Hold || _camera == null || _painting == null)
+            {
+                return;
+            }
+
+            Ray ray = _camera.ScreenPointToRay(_gestures.Position);
+            if (Physics.Raycast(ray, out RaycastHit hit, 30f) && hit.transform == _painting.transform)
+            {
+                HeldOnPainting?.Invoke();
             }
         }
 
@@ -108,6 +155,16 @@ namespace Cinnarios.Placement
 
             _painting.Show(ready, fit.CropRect);
             return true;
+        }
+
+        /// <summary>
+        /// Shows a plain canvas at the painting's true size while its image is still loading,
+        /// so it can be hung straight away. Skips the image fit check, since the stand-in
+        /// image says nothing about the painting's proportions.
+        /// </summary>
+        public void ShowPlaceholder(PaintingSpec placeholder)
+        {
+            _painting.Show(placeholder, ImageFitResult.FullImage);
         }
 
         /// <summary>Fixes the painting where it is: anchors it and stops searching for walls.</summary>
@@ -134,6 +191,18 @@ namespace Cinnarios.Placement
             _anchor.Detach(_painting.transform);
             _smoother.Reset();
             _smoother.Step(new Pose(_painting.transform.position, _painting.transform.rotation), 0f);
+        }
+
+        /// <summary>A new painting from the shop starts its own search. The previous lock is dropped.</summary>
+        public void BeginNewVisit()
+        {
+            _anchor.Detach(_painting.transform);
+            _slider.Clear();
+            _gestures.Reset();
+            _smoother.Reset();
+            _painting.gameObject.SetActive(false);
+            _planeSearch.SetSearching(true);
+            _stateMachine.ForceScanning();
         }
 
         /// <summary>Takes the painting off the wall and starts placement from the beginning.</summary>
@@ -219,16 +288,39 @@ namespace Cinnarios.Placement
             wallNormal.Normalize();
 
             // The painting's front faces -Z, so its forward (+Z) must point into the wall.
+            // It stays on the point being looked at. A detected floor helps tracking and
+            // does not slide the painting up or down.
             Quaternion rotation = Quaternion.LookRotation(-wallNormal, Vector3.up);
             Vector3 position = wallPose.position + wallNormal * WallClearanceMetres;
+            return new Pose(position, rotation);
+        }
 
-            if (FloorHeightEstimator.TryEstimate(planeManager, out float floorHeight))
+        private static void HideFloors(ARTrackablesChangedEventArgs<ARPlane> changes)
+        {
+            foreach (ARPlane plane in changes.added)
             {
-                float paintingHeight = _painting.Spec.Dimensions.SizeInMetres.y;
-                position.y = _hangingHeight.CentreHeight(floorHeight, paintingHeight);
+                ShowOnlyIfWall(plane);
             }
 
-            return new Pose(position, rotation);
+            foreach (ARPlane plane in changes.updated)
+            {
+                ShowOnlyIfWall(plane);
+            }
+        }
+
+        private static void ShowOnlyIfWall(ARPlane plane)
+        {
+            if (plane.GetComponent<Session.QuietPlaneMark>() == null)
+            {
+                plane.gameObject.AddComponent<Session.QuietPlaneMark>();
+            }
+
+            bool wall = plane.alignment == PlaneAlignment.Vertical;
+            Collider collider = plane.GetComponent<Collider>();
+            if (collider != null)
+            {
+                collider.enabled = wall;
+            }
         }
 
         // Presses on the on-screen buttons (UI Toolkit) or any uGUI element are not wall gestures.

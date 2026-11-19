@@ -16,6 +16,14 @@ namespace Cinnarios.Placement
         /// <summary>Raised after every successful change, with the previous and new stage.</summary>
         public event Action<PlacementState, PlacementState> Changed;
 
+        /// <summary>Drops whatever stage this visit was in and starts the search again.</summary>
+        public void ForceScanning()
+        {
+            PlacementState previous = Current;
+            Current = PlacementState.Scanning;
+            Changed?.Invoke(previous, Current);
+        }
+
         public bool TryTransition(PlacementState next)
         {
             if (!IsAllowed(Current, next))
