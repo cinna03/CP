@@ -36,6 +36,20 @@ namespace Cinnarios.Painting.Presentation
             Mesh mesh = PaintingMeshBuilderFactory.For(spec.Medium).Build(spec.Dimensions);
             ReplaceMesh(mesh);
             ApplyImage(spec.Image, cropRect);
+            FitCollider(mesh);
+        }
+
+        // The hold gesture needs something to hit. The box matches the real-size mesh.
+        private void FitCollider(Mesh mesh)
+        {
+            var collider = GetComponent<BoxCollider>();
+            if (collider == null)
+            {
+                collider = gameObject.AddComponent<BoxCollider>();
+            }
+
+            collider.center = mesh.bounds.center;
+            collider.size = mesh.bounds.size;
         }
 
         private void CacheComponents()
