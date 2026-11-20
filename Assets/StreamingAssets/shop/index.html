@@ -2,32 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="cinnarios-api" content="" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Marketplace</title>
+  <title>Cinnarios</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;560;650&family=Newsreader:opsz,wght@6..72,450;6..72,560&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=13" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=36" />
 </head>
 <body>
   <header class="bar">
-    <a class="mark" href="#gallery">Marketplace</a>
+    <a class="mark" href="#home"><svg width="24" height="24" viewBox="0 0 26 26" fill="none" aria-hidden="true"><rect x="1" y="5" width="15" height="19" rx="3" stroke="currentColor" stroke-width="2"/><rect x="10" y="2" width="15" height="19" rx="3" fill="var(--accent)"/></svg>Cinnarios</a>
     <div class="bar-tools">
       <nav class="top-nav" aria-label="Cart">
-        <a href="#cart">Cart <span id="cart-count"></span></a>
+        <a href="#cart" id="cart-link"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 7h12l-1 13H7L6 7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>Cart <span id="cart-count"></span></a>
       </nav>
-      <div class="currency" role="group" aria-label="Currency">
-        <button type="button" data-currency="RWF" aria-pressed="true">RWF</button>
-        <button type="button" data-currency="USD" aria-pressed="false">USD</button>
-      </div>
     </div>
   </header>
   <main id="app"></main>
   <nav class="tabs" aria-label="Sections">
-    <a data-tab href="#gallery">Discover</a>
-    <a data-tab href="#search">Search</a>
-    <a data-tab href="#saved">Saved</a>
-    <a data-tab href="#account">Account</a>
+    <a data-tab href="#home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg>Home</a>
+    <a data-tab href="#gallery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>Discover</a>
+    <a data-tab href="#search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/></svg>Search</a>
+    <a data-tab href="#saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>Saved</a>
+    <a data-tab href="#account"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>Account</a>
   </nav>
   <script>
     window.addEventListener('error', (event) => {
@@ -39,9 +37,34 @@
       if (node && !node.textContent) node.textContent = event.reason && event.reason.message ? event.reason.message : String(event.reason);
     });
   </script>
-  <script>window.CINNARIOS_PHONE = true;</script>
   <script src="/guides.js?v=1"></script>
-  <script src="/rooms.js?v=8"></script>
-  <script src="/app.js?v=25"></script>
+  <script src="/rooms.js?v=23"></script>
+  <script src="/cinnarios/ui/icons.js?v=5"></script>
+  <script src="/cinnarios/core/similarity.js?v=1"></script>
+  <script src="/cinnarios/ui/piece-page.js?v=2"></script>
+  <script src="/cinnarios/core/search.js?v=1"></script>
+  <script src="/cinnarios/ui/search-page.js?v=2"></script>
+  <script src="/cinnarios/core/discovery.js?v=1"></script>
+  <script src="/cinnarios/ui/discover-gallery.js?v=5"></script>
+  <script src="/cinnarios/ui/discover-page.js?v=2"></script>
+  <script src="/cinnarios/core/delivery.js?v=1"></script>
+  <script src="/cinnarios/ui/saved-page.js?v=1"></script>
+  <script src="/cinnarios/ui/cart-page.js?v=1"></script>
+  <script src="/cinnarios/ui/checkout-page.js?v=3"></script>
+  <script src="/cinnarios/ui/account-page.js?v=5"></script>
+  <script src="/cinnarios/core/own-print.js?v=1"></script>
+  <script src="/cinnarios/ui/try-own-page.js?v=1"></script>
+  <script src="/cinnarios/core/demo-code.js?v=1"></script>
+  <script src="/cinnarios/core/password-strength.js?v=1"></script>
+  <script src="/cinnarios/ui/code-input.js?v=2"></script>
+  <script src="/cinnarios/ui/sign-in-page.js?v=4"></script>
+  <script src="/cinnarios/ui/reset-page.js?v=2"></script>
+  <script src="/cinnarios/ui/verify-page.js?v=5"></script>
+  <script src="/cinnarios/ui/motion.js?v=2"></script>
+  <script src="/cinnarios/ui/home-page.js?v=3"></script>
+  <script src="/cinnarios/ui/page-states.js?v=1"></script>
+  <script src="/cinnarios/core/session.js?v=1"></script>
+  <script src="/cinnarios/core/catalog-cache.js?v=1"></script>
+  <script src="/app.js?v=50"></script>
 </body>
 </html>

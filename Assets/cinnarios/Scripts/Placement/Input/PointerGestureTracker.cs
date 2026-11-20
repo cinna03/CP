@@ -63,11 +63,13 @@ namespace Cinnarios.Placement.Input
                 bool wasDragging = _dragging;
                 _dragging = false;
 
-                if (_startedOnUi || _held)
+                if (_startedOnUi)
                 {
                     return PointerGesture.None;
                 }
 
+                // A press that stays on one spot is a tap, including one held a little longer
+                // than a quick touch. Only a real move is a drag.
                 return wasDragging ? PointerGesture.DragEnded : PointerGesture.Tap;
             }
 

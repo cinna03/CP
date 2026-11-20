@@ -170,6 +170,12 @@ namespace Cinnarios.Launch
                 return;
             }
 
+            if (method == "POST" && (route == "/auth/email/send" || route == "/auth/email/confirm"))
+            {
+                WriteJson(response, 200, "{\"message\":\"This phone keeps the account on the device.\"}");
+                return;
+            }
+
             if (method == "POST" && route == "/auth/password/forgot")
             {
                 WriteJson(response, 200, "{\"message\":\"This phone keeps the password on the device. Choose it again by registering the same email, which will say the account already exists.\"}");
@@ -181,6 +187,12 @@ namespace Cinnarios.Launch
             if (method == "GET" && route == "/me")
             {
                 WriteJson(response, 200, _book.Me(user));
+                return;
+            }
+
+            if (route == "/me/library")
+            {
+                WriteJson(response, 200, "{\"saved\":[],\"tries\":[]}");
                 return;
             }
 
@@ -327,7 +339,9 @@ namespace Cinnarios.Launch
                 return;
             }
 
-            byte[] bytes = File.ReadAllBytes(file);
+            byte[] bytes = name == "index.html"
+                ? Encoding.UTF8.GetBytes(File.ReadAllText(file).Replace("<head>", "<head><script>window.CINNARIOS_PHONE=true;</script>", StringComparison.Ordinal))
+                : File.ReadAllBytes(file);
             response.StatusCode = 200;
             response.ContentType = TypeFor(name);
             response.ContentLength64 = bytes.Length;

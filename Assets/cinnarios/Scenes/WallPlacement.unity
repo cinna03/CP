@@ -139,7 +139,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &348472865
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -629,8 +629,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 02d6254519e3c45729644c840fbcd56e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Cinnarios.Launch.ShopStage
-  carryTheShopOnThePhone: 1
-  shopPageUrl: http://192.168.1.67:3000/#try/436535
+  carryTheShopOnThePhone: 0
+  shopPageUrl: https://marketplace-repo-1.onrender.com
   loader: {fileID: 1380569115}
   cameraParts:
   - {fileID: 1167446570}
@@ -669,7 +669,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1167446571
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -762,7 +762,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1380569112
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -888,7 +888,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1530688726
 MonoBehaviour:
   m_ObjectHideFlags: 0

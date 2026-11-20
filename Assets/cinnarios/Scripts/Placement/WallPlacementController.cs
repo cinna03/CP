@@ -240,7 +240,8 @@ namespace Cinnarios.Placement
             _painting.transform.SetPositionAndRotation(smoothed.position, smoothed.rotation);
             _painting.gameObject.SetActive(true);
 
-            if (gesture == PointerGesture.Tap)
+            // A finger on the phone jitters, so a careful press is often reported as a short drag.
+            if (gesture == PointerGesture.Tap || gesture == PointerGesture.DragEnded)
             {
                 HangHere(smoothed);
             }

@@ -1,4 +1,51 @@
 const roomKey = 'marketplace.rooms';
+const libraryPrefix = 'marketplace.library';
+let libraryId = '';
+
+function libraryKey() {
+  return libraryId ? `${libraryPrefix}.${libraryId}` : `${libraryPrefix}.guest`;
+}
+
+function readLibrary() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(libraryKey()) || '{}');
+    return {
+      saved: Array.isArray(parsed.saved) ? parsed.saved : [],
+      tries: Array.isArray(parsed.tries) ? parsed.tries : [],
+    };
+  } catch {
+    return { saved: [], tries: [] };
+  }
+}
+
+function writeLibrary(saved, tries) {
+  localStorage.setItem(libraryKey(), JSON.stringify({ saved, tries }));
+}
+
+// Older builds kept every account's hearts in one browser store. Move that copy to the
+// signed-out store once, and never copy it onto an account.
+function migrateSharedLibrary() {
+  const guestKey = `${libraryPrefix}.guest`;
+  if (localStorage.getItem(guestKey)) return;
+  try {
+    const shared = JSON.parse(localStorage.getItem(roomKey) || '{}');
+    const saved = Array.isArray(shared.saved) ? shared.saved : [];
+    const tries = Array.isArray(shared.tries) ? shared.tries : [];
+    if (!saved.length && !tries.length) return;
+    localStorage.setItem(guestKey, JSON.stringify({ saved, tries }));
+    delete shared.saved;
+    delete shared.tries;
+    localStorage.setItem(roomKey, JSON.stringify(shared));
+  } catch {
+    /* The old store stays where it is. */
+  }
+}
+
+migrateSharedLibrary();
+
+function wallPicture(image) {
+  return /^https:\/\//.test(image) ? image : `${location.origin}/wall-tries/${image}`;
+}
 const colourGuide = {
   436535: 'gold',
   436532: 'blue',
@@ -36,20 +83,7 @@ const moodGuide = {
   pale: 'quiet',
   dark: 'deep',
 };
-const swatches = [
-  ['gold', '#c4a15a'],
-  ['blue', '#3d5c78'],
-  ['green', '#3f5c45'],
-  ['red', '#8c3b24'],
-  ['earth', '#7a6248'],
-  ['pale', '#d9d0c2'],
-  ['dark', '#1c1915'],
-];
 const frames = { none: 0, wood: 4500, linen: 7500 };
-const shipTiers = {
-  kigali: { label: 'Kigali rider', cents: 8000 },
-  province: { label: 'Another province', cents: 15000 },
-};
 
 function blankRooms() {
   return {
@@ -64,7 +98,6 @@ function blankRooms() {
     reserved: {},
     advisory: [],
     payout: null,
-    filters: { medium: '', min: '', max: '', colour: '', minW: '', minH: '', orientation: '' },
     concerns: {},
     feedback: {},
     tries: [],
@@ -73,14 +106,23 @@ function blankRooms() {
 
 function rooms() {
   try {
-    return { ...blankRooms(), ...JSON.parse(localStorage.getItem(roomKey) || '{}') };
+    const state = { ...blankRooms(), ...JSON.parse(localStorage.getItem(roomKey) || '{}') };
+    const library = readLibrary();
+    state.saved = library.saved;
+    state.tries = library.tries;
+    return state;
   } catch {
     return blankRooms();
   }
 }
 
 function keep(next) {
-  localStorage.setItem(roomKey, JSON.stringify(next));
+  writeLibrary(next.saved || [], next.tries || []);
+  const rest = { ...next };
+  delete rest.saved;
+  delete rest.tries;
+  localStorage.setItem(roomKey, JSON.stringify(rest));
+  window.Shop?.syncLibrary?.();
 }
 
 function shop() {
@@ -113,6 +155,10 @@ function collectionsFrom(works) {
     { id: 'picks', title: 'Curator picks', text: 'A short wall of works already in the shop.', works: works.slice(0, 4) },
     { id: 'wide', title: 'Wider than tall', text: 'Works whose museum width is greater than the height.', works: works.filter((work) => orientationOf(work) === 'landscape') },
     { id: 'upright', title: 'Taller than wide', text: 'Works whose museum height is greater than the width.', works: works.filter((work) => orientationOf(work) === 'portrait') },
+    { id: 'earthy', title: 'Calm and earthy', text: 'Paintings the shop groups as earth or gold.', works: works.filter((work) => colourOf(work) === 'earth' || colourOf(work) === 'gold') },
+    { id: 'deep', title: 'Deep colour', text: 'Paintings the shop groups as dark or red.', works: works.filter((work) => colourOf(work) === 'dark' || colourOf(work) === 'red') },
+    { id: 'under-200', title: 'Under $200', text: 'The recorded price is under 200 US dollars.', works: works.filter((work) => Number(work.priceAmount) / 100 < 200) },
+    { id: 'landscapes', title: 'Landscapes', text: 'Works the shop reads as landscape.', works: works.filter((work) => subjectOf(work) === 'landscape') },
   ];
   const byArtist = new Map();
   for (const work of works) {
@@ -135,18 +181,6 @@ function collectionsFrom(works) {
 
 function findCollection(works, id) {
   return collectionsFrom(works).find((group) => group.id === id);
-}
-
-function passes(work, filters) {
-  const price = Number(work.priceAmount) / 100;
-  if (filters.medium && work.medium !== filters.medium) return false;
-  if (filters.colour && colourOf(work) !== filters.colour) return false;
-  if (filters.orientation && orientationOf(work) !== filters.orientation) return false;
-  if (filters.min && price < Number(filters.min)) return false;
-  if (filters.max && price > Number(filters.max)) return false;
-  if (filters.minW && Number(work.widthCm) < Number(filters.minW)) return false;
-  if (filters.minH && Number(work.heightCm) < Number(filters.minH)) return false;
-  return true;
 }
 
 function luhn(value) {
@@ -180,29 +214,11 @@ function expiryOk(value) {
   return end > new Date();
 }
 
-function rememberScroll(hash) {
-  const y = sessionStorage.getItem(`marketplace.scroll:${hash}`);
-  if (y) requestAnimationFrame(() => window.scrollTo(0, Number(y)));
-}
-
 let previousHash = location.hash;
 window.addEventListener('hashchange', () => {
   sessionStorage.setItem(`marketplace.scroll:${previousHash || '#gallery'}`, String(window.scrollY));
   previousHash = location.hash;
 });
-
-function card(work) {
-  const { esc } = shop();
-  const state = rooms();
-  const mark = state.reserved[work.sourceId] ? '<span class="badge">Reserved in this browser</span>' : '';
-  return `<a class="work" href="#work/${esc(work.sourceId)}">
-    <span class="frame"><img src="${esc(work.thumbnailUrl)}" alt="" loading="lazy" decoding="async" /></span>
-    ${mark}
-    <strong>${esc(work.title)}</strong>
-    <span>${esc(work.artist || 'Unknown artist')}</span>
-    <span class="measures">${esc(work.widthCm)} × ${esc(work.heightCm)} cm</span>
-  </a>`;
-}
 
 function areaOf(work) {
   return Number(work.widthCm) * Number(work.heightCm);
@@ -298,7 +314,7 @@ function showWallOutcome(work, outcome, image) {
   line.replaceChildren();
   if (image && /^[\w.-]+$/.test(image)) {
     const picture = document.createElement('img');
-    picture.src = `${location.origin}/wall-tries/${image}`;
+    picture.src = wallPicture(image);
     picture.alt = 'The view saved from the wall';
     line.append(picture);
   }
@@ -348,8 +364,12 @@ async function noteWallTry(report) {
     state.tries.push({ sourceId, at: now });
     fresh.push(sourceId);
   }
-  keep(state);
   const outcome = report?.outcome || '';
+  // The try that ended the visit keeps how it ended and the saved wall picture, for Account.
+  const last = state.tries.find((item) => item.sourceId === current);
+  if (last && outcome) last.outcome = outcome;
+  if (last && report?.image && /^[\w.-]+$/.test(report.image)) last.image = report.image;
+  keep(state);
   if (!outcome && current) sessionStorage.setItem('marketplace.askDecision', current);
   if (outcome) sessionStorage.removeItem('marketplace.askDecision');
   const send = shop()?.api;
@@ -425,36 +445,67 @@ window.Rooms = {
   isReserved(sourceId) {
     return Boolean(rooms().reserved[sourceId]);
   },
+  /** Saved painting ids, in the order they were saved. */
+  savedIds() {
+    return rooms().saved.slice();
+  },
+  /** Puts a painting back into Saved at its old place (used by Undo). */
+  insertSaved(sourceId, index) {
+    const state = rooms();
+    if (state.saved.includes(sourceId)) return;
+    state.saved.splice(Math.max(0, Math.min(index, state.saved.length)), 0, sourceId);
+    keep(state);
+  },
+  /** Every wall try kept in this browser, oldest first: { sourceId, at, outcome?, image? }. */
+  tries() {
+    return (rooms().tries || []).slice();
+  },
+  snapshot() {
+    const state = rooms();
+    return {
+      saved: state.saved.slice(),
+      tries: (state.tries || []).map((item) => ({
+        sourceId: String(item.sourceId),
+        at: item.at,
+        ...(item.outcome ? { outcome: item.outcome } : {}),
+        ...(item.image && /^[\w.-]+$/.test(item.image) ? { image: item.image } : {}),
+      })),
+    };
+  },
+  replaceLibrary(saved, tries) {
+    writeLibrary(saved.slice(), tries.slice());
+  },
+  clearLibrary() {
+    writeLibrary([], []);
+  },
+  /** Saved paintings and wall tries for this account only. Null is the signed-out store. */
+  useAccount(userId) {
+    libraryId = userId || '';
+  },
+  accountId() {
+    return libraryId;
+  },
+  /** The paintings this browser has tried on a wall, oldest first. */
+  triedIds() {
+    return (rooms().tries || []).map((item) => String(item.sourceId));
+  },
+  /** Adds or removes a painting from Saved and says whether it is saved now. */
+  toggleSaved(sourceId) {
+    const state = rooms();
+    state.saved = state.saved.includes(sourceId) ? state.saved.filter((id) => id !== sourceId) : [...state.saved, sourceId];
+    keep(state);
+    return state.saved.includes(sourceId);
+  },
   workFacts(work) {
-    const { esc, money } = shop();
+    const { esc } = shop();
     const state = rooms();
     const framing = sessionStorage.getItem(`marketplace.frame:${work.sourceId}`) || 'none';
     const reserved = state.reserved[work.sourceId];
-    return `${reserved ? `<p class="badge">Reserved in this browser on order ${esc(reserved.orderNumber)}. The museum print stays in the catalogue for the camera. <button type="button" id="release" class="quiet">Release reservation</button></p>` : ''}
-      <div class="actions">
-        <button type="button" id="zoom-in" class="quiet">Closer</button>
-        <button type="button" id="zoom-out" class="quiet">Farther</button>
-      </div>`;
+    return reserved
+      ? `<p class="badge">Reserved in this browser on order ${esc(reserved.orderNumber)}. The museum print stays in the catalogue for the camera. <button type="button" id="release" class="quiet">Release reservation</button></p>`
+      : '';
   },
   bindWork(work) {
-    const image = document.querySelector('#zoom-image');
-    let scale = 1;
-    const paint = () => {
-      image.style.transform = `scale(${scale})`;
-    };
-    document.querySelector('#zoom-in')?.addEventListener('click', () => {
-      scale = Math.min(3, scale + 0.25);
-      paint();
-    });
-    document.querySelector('#zoom-out')?.addEventListener('click', () => {
-      scale = Math.max(1, scale - 0.25);
-      paint();
-    });
-    image?.addEventListener('wheel', (event) => {
-      event.preventDefault();
-      scale = Math.min(3, Math.max(1, scale + (event.deltaY < 0 ? 0.12 : -0.12)));
-      paint();
-    }, { passive: false });
     document.querySelector('#frame')?.addEventListener('change', (event) => {
       sessionStorage.setItem(`marketplace.frame:${work.sourceId}`, event.target.value);
       const extra = frames[event.target.value] || 0;
@@ -528,132 +579,6 @@ window.Rooms = {
   subjectName: subjectOf,
 };
 
-async function renderDiscover() {
-  const { api, esc, place, setPage, money } = shop();
-  setPage('visit', 'Discover');
-  try {
-    const works = await api('/catalog/artworks');
-    const hero = works[0];
-    const artists = [...new Map(works.filter((work) => work.artist).map((work) => [work.artist, work])).values()].slice(0, 8);
-    const mediums = [...new Set(works.map((work) => work.medium).filter(Boolean))];
-    place(`
-      <h1>Discover</h1>
-      <p class="intro">Public-domain paintings from The Met, at the centimetres the museum recorded.</p>
-      <a class="hero" href="#work/${esc(hero.sourceId)}">
-        <img src="${esc(hero.imageUrl)}" alt="${esc(hero.title)}" />
-        <strong>${esc(hero.title)}</strong>
-        <span>${esc(hero.artist || 'Unknown artist')} · ${esc(money(hero.priceAmount, hero.currency))}</span>
-      </a>
-      <section class="block">
-        <h2>Curator picks</h2>
-        <div class="carousel">${works.slice(0, 6).map(card).join('')}</div>
-      </section>
-      <section class="block">
-        <h2>Artists in the catalogue</h2>
-        <div class="carousel">${artists.map((work) => `<a class="pill-card" href="#artist/${encodeURIComponent(work.artist)}"><strong>${esc(work.artist)}</strong><span>Open the portfolio</span></a>`).join('')}</div>
-      </section>
-      <section class="block">
-        <h2>Medium</h2>
-        <div class="pills">${mediums.map((medium) => `<button type="button" class="quiet medium-pill" data-medium="${esc(medium)}">${esc(medium)}</button>`).join('')}</div>
-      </section>
-      <section class="block">
-        <h2><a href="#collections">Collections</a></h2>
-        <div class="carousel">${collectionsFrom(works).slice(0, 3).map((group) => `<a class="pill-card" href="#collection/${encodeURIComponent(group.id)}"><strong>${esc(group.title)}</strong><span>${group.works.length} works</span></a>`).join('')}</div>
-      </section>
-      <div class="grid">${works.map(card).join('')}</div>`, false, () => {
-      document.querySelectorAll('.medium-pill').forEach((button) => {
-        button.addEventListener('click', () => {
-          const state = rooms();
-          state.filters = { ...blankRooms().filters, medium: button.dataset.medium };
-          keep(state);
-          location.hash = '#search';
-        });
-      });
-      rememberScroll('#gallery');
-    });
-  } catch (error) {
-    place(shop().formError(error), false);
-  }
-}
-
-async function renderSearch() {
-  const { api, esc, place, setPage } = shop();
-  setPage('visit', 'Search');
-  const state = rooms();
-  try {
-    const works = await api('/catalog/artworks');
-    const mediums = [...new Set(works.map((work) => work.medium).filter(Boolean))];
-    const shown = works.filter((work) => passes(work, state.filters));
-    const filters = state.filters;
-    place(`
-      <h1>Search</h1>
-      <p class="intro">${shown.length} of ${works.length} works. Colour swatches are a shop guide, not a reading of the paint.</p>
-      <button type="button" id="open-filters">Filters</button>
-      <dialog id="filters" class="sheet-dialog">
-        <form method="dialog" id="filter-form">
-          <h2>Filters</h2>
-          <label for="medium">Medium</label>
-          <select id="medium" name="medium">
-            <option value="">Any</option>
-            ${mediums.map((medium) => `<option ${filters.medium === medium ? 'selected' : ''}>${esc(medium)}</option>`).join('')}
-          </select>
-          <label for="min">Minimum price, USD</label>
-          <input id="min" name="min" inputmode="decimal" value="${esc(filters.min)}" />
-          <label for="max">Maximum price, USD</label>
-          <input id="max" name="max" inputmode="decimal" value="${esc(filters.max)}" />
-          <p>Colour</p>
-          <div class="swatches">${swatches.map(([name, hex]) => `<button type="button" class="swatch ${filters.colour === name ? 'on' : ''}" data-colour="${name}" style="background:${hex}" aria-pressed="${filters.colour === name}" aria-label="${name}"></button>`).join('')}<button type="button" class="quiet" id="clear-colour">Any colour</button></div>
-          <label for="minW">Minimum width, cm</label>
-          <input id="minW" name="minW" inputmode="decimal" value="${esc(filters.minW)}" />
-          <label for="minH">Minimum height, cm</label>
-          <input id="minH" name="minH" inputmode="decimal" value="${esc(filters.minH)}" />
-          <label for="orientation">Orientation</label>
-          <select id="orientation" name="orientation">
-            ${['', 'landscape', 'portrait', 'square'].map((value) => `<option value="${value}" ${filters.orientation === value ? 'selected' : ''}>${value || 'Any'}</option>`).join('')}
-          </select>
-          <div class="actions">
-            <button type="submit">Show these works</button>
-            <button type="button" id="reset-filters" class="quiet">Clear</button>
-            <button type="button" id="close-filters" class="quiet">Close</button>
-          </div>
-        </form>
-      </dialog>
-      <div class="masonry">${shown.map(card).join('') || '<p>Nothing matches these filters. Clear them and look again.</p>'}</div>`, false, () => {
-      const dialog = document.querySelector('#filters');
-      document.querySelector('#open-filters').addEventListener('click', () => dialog.showModal());
-      document.querySelector('#close-filters').addEventListener('click', () => dialog.close());
-      document.querySelector('#clear-colour').addEventListener('click', () => {
-        document.querySelectorAll('.swatch').forEach((button) => button.setAttribute('aria-pressed', 'false'));
-        dialog.dataset.colour = '';
-      });
-      document.querySelectorAll('.swatch').forEach((button) => {
-        button.addEventListener('click', () => {
-          document.querySelectorAll('.swatch').forEach((other) => other.setAttribute('aria-pressed', 'false'));
-          button.setAttribute('aria-pressed', 'true');
-          dialog.dataset.colour = button.dataset.colour;
-        });
-      });
-      dialog.dataset.colour = filters.colour || '';
-      document.querySelector('#reset-filters').addEventListener('click', () => {
-        const next = rooms();
-        next.filters = blankRooms().filters;
-        keep(next);
-        renderSearch();
-      });
-      document.querySelector('#filter-form').addEventListener('submit', () => {
-        const data = Object.fromEntries(new FormData(document.querySelector('#filter-form')));
-        const next = rooms();
-        next.filters = { ...data, colour: dialog.dataset.colour || '' };
-        keep(next);
-        renderSearch();
-      });
-      rememberScroll('#search');
-    });
-  } catch (error) {
-    place(shop().formError(error), false);
-  }
-}
-
 async function renderCollections() {
   const { api, esc, place, setPage } = shop();
   setPage('visit', 'Collections');
@@ -687,16 +612,6 @@ async function renderArtist(name) {
   place(`<h1>${esc(artist)}</h1>
     <p>${own.length} museum ${own.length === 1 ? 'work' : 'works'} in this catalogue.</p>
     <div class="grid">${own.map(card).join('') || '<p>None in this catalogue.</p>'}</div>`);
-}
-
-async function renderSaved() {
-  const { api, esc, place, setPage } = shop();
-  setPage('visit', 'Saved');
-  const state = rooms();
-  const works = await api('/catalog/artworks');
-  const saved = works.filter((work) => state.saved.includes(work.sourceId));
-  place(`<h1>Saved</h1>
-    ${saved.length ? `<div class="grid">${saved.map(card).join('')}</div>` : '<p>Nothing saved yet. Open a work and choose Save.</p>'}`);
 }
 
 async function renderBoard(id) {
@@ -1008,7 +923,7 @@ async function renderOrders() {
   try {
     const orders = await api('/orders');
     place(`<h1>Orders</h1>
-      <p>An arrival notice stays on this page. It does not open the camera. Payment is still outside this version.</p>
+      <p>An arrival notice stays on this page.</p>
       ${orders.length ? `<div class="stack">${orders.map((order) => `<a class="line-link" href="#receipt/${esc(order.number)}"><strong>${esc(order.number)}</strong><span>${order.status === 'paid' ? 'Paid' : 'Unpaid'} · ${esc(money(order.totalAmount, order.currency))}</span></a>`).join('')}</div>` : '<p>No orders yet.</p>'}`);
   } catch (error) {
     place(formError(error), false);
@@ -1109,202 +1024,7 @@ function shake(form, message) {
   if (error) error.textContent = message;
 }
 
-async function renderCheckout() {
-  const { api, esc, place, setPage, money, signedIn, formError, rateNote, sessionId } = shop();
-  setPage('sheet', 'Checkout');
-  if (!signedIn()) {
-    place('<h1>Checkout</h1><p><a href="#enter">Sign in</a> to place the sandbox order.</p>', false);
-    return;
-  }
-  let cart;
-  let addresses;
-  try {
-    [cart, addresses] = await Promise.all([api('/cart'), api('/me/addresses')]);
-  } catch (error) {
-    place(formError(error), false);
-    return;
-  }
-  if (!cart.items.length) {
-    place('<h1>Checkout</h1><p>The cart is empty. <a href="#gallery">Choose a work.</a></p>', false);
-    return;
-  }
-  const crowded = cart.items.find((item) => item.quantity > 1);
-  if (crowded) {
-    place(`<h1>Checkout</h1><p>${esc(crowded.title)} is in the cart more than once. This sandbox treats each work as a single print. <a href="#cart">Lower it to one.</a></p>`, false);
-    return;
-  }
-  const addressId = sessionStorage.getItem('marketplace.checkoutAddress');
-  const address = addresses.find((item) => item.id === addressId);
-  if (!address) {
-    place('<h1>Checkout</h1><p>Choose a delivery address in the cart first. <a href="#cart">Back to the cart.</a></p>', false);
-    return;
-  }
-  const tier = sessionStorage.getItem('marketplace.shipTier') || 'kigali';
-  place(`<h1>Checkout</h1>
-    <p class="badge">Sandbox / verification mode. No funds deducted.</p>
-    <p>${cart.items.map((item) => esc(item.title)).join(', ')}</p>
-    <p class="total">${esc(money(cart.totalAmount, cart.currency))}</p>
-    ${rateNote()}
-    <p>Ship to ${esc(address.recipientName)}, ${esc(address.city)}${address.region ? `, ${esc(address.region)}` : ''}.</p>
-    <form id="pay-form">
-      <label for="tier">Shipping guide</label>
-      <select id="tier" name="tier">
-        <option value="kigali" ${tier === 'kigali' ? 'selected' : ''}>Kigali rider, guide ${esc(money(shipTiers.kigali.cents))}</option>
-        <option value="province" ${tier === 'province' ? 'selected' : ''}>Another province, guide ${esc(money(shipTiers.province.cents))}</option>
-      </select>
-      <p class="note">The guide is not added to the recorded order.</p>
-      <div class="segment" role="group" aria-label="Payment check">
-        <button type="button" id="tab-card" aria-pressed="true">Card</button>
-        <button type="button" id="tab-momo" aria-pressed="false">Mobile money</button>
-      </div>
-      <div id="card-fields">
-        <label for="pan">Card number</label>
-        <input id="pan" name="pan" inputmode="numeric" autocomplete="off" />
-        <label for="exp">Expiry</label>
-        <input id="exp" name="exp" placeholder="MM/YY" autocomplete="off" />
-        <label for="cvv">Security code</label>
-        <input id="cvv" name="cvv" inputmode="numeric" autocomplete="off" />
-      </div>
-      <div id="momo-fields" hidden>
-        <label for="msisdn">Mobile money number</label>
-        <input id="msisdn" name="msisdn" inputmode="tel" placeholder="0788123456" />
-        <p class="note">MTN 078 or 079, Airtel 072 or 073.</p>
-      </div>
-      <button type="submit" id="authorize">Verify and place unpaid order</button>
-      <p class="error" role="alert"></p>
-    </form>
-    <dialog id="momo-dialog" class="sheet-dialog">
-      <h2>Approve the prompt</h2>
-      <p>Approve ${esc(money(0))} verification prompt on your handset. This check moves no money. The order total above is recorded and stays unpaid.</p>
-      <div class="actions">
-        <button type="button" id="momo-yes">Approve</button>
-        <button type="button" id="momo-no" class="quiet">Deny</button>
-      </div>
-    </dialog>
-    <p id="authorizing" class="settle" hidden>Checking the sandbox…</p>`, false, () => {
-    let method = 'card';
-    const form = document.querySelector('#pay-form');
-    document.querySelector('#tab-card').addEventListener('click', () => {
-      method = 'card';
-      document.querySelector('#tab-card').setAttribute('aria-pressed', 'true');
-      document.querySelector('#tab-momo').setAttribute('aria-pressed', 'false');
-      document.querySelector('#card-fields').hidden = false;
-      document.querySelector('#momo-fields').hidden = true;
-    });
-    document.querySelector('#tab-momo').addEventListener('click', () => {
-      method = 'momo';
-      document.querySelector('#tab-momo').setAttribute('aria-pressed', 'true');
-      document.querySelector('#tab-card').setAttribute('aria-pressed', 'false');
-      document.querySelector('#card-fields').hidden = true;
-      document.querySelector('#momo-fields').hidden = false;
-    });
-    const placeOrder = async (label) => {
-      document.querySelector('#authorizing').hidden = false;
-      document.querySelector('#authorize').disabled = true;
-      const wait = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1500;
-      await new Promise((resolve) => setTimeout(resolve, wait));
-      try {
-        const order = await api('/checkout', { method: 'POST', body: JSON.stringify({ addressId, sessionId: sessionId() }) });
-        const next = rooms();
-        for (const item of cart.items) next.reserved[item.sourceId] = { orderNumber: order.number, at: new Date().toISOString() };
-        next.methods = [{ kind: method, label }, ...next.methods.filter((item) => item.label !== label)].slice(0, 4);
-        keep(next);
-        const meta = JSON.parse(sessionStorage.getItem('marketplace.receipts') || '{}');
-        meta[order.number] = { method, label, tier: document.querySelector('#tier').value };
-        sessionStorage.setItem('marketplace.receipts', JSON.stringify(meta));
-        sessionStorage.setItem('marketplace.lastOrder', order.number);
-        await shop().refreshCartCount();
-        location.hash = `#receipt/${order.number}`;
-      } catch (error) {
-        document.querySelector('#authorizing').hidden = true;
-        document.querySelector('#authorize').disabled = false;
-        shake(form, error.message);
-      }
-    };
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      sessionStorage.setItem('marketplace.shipTier', document.querySelector('#tier').value);
-      if (method === 'card') {
-        const pan = document.querySelector('#pan').value;
-        const digits = pan.replace(/\D/g, '');
-        if (!luhn(pan)) {
-          shake(form, 'That card number does not pass the check. Try the number again.');
-          return;
-        }
-        if (!expiryOk(document.querySelector('#exp').value)) {
-          shake(form, 'That expiry is missing or already past. Use a future MM/YY.');
-          return;
-        }
-        const cvv = document.querySelector('#cvv').value.replace(/\D/g, '');
-        const needed = digits.length === 15 ? 4 : 3;
-        if (cvv.length !== needed) {
-          shake(form, needed === 4 ? 'A 15-digit card needs a 4-digit security code.' : 'The security code needs 3 digits.');
-          return;
-        }
-        await placeOrder(`•••• ${digits.slice(-4)}`);
-        return;
-      }
-      const phone = document.querySelector('#msisdn').value;
-      if (!momoOk(phone)) {
-        shake(form, 'That mobile number does not match a Rwanda MoMo prefix. Use 072, 073, 078, or 079.');
-        return;
-      }
-      const dialog = document.querySelector('#momo-dialog');
-      dialog.showModal();
-      document.querySelector('#momo-yes').onclick = async () => {
-        dialog.close();
-        await placeOrder(phone.replace(/\s/g, ''));
-      };
-      document.querySelector('#momo-no').onclick = () => {
-        dialog.close();
-        shake(form, 'The handset prompt was denied. Nothing was reserved.');
-      };
-    });
-  });
-}
-
-async function renderReceipt(number) {
-  const { api, esc, place, setPage, money, signedIn, formError } = shop();
-  setPage('sheet', 'Receipt');
-  if (!signedIn()) {
-    place('<h1>Receipt</h1><p><a href="#enter">Sign in</a> to open it.</p>', false);
-    return;
-  }
-  try {
-    const orders = await api('/orders');
-    const order = orders.find((item) => item.number === number);
-    if (!order) {
-      place('<h1>That order is not on this account.</h1>', false);
-      return;
-    }
-    const meta = JSON.parse(sessionStorage.getItem('marketplace.receipts') || '{}')[number];
-    const guide = meta ? shipTiers[meta.tier] : null;
-    place(`<article class="receipt">
-      <p class="badge">Sandbox / verification mode. No funds deducted.</p>
-      <h1>${esc(order.number)}</h1>
-      <p>${order.status === 'paid' ? 'Paid' : 'Unpaid'} · ${esc(money(order.totalAmount, order.currency))}</p>
-      ${shop().rateNote()}
-      <p>${meta ? `${meta.method === 'card' ? 'Card' : 'Mobile money'} ${esc(meta.label)}` : 'Payment method was not recorded in this browser.'}</p>
-      ${guide ? `<p>Shipping guide ${esc(guide.label)}, ${esc(money(guide.cents))}. Not charged.</p>` : ''}
-      <div class="stack">${order.items.map((item) => `<p><strong>${esc(item.title)}</strong><br>${esc(item.widthCm)} × ${esc(item.heightCm)} × ${esc(item.depthCm)} cm · Reserved in this browser, simulated.</p>`).join('')}</div>
-      <ol class="timeline">
-        <li>Order recorded. Nothing was deducted.</li>
-        <li>The print is reserved in this browser only. The catalogue and the camera still have it.</li>
-        <li>An arrival notice, when one exists, stays on the orders page and does not open the camera.</li>
-      </ol>
-      <p><a href="#orders">All orders</a></p>
-    </article>`);
-  } catch (error) {
-    place(formError(error), false);
-  }
-}
-
-window.renderDiscover = renderDiscover;
 window.renderRoom = (route) => {
-  if (route === '#search') {
-    renderSearch();
-    return true;
-  }
   if (route === '#collections') {
     renderCollections();
     return true;
@@ -1315,10 +1035,6 @@ window.renderRoom = (route) => {
   }
   if (route.startsWith('#artist/')) {
     renderArtist(route.slice('#artist/'.length));
-    return true;
-  }
-  if (route === '#saved') {
-    renderSaved();
     return true;
   }
   if (
@@ -1341,14 +1057,6 @@ window.renderRoom = (route) => {
   }
   if (route === '#orders') {
     renderOrders();
-    return true;
-  }
-  if (route === '#checkout') {
-    renderCheckout();
-    return true;
-  }
-  if (route.startsWith('#receipt/')) {
-    renderReceipt(route.slice('#receipt/'.length));
     return true;
   }
   return false;

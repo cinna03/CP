@@ -146,7 +146,7 @@ namespace Cinnarios.Launch
         {
             return "{\"id\":" + PhoneShopJson.Quote(user.id)
                 + ",\"email\":" + PhoneShopJson.Quote(user.email)
-                + ",\"phone\":null,\"emailVerifiedAt\":null,\"status\":\"active\",\"roles\":[\"collector\"],\"mfaEnabled\":false,\"createdAt\":"
+                + ",\"phone\":null,\"emailVerifiedAt\":" + PhoneShopJson.Quote(user.createdAt) + ",\"status\":\"active\",\"roles\":[\"collector\"],\"mfaEnabled\":false,\"createdAt\":"
                 + PhoneShopJson.Quote(user.createdAt) + "}";
         }
 
@@ -554,7 +554,7 @@ namespace Cinnarios.Launch
             return "{\"accessToken\":" + PhoneShopJson.Quote(user.accessToken)
                 + ",\"expiresIn\":3600,\"tokenType\":\"Bearer\",\"user\":{\"id\":" + PhoneShopJson.Quote(user.id)
                 + ",\"email\":" + PhoneShopJson.Quote(user.email)
-                + ",\"roles\":[\"collector\"],\"emailVerifiedAt\":null,\"mfaEnabled\":false}}";
+                + ",\"roles\":[\"collector\"],\"emailVerifiedAt\":" + PhoneShopJson.Quote(user.createdAt) + ",\"mfaEnabled\":false}}";
         }
 
         private static string ArtistJson(PhoneUser user)

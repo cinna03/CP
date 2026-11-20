@@ -5,10 +5,9 @@ using UnityEngine;
 namespace Cinnarios.Launch
 {
     /// <summary>
-    /// Shows the marketplace website over the camera, then swaps to the hang when the page
-    /// asks. The website is paused before the camera starts, and the camera is stopped
+    /// Shows the shop when the app opens. The camera stays off until the page asks to try a
+    /// painting. The website is paused before the camera starts, and the camera is stopped
     /// before the website is shown again. The page is not reloaded, so a sign-in survives.
-    /// Without the WebView plugin this component does nothing and the camera starts as before.
     /// </summary>
     public sealed class ShopStage : MonoBehaviour
     {
@@ -29,7 +28,6 @@ namespace Cinnarios.Launch
         private void Awake()
         {
             _pageAddress = carryTheShopOnThePhone ? PhoneShopServer.EnsureStarted() : shopPageUrl;
-#if CINNARIOS_WEBVIEW
             if (string.IsNullOrWhiteSpace(_pageAddress) || loader == null)
             {
                 return;
@@ -37,11 +35,8 @@ namespace Cinnarios.Launch
 
             loader.WaitForTheShop();
             SetCameraActive(false);
-#else
-            if (!string.IsNullOrWhiteSpace(_pageAddress))
-            {
-                Debug.LogWarning("The shop is ready, but the WebView plugin is not switched on. The camera starts on its own.", this);
-            }
+#if !CINNARIOS_WEBVIEW
+            Debug.LogWarning("The shop is ready, but the WebView plugin is not switched on. The camera stays off.", this);
 #endif
         }
 
@@ -85,6 +80,7 @@ namespace Cinnarios.Launch
 
             // The page stops first. The camera starts only after that.
             _page.Pause();
+            _page.SetInteractionEnabled(false);
             _page.SetVisibility(false);
             _showingShop = false;
             SetCameraActive(true);
@@ -125,6 +121,7 @@ namespace Cinnarios.Launch
         private void ReturnToShop()
         {
             SetCameraActive(false);
+            _page.SetInteractionEnabled(true);
             _page.Resume();
             _page.SetVisibility(true);
             _showingShop = true;
@@ -149,6 +146,8 @@ namespace Cinnarios.Launch
             WallVisitRecord.Clear();
         }
 
+#endif
+
         private void SetCameraActive(bool active)
         {
             if (cameraParts == null)
@@ -164,7 +163,6 @@ namespace Cinnarios.Launch
                 }
             }
         }
-#endif
 
 #if !CINNARIOS_WEBVIEW
         public void EndTheSession()
