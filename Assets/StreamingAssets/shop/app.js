@@ -519,7 +519,7 @@ async function openPieceInSpace(sourceId) {
     const host = await fetch('/lan').then((response) => response.json());
     apiOrigin = `http://${host.address}:3001`;
   }
-  const cameraHref = `cinnarios://try/${sourceId}?api=${encodeURIComponent(apiOrigin)}`;
+  const cameraHref = `cinnarios-ar://try/${sourceId}?api=${encodeURIComponent(apiOrigin)}`;
   const call = window.Unity && window.Unity.call;
   if (typeof call === 'function') {
     call(cameraHref);
@@ -646,7 +646,7 @@ async function renderTry(sourceId) {
     const current = await loadConfidence(sourceId);
     const host = window.CINNARIOS_PHONE ? null : await fetch('/lan').then((response) => response.json());
     const apiOrigin = window.CINNARIOS_PHONE ? location.origin : `http://${host.address}:3001`;
-    const cameraHref = `cinnarios://try/${sourceId}?api=${encodeURIComponent(apiOrigin)}`;
+    const cameraHref = `cinnarios-ar://try/${sourceId}?api=${encodeURIComponent(apiOrigin)}`;
     place(`
       <article class="detail">
         <img src="${esc(work.imageUrl)}" alt="${esc(work.title)}" />

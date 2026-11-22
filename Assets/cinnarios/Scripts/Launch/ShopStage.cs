@@ -1,4 +1,3 @@
-using Cinnarios.Placement;
 using Gree.UnityWebView;
 using UnityEngine;
 
@@ -13,8 +12,8 @@ namespace Cinnarios.Launch
     {
         [Tooltip("On: the phone carries the shop, and the laptop can be off. Off: open the address below, which is the shop running on a computer.")]
         [SerializeField] private bool carryTheShopOnThePhone = true;
-        [Tooltip("Used only when Carry The Shop On The Phone is off. Example: http://192.168.1.67:3000")]
-        [SerializeField] private string shopPageUrl;
+        [Tooltip("Used only when Carry The Shop On The Phone is off.")]
+        [SerializeField] private string shopPageUrl = "https://cinnarios.onrender.com";
         private string _pageAddress;
         [SerializeField] private ArtworkLaunchLoader loader;
         [Tooltip("AR Session, XR Origin, Placement, and the placement HUD. All of them stay off while the shop is on screen.")]
@@ -23,6 +22,7 @@ namespace Cinnarios.Launch
 #if CINNARIOS_WEBVIEW
         private WebViewObject _page;
         private bool _showingShop;
+        private bool _openingCamera;
 #endif
 
         private void Awake()
@@ -53,13 +53,42 @@ namespace Cinnarios.Launch
                 cb: OnPageMessage,
                 err: (message) => Debug.LogWarning($"Shop page: {message}", this),
                 httpErr: (message) => Debug.LogWarning($"Shop page: {message}", this),
+                hooked: OnPageMessage,
                 enableWKWebView: true,
                 wkAllowsLinkPreview: false,
                 separated: Application.isEditor);
+            // A camera link must stay in this app. Without this, the page hand-off asks iOS
+            // to open cinnarios://, and iOS can launch the other Unity app that registered it.
+            _page.SetURLPattern(string.Empty, string.Empty, "^cinnarios(-ar)?:");
             _page.SetMargins(0, 0, 0, 0);
             _page.LoadURL(_pageAddress);
+
+            string openedWith = Application.absoluteURL;
+            if (_openingCamera || TryLink.TryParse(openedWith, out _, out _))
+            {
+                _page.SetVisibility(false);
+                _showingShop = false;
+                if (!_openingCamera)
+                {
+                    SetCameraActive(true);
+                    loader.OpenTryLink(openedWith);
+                }
+
+                return;
+            }
+
             _page.SetVisibility(true);
             _showingShop = true;
+        }
+
+        private void OnEnable()
+        {
+            Application.deepLinkActivated += OnPageMessage;
+        }
+
+        private void OnDisable()
+        {
+            Application.deepLinkActivated -= OnPageMessage;
         }
 
         private void OnDestroy()
@@ -78,35 +107,19 @@ namespace Cinnarios.Launch
                 return;
             }
 
+            _openingCamera = true;
+
             // The page stops first. The camera starts only after that.
-            _page.Pause();
-            _page.SetInteractionEnabled(false);
-            _page.SetVisibility(false);
+            if (_page != null)
+            {
+                _page.Pause();
+                _page.SetInteractionEnabled(false);
+                _page.SetVisibility(false);
+            }
+
             _showingShop = false;
             SetCameraActive(true);
             loader.OpenTryLink(message);
-        }
-
-        private void OnGUI()
-        {
-            if (_showingShop || _page == null || PaintingIsLocked())
-            {
-                return;
-            }
-
-            const float width = 220f;
-            const float height = 64f;
-            Rect back = new Rect(24f, 48f, width, height);
-            if (GUI.Button(back, "Back to shop"))
-            {
-                ReturnToShop();
-            }
-        }
-
-        private static bool PaintingIsLocked()
-        {
-            WallPlacementController placement = FindAnyObjectByType<WallPlacementController>();
-            return placement != null && placement.State == PlacementState.Locked;
         }
 
         /// <summary>The person finished the wall session. The shop comes back with the same page.</summary>

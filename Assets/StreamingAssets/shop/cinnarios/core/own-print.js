@@ -7,7 +7,7 @@
   const MAX_CM = 600;
   const MAX_PHOTO_BYTES = 25 * 1024 * 1024;
   const MAX_EDGE_PX = 2048;
-  const LINK_PREFIX = 'cinnarios://own/';
+  const LINK_PREFIX = 'cinnarios-ar://own/';
 
   class OwnPrint {
     constructor({ photo = null, widthCm = '', heightCm = '', name = '' } = {}) {

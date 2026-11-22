@@ -244,6 +244,7 @@ PlayerSettings:
   iOSLaunchScreeniPadCustomStoryboardPath: 
   iOSDeviceRequirements: []
   iOSURLSchemes:
+  - cinnarios-ar
   - cinnarios
   macOSURLSchemes: []
   iOSBackgroundModes: 0

@@ -630,7 +630,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Cinnarios.Launch.ShopStage
   carryTheShopOnThePhone: 0
-  shopPageUrl: https://marketplace-repo-1.onrender.com
+  shopPageUrl: https://cinnarios.onrender.com
   loader: {fileID: 1380569115}
   cameraParts:
   - {fileID: 1167446570}
