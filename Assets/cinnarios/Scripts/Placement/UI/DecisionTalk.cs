@@ -16,6 +16,7 @@ namespace Cinnarios.Placement.UI
             public WallAdvice.Aspect Aspect;
             public WallAdvice.Lean Lean;
             public bool WantsSuggestions;
+            public bool WantsNewSpot;
             public bool Satisfied;
             public bool Leave;
         }
@@ -97,6 +98,13 @@ namespace Cinnarios.Placement.UI
             {
                 return Suggest(artwork, WallAdvice.Aspect.Fit, WallAdvice.Lean.Keep,
                     artwork == null ? "These are close to this size, so you can compare the fit." : $"{artwork.Title} is {artwork.Dimensions.WidthCm:0.#} cm wide. These are close to that, so you can compare the fit on this wall.");
+            }
+
+            if (Contains(text, "move it", "another spot", "different spot", "place it again", "place again", "readjust", "reposition", "new spot"))
+            {
+                turn.WantsNewSpot = true;
+                turn.Reply = "The locked spot stays until you place this same painting again. Start from the wall, and lock the new spot when it is right.";
+                return turn;
             }
 
             if (Contains(text, "yes", "this one is right", "i like it", "love it", "perfect", "keep it", "satisfied"))

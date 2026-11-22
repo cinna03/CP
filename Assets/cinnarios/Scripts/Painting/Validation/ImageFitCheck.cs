@@ -8,9 +8,9 @@ namespace Cinnarios.Painting.Validation
     /// Compares the shape of a photo with the shape of the real painting before anything is
     /// built, so an image is never stretched or squashed onto the 3D front.
     ///
-    /// Both shapes are reduced to a ratio (width / height) and compared as a percentage:
-    /// up to 2% is a match, up to 8% is fixed with a centred crop, otherwise the check tries
-    /// swapping width and height before giving up.
+    /// Both shapes are reduced to a ratio (width / height). Up to 2% is a match. Further
+    /// off, the closer orientation is used and the photo is centre-cropped to the shop's
+    /// centimetres, so the print is never stretched and never withheld.
     /// </summary>
     public sealed class ImageFitCheck
     {
@@ -18,7 +18,6 @@ namespace Cinnarios.Painting.Validation
         public const float DefaultCropTolerance = 0.08f;
 
         private readonly float _matchTolerance;
-        private readonly float _cropTolerance;
 
         public ImageFitCheck(float matchTolerance = DefaultMatchTolerance, float cropTolerance = DefaultCropTolerance)
         {
@@ -28,7 +27,6 @@ namespace Cinnarios.Painting.Validation
             }
 
             _matchTolerance = matchTolerance;
-            _cropTolerance = cropTolerance;
         }
 
         public ImageFitResult Evaluate(int imageWidthPx, int imageHeightPx, PaintingDimensions dimensions)
@@ -46,25 +44,16 @@ namespace Cinnarios.Painting.Validation
             float imageRatio = imageWidthPx / (float)imageHeightPx;
 
             ImageFitResult asRecorded = TryFit(imageRatio, dimensions, ImageFitStatus.Match);
-            if (asRecorded != null)
-            {
-                return asRecorded;
-            }
-
             // The recorded size may simply be the wrong way round (height given as width).
             var swapped = new PaintingDimensions(dimensions.HeightCm, dimensions.WidthCm, dimensions.DepthCm);
             ImageFitResult asSwapped = TryFit(imageRatio, swapped, ImageFitStatus.DimensionsSwapped);
-            if (asSwapped != null)
-            {
-                return asSwapped;
-            }
-
-            float difference = RelativeDifference(imageRatio, dimensions.AspectRatio);
-            return new ImageFitResult(ImageFitStatus.Mismatch, ImageFitResult.FullImage, dimensions, difference);
+            // Keep the shop's centimetres. A photo that is a different shape is cropped to
+            // those centimetres, never stretched and never dropped for a blank card.
+            return asSwapped.RatioDifference < asRecorded.RatioDifference ? asSwapped : asRecorded;
         }
 
-        // Returns a usable result if the image fits these dimensions (exactly or with a crop),
-        // or null if it does not fit at all.
+        // A close photo is used whole. Anything further off is centre-cropped to the
+        // painting's proportions so the print still appears at the recorded size.
         private ImageFitResult TryFit(float imageRatio, PaintingDimensions dimensions, ImageFitStatus statusWhenExact)
         {
             float targetRatio = dimensions.AspectRatio;
@@ -75,13 +64,8 @@ namespace Cinnarios.Painting.Validation
                 return new ImageFitResult(statusWhenExact, ImageFitResult.FullImage, dimensions, difference);
             }
 
-            if (difference <= _cropTolerance)
-            {
-                ImageFitStatus status = statusWhenExact == ImageFitStatus.Match ? ImageFitStatus.CropNeeded : statusWhenExact;
-                return new ImageFitResult(status, CentreCrop(imageRatio, targetRatio), dimensions, difference);
-            }
-
-            return null;
+            ImageFitStatus status = statusWhenExact == ImageFitStatus.Match ? ImageFitStatus.CropNeeded : statusWhenExact;
+            return new ImageFitResult(status, CentreCrop(imageRatio, targetRatio), dimensions, difference);
         }
 
         private static float RelativeDifference(float actual, float target) => Mathf.Abs(actual - target) / target;

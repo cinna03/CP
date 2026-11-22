@@ -27,6 +27,7 @@ namespace Cinnarios.Placement
 
         // Reused every frame instead of allocating a new list.
         private readonly List<ARRaycastHit> _hits = new List<ARRaycastHit>();
+        private TrackableId _heldPlane;
 
         private const TrackableType WallHitTypes = TrackableType.PlaneWithinPolygon | TrackableType.PlaneWithinInfinity;
 
@@ -46,9 +47,41 @@ namespace Cinnarios.Placement
                 return false;
             }
 
+            // Stay on the wall already chosen. A nearer patch must not yank the painting sideways.
+            if (TryFindHeldPlane(out wallPose))
+            {
+                return true;
+            }
+
             // First look for a hit inside a detected wall patch, then on a wall's extension.
             return TryFindWall(TrackableType.PlaneWithinPolygon, out wallPose)
                 || TryFindWall(TrackableType.PlaneWithinInfinity, out wallPose);
+        }
+
+        private bool TryFindHeldPlane(out Pose wallPose)
+        {
+            wallPose = default;
+            if (_heldPlane == TrackableId.invalidId)
+            {
+                return false;
+            }
+
+            foreach (ARRaycastHit hit in _hits)
+            {
+                if (hit.trackableId != _heldPlane || hit.trackable is not ARPlane plane || plane.alignment != PlaneAlignment.Vertical)
+                {
+                    continue;
+                }
+
+                if (TryWallNormalFacingCamera(plane.normal, hit.pose.position, out Vector3 normal))
+                {
+                    wallPose = new Pose(hit.pose.position, Quaternion.FromToRotation(Vector3.up, normal));
+                    return true;
+                }
+            }
+
+            _heldPlane = TrackableId.invalidId;
+            return false;
         }
 
         // Hits are sorted nearest first, so the first matching wall is the one in front of the camera.
@@ -69,6 +102,7 @@ namespace Cinnarios.Placement
                 if (TryWallNormalFacingCamera(plane.normal, hit.pose.position, out Vector3 normal))
                 {
                     // Contract of IWallHitProvider: the pose's up direction is the wall's normal.
+                    _heldPlane = hit.trackableId;
                     wallPose = new Pose(hit.pose.position, Quaternion.FromToRotation(Vector3.up, normal));
                     return true;
                 }

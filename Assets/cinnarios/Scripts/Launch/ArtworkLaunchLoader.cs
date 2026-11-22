@@ -191,13 +191,17 @@ namespace Cinnarios.Launch
                 ArtworkRecord artwork = ShopArtworkMapper.ToRecord(data);
                 CurrentArtwork = artwork;
                 RememberTried(artwork.SourceId);
-                await EnsureCatalogueAsync(client, artwork.SourceId, cancellationToken);
                 PictureReady = false;
                 PictureFailed = false;
+                // The wall search must not wait on the image. A plain card at the recorded
+                // centimetres lets the phone find the wall while the picture is still downloading.
+                placement.ShowPlaceholder(artwork.ToSpec(Paper()));
                 Changed?.Invoke();
                 SetStatus($"Downloading the image for {artwork.Title}");
 
-                Texture2D image = await _downloader.GetAsync(artwork.ImageUrl, cancellationToken);
+                Task catalogue = EnsureCatalogueAsync(client, artwork.SourceId, cancellationToken);
+                Texture2D image = await _downloader.GetAsync(artwork.ImageUrl, 1600, artwork.Title, cancellationToken);
+                await catalogue;
                 if (image == null)
                 {
                     PictureFailed = true;
@@ -279,6 +283,28 @@ namespace Cinnarios.Launch
             {
                 SetStatus(reason);
             }
+        }
+
+        private static Texture2D _paper;
+
+        private static Texture2D Paper()
+        {
+            if (_paper != null)
+            {
+                return _paper;
+            }
+
+            _paper = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+            Color paper = new Color(0.93f, 0.9f, 0.84f, 1f);
+            Color[] pixels = new Color[16];
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                pixels[i] = paper;
+            }
+
+            _paper.SetPixels(pixels);
+            _paper.Apply(false, true);
+            return _paper;
         }
 
         private void SetStatus(string status)

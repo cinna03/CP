@@ -3,11 +3,13 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
 using Cinnarios.Catalogue.Data;
+using Cinnarios.Catalogue.Networking;
 using Cinnarios.Catalogue.Shop;
 using Cinnarios.Launch;
+using Cinnarios.Painting.Data;
 using UnityEngine;
-using UnityEngine.Networking;
 using UnityEngine.UIElements;
 
 namespace Cinnarios.Placement.UI
@@ -40,9 +42,11 @@ namespace Cinnarios.Placement.UI
         private VisualElement _root;
         private VisualElement _sheet;
         private Label _hint;
+        private Label _size;
         private VisualElement _decision;
         private VisualElement _placementRow;
         private Button _lockButton;
+        private Button _shopButton;
         private ArtworkLaunchLoader _loader;
         private PlacementState _previous = PlacementState.Scanning;
         private Step _step = Step.None;
@@ -53,6 +57,7 @@ namespace Cinnarios.Placement.UI
         private string _assistantLine;
         private TextField _say;
         private VisualElement _composer;
+        private readonly TextureDownloader _pictures = new TextureDownloader();
 
         private void OnEnable()
         {
@@ -116,7 +121,15 @@ namespace Cinnarios.Placement.UI
             _hint.style.fontSize = 28;
             _hint.style.whiteSpace = WhiteSpace.Normal;
             _hint.style.unityTextAlign = TextAnchor.MiddleCenter;
-            _hint.style.marginBottom = 12;
+            _hint.style.marginBottom = 8;
+
+            _size = new Label { pickingMode = PickingMode.Ignore };
+            _size.style.color = new Color(1f, 0.96f, 0.9f, 0.9f);
+            _size.style.fontSize = 20;
+            _size.style.whiteSpace = WhiteSpace.Normal;
+            _size.style.unityTextAlign = TextAnchor.MiddleCenter;
+            _size.style.marginBottom = 12;
+            _size.style.display = DisplayStyle.None;
 
             _decision = new VisualElement { pickingMode = PickingMode.Ignore };
             _decision.style.display = DisplayStyle.None;
@@ -125,7 +138,9 @@ namespace Cinnarios.Placement.UI
             _placementRow.style.flexDirection = FlexDirection.Row;
             _placementRow.style.justifyContent = Justify.Center;
             _placementRow.style.marginTop = 8;
+            _shopButton = CreateButton("Shop", ReturnToShop);
             _lockButton = CreateButton("Lock", () => controller.Lock());
+            _placementRow.Add(_shopButton);
             _placementRow.Add(_lockButton);
 
             _composer = new VisualElement();
@@ -147,6 +162,7 @@ namespace Cinnarios.Placement.UI
             _composer.Add(send);
 
             _sheet.Add(_hint);
+            _sheet.Add(_size);
             _sheet.Add(_decision);
             _sheet.Add(_composer);
             _sheet.Add(_placementRow);
@@ -172,14 +188,18 @@ namespace Cinnarios.Placement.UI
             {
                 case PlacementState.Scanning:
                     ShowPlacement(_loader != null && !_loader.PictureReady
-                        ? "The painting is on its way. Move the phone slowly until a wall appears."
-                        : "Move the phone slowly until a wall appears.", false);
+                        ? "Aim at a corner while the painting loads. Move slowly."
+                        : "Aim at a corner or the edge of the wall, and move slowly.", false);
                     break;
                 case PlacementState.Aiming:
-                    ShowPlacement("Tap the wall to place the painting.", false);
+                    ShowPlacement("Tap the wall where it should hang.", false);
                     break;
                 case PlacementState.Positioning:
-                    ShowPlacement("Drag it to the spot you want, then lock it. The place stays after that.", true);
+                    ShowPlacement(
+                        _loader != null && !_loader.PictureReady
+                            ? "Drag it on this wall. The picture is still arriving."
+                            : "Drag to move it on this wall. Lock when the spot is right.",
+                        true);
                     break;
                 case PlacementState.Locked:
                     ShowDecision();
@@ -196,7 +216,8 @@ namespace Cinnarios.Placement.UI
                 _composer.style.display = DisplayStyle.None;
             }
             SetVisible(_lockButton, lockVisible);
-            _placementRow.style.display = lockVisible ? DisplayStyle.Flex : DisplayStyle.None;
+            _placementRow.style.display = DisplayStyle.Flex;
+            ShowRecordedSize();
         }
 
         private void ShowDecision()
@@ -210,6 +231,7 @@ namespace Cinnarios.Placement.UI
             }
 
             ClearDecision();
+            ShowRecordedSize();
 
             switch (_step)
             {
@@ -279,10 +301,10 @@ namespace Cinnarios.Placement.UI
                     break;
                 case Step.Suggestions:
                     _hint.text = string.IsNullOrEmpty(_assistantLine)
-                        ? "Try one in this same spot. It uses its own size."
+                        ? "These use their own size. After you tap one, slide it on this wall."
                         : _assistantLine;
                     _composer.style.display = DisplayStyle.Flex;
-                    _decision.Add(Prompt("Tap one to put it in this same spot."));
+                    _decision.Add(Prompt("Tap one to hang it on this wall. You can slide it before you lock."));
                     break;
                 case Step.Save:
                     _hint.text = "You can keep a picture of this view, then leave.";
@@ -326,6 +348,12 @@ namespace Cinnarios.Placement.UI
                 return;
             }
 
+            if (turn.WantsNewSpot)
+            {
+                PlaceThisOneAgain();
+                return;
+            }
+
             if (!turn.WantsSuggestions)
             {
                 Go(Step.Talk);
@@ -345,9 +373,8 @@ namespace Cinnarios.Placement.UI
                 return "Tell me what is in the way, or say that this one is right.";
             }
 
-            string arrived = _justArrived ? "The new painting is on the wall. " : string.Empty;
             _justArrived = false;
-            return arrived + DecisionTalk.Opening(artwork);
+            return DecisionTalk.Opening(artwork);
         }
 
         private void AskDirection(WallAdvice.Aspect aspect)
@@ -462,23 +489,42 @@ namespace Cinnarios.Placement.UI
 
             _decision.Clear();
             _hint.text = _assistantLine;
-            _decision.Add(Prompt("Tap one to put it in this same spot."));
+            _decision.Add(Prompt("Tap one to hang it on this wall. You can slide it before you lock."));
             foreach (WallAdvice.Suggestion suggestion in suggestions)
             {
                 string sourceId = suggestion.Artwork.sourceId;
                 string label = $"{suggestion.Artwork.title}\n{suggestion.Artwork.widthCm:0.#} × {suggestion.Artwork.heightCm:0.#} cm\n{suggestion.Because}";
-                AddPictureChoice(label, suggestion.Artwork.thumbnailUrl, () => SwapTo(sourceId));
+                AddPictureChoice(
+                    label,
+                    suggestion.Artwork.thumbnailUrl,
+                    suggestion.Artwork.imageUrl,
+                    suggestion.Artwork.title,
+                    () => SwapTo(sourceId));
             }
 
             AddChoice("Say something else", () => Go(Step.Talk));
         }
 
+        // The lock stays. A new spot means placing this same painting from the start.
+        private void PlaceThisOneAgain()
+        {
+            if (controller == null || controller.State != PlacementState.Locked)
+            {
+                return;
+            }
+
+            _step = Step.None;
+            _assistantLine = null;
+            controller.ScanAgain();
+        }
+
         private void SwapTo(string sourceId)
         {
+            // The new painting stays on this wall. The person can slide it, then lock again.
             _justArrived = false;
-            _step = Step.Waiting;
+            _step = Step.None;
+            controller?.Move();
             _loader?.ShowSource(sourceId);
-            Render(PlacementState.Locked);
         }
 
         private void ShowDetails()
@@ -553,6 +599,11 @@ namespace Cinnarios.Placement.UI
             AddChoice("Done", FinishSatisfied);
         }
 
+        private void ReturnToShop()
+        {
+            FindAnyObjectByType<ShopStage>()?.EndTheSession();
+        }
+
         private void FinishSatisfied()
         {
             WallVisitRecord.Remember("satisfied", null);
@@ -583,6 +634,11 @@ namespace Cinnarios.Placement.UI
         {
             if (controller == null || controller.State != PlacementState.Locked)
             {
+                if (controller != null)
+                {
+                    Render(controller.State);
+                }
+
                 return;
             }
 
@@ -613,6 +669,26 @@ namespace Cinnarios.Placement.UI
             _loader.Changed += OnPaintingChanged;
         }
 
+        private void ShowRecordedSize()
+        {
+            PaintingDimensions dimensions = _loader?.CurrentArtwork?.Dimensions;
+            if (_size == null || dimensions == null)
+            {
+                if (_size != null)
+                {
+                    _size.style.display = DisplayStyle.None;
+                }
+
+                return;
+            }
+
+            _size.text = $"{Centimetres(dimensions.WidthCm)} × {Centimetres(dimensions.HeightCm)} cm, the size the shop recorded.";
+            _size.style.display = DisplayStyle.Flex;
+        }
+
+        private static string Centimetres(float value) =>
+            value.ToString("0.##", CultureInfo.InvariantCulture);
+
         private void ClearDecision()
         {
             _decision.Clear();
@@ -641,7 +717,7 @@ namespace Cinnarios.Placement.UI
             _decision.Add(button);
         }
 
-        private void AddPictureChoice(string text, string imageUrl, System.Action onClick)
+        private void AddPictureChoice(string text, string imageUrl, string otherUrl, string workTitle, System.Action onClick)
         {
             var button = new Button(onClick) { text = string.Empty };
             button.style.flexDirection = FlexDirection.Row;
@@ -672,23 +748,56 @@ namespace Cinnarios.Placement.UI
             button.Add(label);
             _decision.Add(button);
 
-            if (!string.IsNullOrEmpty(imageUrl))
+            if (!string.IsNullOrEmpty(imageUrl) || !string.IsNullOrEmpty(otherUrl))
             {
-                StartCoroutine(ShowThumbnail(imageUrl, image));
+                StartCoroutine(ShowThumbnailPair(imageUrl, otherUrl, workTitle, image));
             }
         }
 
-        private static IEnumerator ShowThumbnail(string url, Image target)
+        private IEnumerator ShowThumbnailPair(string url, string otherUrl, string workTitle, Image target)
         {
-            using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url))
+            yield return ShowThumbnail(url, workTitle, target);
+            if (target != null && target.panel != null && target.image == null && !string.IsNullOrEmpty(otherUrl))
             {
-                yield return request.SendWebRequest();
-                if (request.result != UnityWebRequest.Result.Success || target == null || target.panel == null)
+                yield return ShowThumbnail(otherUrl, workTitle, target);
+            }
+        }
+
+        private IEnumerator ShowThumbnail(string url, string workTitle, Image target)
+        {
+            if (string.IsNullOrEmpty(url) || target == null)
+            {
+                yield break;
+            }
+
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                Task<Texture2D> download = _pictures.GetAsync(url, 360, workTitle);
+                while (!download.IsCompleted)
+                {
+                    yield return null;
+                }
+
+                if (target.panel == null)
                 {
                     yield break;
                 }
 
-                target.image = DownloadHandlerTexture.GetContent(request);
+                if (!download.IsFaulted && download.Result != null)
+                {
+                    target.scaleMode = ScaleMode.ScaleToFit;
+                    target.image = download.Result;
+                    target.style.backgroundImage = Background.FromTexture2D(download.Result);
+                    target.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+                    yield break;
+                }
+
+                if (download.IsFaulted)
+                {
+                    Debug.LogWarning($"Suggestion picture failed: {download.Exception?.GetBaseException().Message}");
+                }
+
+                yield return new WaitForSeconds(0.75f);
             }
         }
 

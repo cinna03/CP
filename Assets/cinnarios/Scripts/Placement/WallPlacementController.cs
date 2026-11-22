@@ -44,7 +44,10 @@ namespace Cinnarios.Placement
         private PaintingView _painting;
         private Camera _camera;
         private bool _listeningForPlanes;
-        private bool _coachingReady;
+        private float _wallMissedAt = -1f;
+        private const float WallGraceSeconds = 0.45f;
+        private Pose _lockedPose;
+        private bool _holdStill;
 
         public PlacementState State => _stateMachine.Current;
 
@@ -71,7 +74,7 @@ namespace Cinnarios.Placement
 
         private void OnEnable()
         {
-            _coachingReady = false;
+            _wallMissedAt = -1f;
             if (planeManager == null)
             {
                 return;
@@ -94,15 +97,28 @@ namespace Cinnarios.Placement
 
         private void OnDisable()
         {
-            _coachingReady = false;
+            WallCoaching.GuideUntilAWall(true);
+        }
+
+        // After the lock, the print stays at the centimetres and the point where it was
+        // hung. Walking closer makes it larger, and walking away makes it smaller.
+        // An AR anchor was updating that pose as the phone moved, which kept the print
+        // the same size on screen.
+        private void LateUpdate()
+        {
+            if (!_holdStill || _painting == null)
+            {
+                return;
+            }
+
+            _painting.transform.localScale = Vector3.one;
+            _painting.transform.SetPositionAndRotation(_lockedPose.position, _lockedPose.rotation);
         }
 
         private void Update()
         {
-            if (!_coachingReady)
-            {
-                _coachingReady = WallCoaching.AskForAWall();
-            }
+            KeepVerticalDetectionOn();
+            WallCoaching.GuideUntilAWall(HasVerticalPlane());
 
             if (_painting.Spec == null)
             {
@@ -175,7 +191,10 @@ namespace Cinnarios.Placement
                 return;
             }
 
-            _anchor.Attach(_painting.transform);
+            _anchor.Detach(_painting.transform);
+            _painting.transform.localScale = Vector3.one;
+            _lockedPose = new Pose(_painting.transform.position, _painting.transform.rotation);
+            _holdStill = true;
             _planeSearch.SetSearching(false);
         }
 
@@ -187,15 +206,23 @@ namespace Cinnarios.Placement
                 return;
             }
 
+            _holdStill = false;
+
             // The anchor would fight the drag, so it is removed before sliding starts.
+            // The wall stays the one the painting is already on. Search stays off, so a
+            // nearer surface cannot pull it onto a different wall.
             _anchor.Detach(_painting.transform);
+            var pose = new Pose(_painting.transform.position, _painting.transform.rotation);
+            _slider.Capture(pose);
             _smoother.Reset();
-            _smoother.Step(new Pose(_painting.transform.position, _painting.transform.rotation), 0f);
+            _smoother.Step(pose, 0f);
+            _planeSearch.SetSearching(false);
         }
 
         /// <summary>A new painting from the shop starts its own search. The previous lock is dropped.</summary>
         public void BeginNewVisit()
         {
+            _holdStill = false;
             _anchor.Detach(_painting.transform);
             _slider.Clear();
             _gestures.Reset();
@@ -213,6 +240,8 @@ namespace Cinnarios.Placement
                 return;
             }
 
+            _holdStill = false;
+
             _anchor.Detach(_painting.transform);
             _slider.Clear();
             _gestures.Reset();
@@ -226,6 +255,21 @@ namespace Cinnarios.Placement
             var screenCentre = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
             if (!_walls.TryGetWallHit(screenCentre, out Pose wallPose))
             {
+                // One missed frame used to hide the painting. Keep the last spot briefly.
+                if (_stateMachine.Current == PlacementState.Aiming)
+                {
+                    if (_wallMissedAt < 0f)
+                    {
+                        _wallMissedAt = Time.time;
+                    }
+
+                    if (Time.time - _wallMissedAt < WallGraceSeconds)
+                    {
+                        return;
+                    }
+                }
+
+                _wallMissedAt = -1f;
                 if (_stateMachine.TryTransition(PlacementState.Scanning))
                 {
                     _painting.gameObject.SetActive(false);
@@ -234,6 +278,8 @@ namespace Cinnarios.Placement
 
                 return;
             }
+
+            _wallMissedAt = -1f;
 
             _stateMachine.TryTransition(PlacementState.Aiming);
             Pose smoothed = _smoother.Step(PaintingPoseOnWall(wallPose), Time.deltaTime);
@@ -294,6 +340,38 @@ namespace Cinnarios.Placement
             Quaternion rotation = Quaternion.LookRotation(-wallNormal, Vector3.up);
             Vector3 position = wallPose.position + wallNormal * WallClearanceMetres;
             return new Pose(position, rotation);
+        }
+
+        private void KeepVerticalDetectionOn()
+        {
+            if (planeManager == null || planeManager.subsystem == null)
+            {
+                return;
+            }
+
+            PlaneDetectionMode wanted = PlaneDetectionMode.Horizontal | PlaneDetectionMode.Vertical;
+            if (planeManager.currentDetectionMode != wanted)
+            {
+                planeManager.requestedDetectionMode = wanted;
+            }
+        }
+
+        private bool HasVerticalPlane()
+        {
+            if (planeManager == null)
+            {
+                return false;
+            }
+
+            foreach (ARPlane plane in planeManager.trackables)
+            {
+                if (plane.alignment == PlaneAlignment.Vertical)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void HideFloors(ARTrackablesChangedEventArgs<ARPlane> changes)

@@ -9,25 +9,48 @@ namespace Cinnarios.Placement
     /// </summary>
     public static class WallCoaching
     {
-        public static bool AskForAWall()
+        private static bool _guideVisible;
+
+        /// <summary>
+        /// Shows Apple's wall guide until a vertical plane exists. Automatic coaching stays
+        /// hidden when the room is already tracking but the wall itself has not been found,
+        /// which is what happened on a plain painted wall.
+        /// </summary>
+        public static void GuideUntilAWall(bool wallFound)
         {
 #if UNITY_IOS && !UNITY_EDITOR
             ARSession session = Object.FindAnyObjectByType<ARSession>();
             if (session == null || session.subsystem is not UnityEngine.XR.ARKit.ARKitSessionSubsystem subsystem)
             {
-                return false;
+                return;
             }
 
             if (!UnityEngine.XR.ARKit.ARKitSessionSubsystem.coachingOverlaySupported)
             {
-                return true;
+                return;
+            }
+
+            if (wallFound)
+            {
+                if (_guideVisible)
+                {
+                    subsystem.SetCoachingActive(false, UnityEngine.XR.ARKit.ARCoachingOverlayTransition.Animated);
+                    _guideVisible = false;
+                }
+
+                return;
+            }
+
+            if (_guideVisible)
+            {
+                return;
             }
 
             subsystem.requestedCoachingGoal = UnityEngine.XR.ARKit.ARCoachingGoal.VerticalPlane;
-            subsystem.coachingActivatesAutomatically = true;
-            return true;
+            subsystem.SetCoachingActive(true, UnityEngine.XR.ARKit.ARCoachingOverlayTransition.Animated);
+            _guideVisible = true;
 #else
-            return true;
+            _ = wallFound;
 #endif
         }
     }

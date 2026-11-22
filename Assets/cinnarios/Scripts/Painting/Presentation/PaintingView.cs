@@ -19,6 +19,7 @@ namespace Cinnarios.Painting.Presentation
         private MeshFilter _meshFilter;
         private MeshRenderer _meshRenderer;
         private Mesh _generatedMesh;
+        private Material _front;
 
         /// <summary>The painting currently shown, or null.</summary>
         public PaintingSpec Spec { get; private set; }
@@ -68,10 +69,32 @@ namespace Cinnarios.Painting.Presentation
 
         private void ApplyImage(Texture2D image, Rect cropRect)
         {
+            if (_front == null)
+            {
+                // materials (not sharedMaterials) so this painting's print does not
+                // overwrite the prefab, or the next painting swapped into the holder.
+                Material[] materials = _meshRenderer.materials;
+                _front = materials[0];
+                Shader print = Shader.Find("Cinnarios/Print");
+                if (print != null)
+                {
+                    _front.shader = print;
+                }
+            }
+
+            _front.SetTexture(BaseMapId, image);
+            _front.SetTexture("_MainTex", image);
+            // Tiling = how much of the image to show, offset = where that part starts.
+            Vector2 scale = new Vector2(cropRect.width, cropRect.height);
+            Vector2 offset = new Vector2(cropRect.x, cropRect.y);
+            _front.SetTextureScale(BaseMapId, scale);
+            _front.SetTextureOffset(BaseMapId, offset);
+            _front.SetTextureScale("_MainTex", scale);
+            _front.SetTextureOffset("_MainTex", offset);
+
             var block = new MaterialPropertyBlock();
             _meshRenderer.GetPropertyBlock(block, (int)PaintingSubmesh.Front);
             block.SetTexture(BaseMapId, image);
-            // Tiling = how much of the image to show, offset = where that part starts.
             block.SetVector(BaseMapTilingOffsetId, new Vector4(cropRect.width, cropRect.height, cropRect.x, cropRect.y));
             _meshRenderer.SetPropertyBlock(block, (int)PaintingSubmesh.Front);
         }

@@ -28,6 +28,13 @@ namespace Cinnarios.Placement
                 return _current;
             }
 
+            // Plane updates shiver by a few millimetres. Ignore that, follow a real move.
+            if (Vector3.Distance(_current.position, target.position) < 0.004f
+                && Quaternion.Angle(_current.rotation, target.rotation) < 1.5f)
+            {
+                return _current;
+            }
+
             float t = 1f - Mathf.Exp(-_sharpness * deltaTime);
             _current = new Pose(
                 Vector3.Lerp(_current.position, target.position, t),
