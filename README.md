@@ -2,7 +2,7 @@
 
 Cinnarios is an iPhone app that hangs a shop print on the buyer’s wall at the centimetres the shop recorded. The next three pictured suggestions stay on that same wall.
 
-This repository is the product: one Unity scene, built for iOS. The shop that supplies the paintings is a separate web app, [cinna03/marketplace-repo](https://github.com/cinna03/marketplace-repo), running at [https://cinnarios.onrender.com](https://cinnarios.onrender.com).
+This repository is the product: one Unity scene, built for iOS. The shop that supplies the paintings is a separate web app, running at [https://cinnarios.onrender.com](https://cinnarios.onrender.com).
 
 Capstone project, BSc Software Engineering (AR/VR), African Leadership University.
 
