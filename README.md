@@ -23,7 +23,7 @@ Scanning can move to aiming, aiming to positioning, and positioning to locked. S
 
 Centimetres become metres in one class, `PaintingDimensions`, by dividing by 100. A 60 cm side is 0.6 m. A size of 0 is refused.
 
-The reproduction price is 150 USD plus 400 USD per square metre, rounded to the nearest 10 USD. A 60 × 80 cm print is 340 USD. The phone shows that price in Rwandan francs at 1 USD = 1,477.385 RWF.
+The phone shows the reproduction price in Rwandan francs. A 60 × 80 cm print is RWF 502,311.
 
 The museum image host often answers this app with a block page. `TextureDownloader` skips that host and loads the same photograph from Wikimedia Commons.
 
@@ -38,7 +38,7 @@ Assets/cinnarios/
 ├── Scenes/WallPlacement.unity     the session
 ├── Rules/                         plain C# rules, no scene objects
 │   ├── PaintingDimensions.cs      the only centimetre-to-metre conversion
-│   ├── AreaPricingRule.cs         150 + 400 per square metre
+│   ├── AreaPricingRule.cs         the reproduction price, shown in RWF
 │   ├── TryLink.cs                 cinnarios-ar://try/ and cinnarios://try/
 │   ├── PlacementStateMachine.cs   Scanning, Aiming, Positioning, Locked
 │   ├── DecisionTalk.cs            reads what the buyer typed
@@ -66,7 +66,7 @@ Build for iOS from `WallPlacement`. The phone must be able to reach the shop. A 
 
 In the Unity Editor, open **Window → General → Test Runner**, choose **Edit Mode**, and run `Cinnarios.EditModeTests`.
 
-The cases do not start a camera session. They check that 60 cm becomes 0.6 m, that a size of 0 is refused, that a 60 × 80 cm print costs 340 USD, that a try link keeps the painting and the shop, that an own-piece link is ignored, that scanning cannot jump to locked, that “too big” asks for a smaller print, and that “move it” stays on the same painting.
+The cases do not start a camera session. They check that 60 cm becomes 0.6 m, that a size of 0 is refused, that a 60 × 80 cm print keeps the shop’s price, shown on the phone as RWF 502,311, that a try link keeps the painting and the shop, that an own-piece link is ignored, that scanning cannot jump to locked, that “too big” asks for a smaller print, and that “move it” stays on the same painting.
 
 The shop’s own tests live in the marketplace repository.
 
