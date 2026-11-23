@@ -82,6 +82,13 @@ namespace Cinnarios.Placement.UI
                         : "These have a different colour guide. The guide sorts the shop. It is not a measurement of the paint.");
             }
 
+            if (Contains(text, "move it", "another spot", "different spot", "place it again", "place again", "readjust", "reposition", "new spot"))
+            {
+                turn.WantsNewSpot = true;
+                turn.Reply = "The locked spot stays until you place this same painting again. Start from the wall, and lock the new spot when it is right.";
+                return turn;
+            }
+
             if (Contains(text, "different", "another", "something else", "other artist", "boring", "not the style"))
             {
                 return Suggest(artwork, WallAdvice.Aspect.Piece, WallAdvice.Lean.Different,
@@ -98,13 +105,6 @@ namespace Cinnarios.Placement.UI
             {
                 return Suggest(artwork, WallAdvice.Aspect.Fit, WallAdvice.Lean.Keep,
                     artwork == null ? "These are close to this size, so you can compare the fit." : $"{artwork.Title} is {artwork.Dimensions.WidthCm:0.#} cm wide. These are close to that, so you can compare the fit on this wall.");
-            }
-
-            if (Contains(text, "move it", "another spot", "different spot", "place it again", "place again", "readjust", "reposition", "new spot"))
-            {
-                turn.WantsNewSpot = true;
-                turn.Reply = "The locked spot stays until you place this same painting again. Start from the wall, and lock the new spot when it is right.";
-                return turn;
             }
 
             if (Contains(text, "yes", "this one is right", "i like it", "love it", "perfect", "keep it", "satisfied"))
